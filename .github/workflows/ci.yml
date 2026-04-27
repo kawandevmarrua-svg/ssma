@@ -38,7 +38,7 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm run lint --if-present
       - name: Build
-        run: npx next build --webpack
+        run: npx next build
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL || 'https://example.supabase.co' }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'placeholder' }}

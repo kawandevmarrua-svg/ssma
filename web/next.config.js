@@ -14,7 +14,7 @@ const csp = [
   "default-src 'self'",
   scriptSrc,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://*.supabase.co",
+  "img-src 'self' data: blob: https://*.supabase.co https://*.tile.openstreetmap.org",
   "font-src 'self' data:",
   `connect-src 'self' https://${supabaseHost} wss://${supabaseHost} https://*.supabase.co wss://*.supabase.co`,
   "frame-ancestors 'none'",
@@ -34,15 +34,9 @@ const securityHeaders = [
   { key: 'X-DNS-Prefetch-Control', value: 'off' },
 ];
 
-const path = require('path');
-
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  outputFileTracingRoot: __dirname,
-  turbopack: {
-    root: path.resolve(__dirname),
-  },
   images: {
     remotePatterns: [
       {

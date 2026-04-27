@@ -24,8 +24,12 @@ Deno.serve(async (req) => {
 
   const supabase = auth.data.serviceClient;
 
+  // Cap absoluto para evitar DoS / exfiltracao em massa.
+  const MAX_LIMIT = 1000;
+  const DEFAULT_LIMIT = 200;
+
   try {
-    const { type, operator_id, date_from, date_to } = await req.json();
+    const { type, operator_id, date_from, date_to, limit } = await req.json();
 
     if (!type) {
       throw new Error(
@@ -33,11 +37,15 @@ Deno.serve(async (req) => {
       );
     }
 
+    const requestedLimit = Number.isFinite(Number(limit)) ? Number(limit) : DEFAULT_LIMIT;
+    const effectiveLimit = Math.min(Math.max(1, requestedLimit), MAX_LIMIT);
+
     let reportData: Record<string, unknown> = {
       generated_at: new Date().toISOString(),
       type,
       date_from,
       date_to,
+      limit: effectiveLimit,
     };
 
     const filters = {
@@ -61,7 +69,8 @@ Deno.serve(async (req) => {
           `)
           .gte("date", filters.dateFrom)
           .lte("date", filters.dateTo)
-          .order("date", { ascending: false });
+          .order("date", { ascending: false })
+          .limit(effectiveLimit);
 
         if (operator_id) query = query.eq("operator_id", operator_id);
 
@@ -90,7 +99,8 @@ Deno.serve(async (req) => {
           `)
           .gte("date", filters.dateFrom)
           .lte("date", filters.dateTo)
-          .order("date", { ascending: false });
+          .order("date", { ascending: false })
+          .limit(effectiveLimit);
 
         if (operator_id) query = query.eq("operator_id", operator_id);
 
@@ -119,7 +129,8 @@ Deno.serve(async (req) => {
           .select("*, operators(name)")
           .gte("date", filters.dateFrom)
           .lte("date", filters.dateTo)
-          .order("date", { ascending: false });
+          .order("date", { ascending: false })
+          .limit(effectiveLimit);
 
         if (operator_id) query = query.eq("operator_id", operator_id);
 

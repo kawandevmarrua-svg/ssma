@@ -1,338 +1,326 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import Image from 'next/image';
 import Link from 'next/link';
 import {
-  ShieldCheck,
-  Eye,
-  ClipboardCheck,
-  AlertTriangle,
-  BarChart3,
-  Users,
   ArrowRight,
   CheckCircle2,
-  Smartphone,
+  ClipboardCheck,
+  Eye,
   QrCode,
-  Camera,
-  Download,
+  ShieldCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const features = [
   {
     icon: Eye,
-    title: 'Smart Vision',
-    description:
-      'Monitoramento inteligente em tempo real com visão 360° das suas operações de SSMA.',
+    title: 'Visao clara',
+    description: 'Operacao, alertas e indicadores em um painel simples e direto.',
   },
   {
     icon: ClipboardCheck,
-    title: 'Checklists Digitais',
-    description:
-      'Inspeções padronizadas, rastreáveis e disponíveis no app mobile dos operadores.',
+    title: 'Execucao em campo',
+    description: 'Checklist digital com evidencias e rastreabilidade do inicio ao fim.',
   },
   {
-    icon: AlertTriangle,
-    title: 'Alertas Imediatos',
-    description:
-      'Receba notificações automáticas de ocorrências críticas e tome decisões mais rápido.',
-  },
-  {
-    icon: BarChart3,
-    title: 'Indicadores em Tempo Real',
-    description:
-      'KPIs de segurança, manutenção e produtividade consolidados em um único painel.',
-  },
-  {
-    icon: Users,
-    title: 'Gestão de Operadores',
-    description:
-      'Controle de cargos, atividades e permissões com auditoria completa de acessos.',
-  },
-  {
-    icon: ShieldCheck,
-    title: 'Conformidade Total',
-    description:
-      'Atenda às normas de SSMA com registros auditáveis e rastreabilidade ponta a ponta.',
+    icon: QrCode,
+    title: 'Fluxo rapido',
+    description: 'Leitura por QR Code para acelerar o uso do app no dia a dia.',
   },
 ];
 
 const benefits = [
-  'Reduza incidentes com visibilidade total das operações',
-  'Centralize inspeções, máquinas e equipes em um só lugar',
-  'Acelere tomadas de decisão com dados confiáveis',
-  'Garanta conformidade com auditoria nativa',
+  'Menos planilha e menos retrabalho',
+  'Mais velocidade para agir em campo',
+  'Conformidade com registro auditavel',
 ];
 
 export default function LandingPage() {
+  const mobileImagePath = path.join(process.cwd(), 'public', 'app-mobile.png');
+  const hasMobileScreenshot = fs.existsSync(mobileImagePath);
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-secondary/30">
-      <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <div className="min-h-screen bg-white text-foreground">
+      <header className="sticky top-0 z-40 border-b border-border/60 bg-white/92 backdrop-blur">
         <div className="container flex h-16 items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 text-primary">
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
+          <Link href="/" className="flex items-center gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
               <ShieldCheck className="h-5 w-5" />
             </span>
-            <span className="text-base font-semibold tracking-tight text-foreground">
-              Segurança em 360
+            <span className="text-sm font-semibold tracking-tight text-foreground sm:text-base">
+              Seguranca em 360
             </span>
           </Link>
-          <nav className="hidden items-center gap-8 text-sm font-medium text-muted-foreground md:flex">
-            <a href="#features" className="transition-colors hover:text-foreground">
+
+          <nav className="hidden items-center gap-8 text-sm text-muted-foreground md:flex">
+            <a href="#recursos" className="transition-colors hover:text-foreground">
               Recursos
-            </a>
-            <a href="#beneficios" className="transition-colors hover:text-foreground">
-              Benefícios
             </a>
             <a href="#app" className="transition-colors hover:text-foreground">
               App
             </a>
             <a href="#cta" className="transition-colors hover:text-foreground">
-              Começar
+              Acessar
             </a>
           </nav>
+
           <Link href="/login">
-            <Button size="sm" className="gap-1.5">
+            <Button size="sm" className="rounded-full px-5">
               Login
-              <ArrowRight className="h-4 w-4" />
             </Button>
           </Link>
         </div>
       </header>
 
       <main>
-        <section className="relative overflow-hidden">
-          <div className="pointer-events-none absolute inset-0 -z-10">
-            <div className="absolute -top-32 left-1/2 h-[480px] w-[480px] -translate-x-1/2 rounded-full bg-primary/20 blur-3xl" />
-            <div className="absolute right-0 top-40 h-[320px] w-[320px] rounded-full bg-accent/40 blur-3xl" />
-          </div>
+        <section className="border-b border-border/50">
+          <div className="container grid items-center gap-14 py-16 md:py-24 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-20">
+            <div className="animate-enter-up max-w-2xl">
+              <span className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/5 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-primary">
+                <ShieldCheck className="h-3.5 w-3.5" />
+                SSMA Smart Vision
+              </span>
 
-          <div className="container flex flex-col items-center gap-8 py-20 text-center md:py-28">
-            <span className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
-              <ShieldCheck className="h-3.5 w-3.5" />
-              SSMA · Smart Vision
-            </span>
-            <h1 className="max-w-4xl text-4xl font-bold leading-tight tracking-tight text-foreground sm:text-5xl md:text-6xl">
-              Gestão de SSMA com{' '}
-              <span className="bg-gradient-to-r from-primary to-orange-500 bg-clip-text text-transparent">
-                visão 360°
-              </span>{' '}
-              da sua operação
-            </h1>
-            <p className="max-w-2xl text-base text-muted-foreground sm:text-lg">
-              Inspeções, alertas, indicadores e equipes integrados em uma única
-              plataforma. Tome decisões mais seguras, em tempo real, com dados
-              confiáveis e rastreáveis.
-            </p>
-            <div className="flex flex-col items-center gap-3 sm:flex-row">
-              <Link href="/login">
-                <Button size="lg" className="gap-2 px-8 text-base shadow-lg shadow-primary/20">
-                  Acessar painel
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
-              <a href="#features">
-                <Button size="lg" variant="outline" className="px-8 text-base">
-                  Conhecer recursos
-                </Button>
-              </a>
+              <h1 className="mt-6 text-4xl font-semibold tracking-tight text-foreground sm:text-5xl md:text-6xl">
+                Gestao de SSMA
+                <span className="block text-primary">clean, rapida e objetiva.</span>
+              </h1>
+
+              <p className="mt-5 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">
+                Inspecoes, alertas, indicadores e operacao mobile em um fluxo unico.
+                Sem excesso visual. Sem complexidade desnecessaria.
+              </p>
+
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                <Link href="/login">
+                  <Button size="lg" className="gap-2 rounded-full px-8">
+                    Acessar painel
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </Link>
+                <a href="#app">
+                  <Button size="lg" variant="outline" className="rounded-full px-8">
+                    Ver app
+                  </Button>
+                </a>
+              </div>
+
+              <div className="mt-10 grid gap-3 sm:grid-cols-3">
+                {benefits.map((item, index) => (
+                  <div
+                    key={item}
+                    className="animate-enter-up rounded-2xl border border-border/70 bg-white p-4"
+                    style={{ animationDelay: `${index * 80}ms` }}
+                  >
+                    <div className="flex items-start gap-3">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 flex-none text-primary" />
+                      <p className="text-sm leading-6 text-foreground">{item}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="mt-6 flex flex-wrap items-center justify-center gap-x-8 gap-y-2 text-sm text-muted-foreground">
-              <span className="inline-flex items-center gap-1.5">
-                <CheckCircle2 className="h-4 w-4 text-primary" />
-                Inspeções padronizadas
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <CheckCircle2 className="h-4 w-4 text-primary" />
-                Alertas em tempo real
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <CheckCircle2 className="h-4 w-4 text-primary" />
-                Indicadores acionáveis
-              </span>
+
+            <div className="animate-enter-up animation-delay-150 mx-auto">
+              <div className="relative mx-auto w-[224px] rounded-[2.4rem] border border-slate-900 bg-[#101010] p-2.5 shadow-[0_24px_70px_-28px_rgba(15,23,42,0.45)]">
+                <div className="absolute left-1/2 top-2.5 h-5 w-20 -translate-x-1/2 rounded-full bg-black" />
+                <div className="overflow-hidden rounded-[2rem] bg-[#f4f5f7]">
+                  <div className="relative aspect-[9/19.5] w-full bg-[#f4f5f7]">
+                    {hasMobileScreenshot ? (
+                      <Image
+                        src="/app-mobile.png"
+                        alt="Tela do app Seguranca em 360"
+                        fill
+                        className="object-cover"
+                        sizes="224px"
+                        priority
+                      />
+                    ) : (
+                      <div className="flex h-full flex-col bg-[#f7f7f8] p-3 text-slate-900">
+                        <div className="rounded-[1.4rem] bg-[#111827] p-3 text-white">
+                          <p className="text-[10px] uppercase tracking-[0.2em] text-white/60">
+                            Operador
+                          </p>
+                          <p className="mt-1 text-sm font-semibold">Checklist pre-uso</p>
+                          <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
+                            <div className="rounded-xl bg-white/10 p-2">
+                              <p className="text-white/50">Maquina</p>
+                              <p className="mt-1">ESC-204</p>
+                            </div>
+                            <div className="rounded-xl bg-white/10 p-2">
+                              <p className="text-white/50">Status</p>
+                              <p className="mt-1 text-emerald-300">Liberada</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 space-y-2">
+                          {[
+                            'Escanear QR Code',
+                            'Responder checklist',
+                            'Registrar fotos',
+                            'Enviar evidencia',
+                          ].map((item) => (
+                            <div
+                              key={item}
+                              className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-[11px] font-medium"
+                            >
+                              {item}
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="mt-3 rounded-2xl border border-dashed border-primary/25 bg-primary/5 px-3 py-3 text-center text-[10px] leading-5 text-slate-500">
+                          Adicione sua screenshot em `web/public/app-mobile.png`
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <p className="mt-4 text-center text-xs text-muted-foreground">
+                Screenshot real do app em `web/public/app-mobile.png`
+              </p>
             </div>
           </div>
         </section>
 
-        <section id="features" className="border-t border-border/60 bg-background/40 py-20">
+        <section id="recursos" className="py-20">
           <div className="container">
-            <div className="mx-auto mb-14 max-w-2xl text-center">
-              <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-                Tudo que sua operação de SSMA precisa
+            <div className="animate-enter-up mx-auto max-w-2xl text-center">
+              <h2 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+                O essencial, muito bem resolvido.
               </h2>
               <p className="mt-4 text-muted-foreground">
-                Da inspeção de campo ao indicador estratégico — um fluxo único,
-                conectado e auditável.
+                A plataforma foi pensada para reduzir ruido operacional e facilitar a tomada de decisao.
               </p>
             </div>
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {features.map(({ icon: Icon, title, description }) => (
+
+            <div className="mt-12 grid gap-4 md:grid-cols-3">
+              {features.map(({ icon: Icon, title, description }, index) => (
                 <div
                   key={title}
-                  className="group relative rounded-xl border border-border/60 bg-card p-6 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
+                  className="animate-enter-up rounded-3xl border border-border/70 bg-white p-7 transition-transform duration-300 hover:-translate-y-1"
+                  style={{ animationDelay: `${index * 90}ms` }}
                 >
-                  <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+                  <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/8 text-primary">
                     <Icon className="h-5 w-5" />
                   </div>
-                  <h3 className="mb-2 text-lg font-semibold text-foreground">
-                    {title}
-                  </h3>
-                  <p className="text-sm leading-relaxed text-muted-foreground">
-                    {description}
-                  </p>
+                  <h3 className="text-lg font-semibold text-foreground">{title}</h3>
+                  <p className="mt-3 text-sm leading-7 text-muted-foreground">{description}</p>
                 </div>
               ))}
             </div>
           </div>
         </section>
 
-        <section id="beneficios" className="py-20">
-          <div className="container grid items-center gap-12 lg:grid-cols-2">
-            <div>
-              <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-                Mais segurança, menos retrabalho
-              </h2>
-              <p className="mt-4 text-muted-foreground">
-                Centralize informações de máquinas, atividades, operadores e
-                inspeções. Substitua planilhas e papéis por um fluxo digital
-                que entrega dados prontos para decisão.
-              </p>
-              <ul className="mt-8 space-y-4">
-                {benefits.map((benefit) => (
-                  <li key={benefit} className="flex items-start gap-3">
-                    <span className="mt-0.5 flex h-6 w-6 flex-none items-center justify-center rounded-full bg-primary/10 text-primary">
-                      <CheckCircle2 className="h-4 w-4" />
-                    </span>
-                    <span className="text-foreground">{benefit}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-10">
-                <Link href="/login">
-                  <Button size="lg" className="gap-2">
-                    Entrar agora
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </Link>
+        <section id="app" className="border-y border-border/50 bg-slate-50/60 py-20">
+          <div className="container grid items-center gap-12 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-20">
+            <div className="animate-enter-up mx-auto lg:mx-0">
+              <div className="relative mx-auto w-[224px] rounded-[2.4rem] border border-slate-900 bg-[#101010] p-2.5 shadow-[0_24px_70px_-28px_rgba(15,23,42,0.38)]">
+                <div className="absolute left-1/2 top-2.5 h-5 w-20 -translate-x-1/2 rounded-full bg-black" />
+                <div className="overflow-hidden rounded-[2rem] bg-white">
+                  <div className="relative aspect-[9/19.5] w-full bg-[#f4f5f7]">
+                    {hasMobileScreenshot ? (
+                      <Image
+                        src="/app-mobile.png"
+                        alt="Preview do aplicativo mobile"
+                        fill
+                        className="object-cover"
+                        sizes="224px"
+                      />
+                    ) : (
+                      <div className="flex h-full flex-col justify-between bg-[#f7f7f8] p-3 text-slate-900">
+                        <div>
+                          <div className="rounded-[1.4rem] bg-white p-3 shadow-sm">
+                            <p className="text-[10px] uppercase tracking-[0.2em] text-primary">
+                              Smart Vision
+                            </p>
+                            <p className="mt-1 text-sm font-semibold">Fluxo em campo</p>
+                          </div>
+                          <div className="mt-3 space-y-2">
+                            {[
+                              'Checklist digital',
+                              'Fotos obrigatorias',
+                              'Alerta imediato',
+                            ].map((item) => (
+                              <div
+                                key={item}
+                                className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-[11px]"
+                              >
+                                {item}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="rounded-2xl bg-[#111827] px-3 py-3 text-[10px] leading-5 text-white/80">
+                          Coloque a imagem real em `web/public/app-mobile.png`
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="relative">
-              <div className="absolute -inset-4 -z-10 rounded-3xl bg-gradient-to-br from-primary/20 via-accent/40 to-transparent blur-2xl" />
-              <div className="grid gap-4 sm:grid-cols-2">
+            <div className="animate-enter-up animation-delay-150 max-w-2xl">
+              <span className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-white px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-primary">
+                App mobile
+              </span>
+              <h2 className="mt-5 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+                Um app real para operar em campo.
+              </h2>
+              <p className="mt-4 text-base leading-7 text-muted-foreground">
+                O operador escaneia a maquina, responde o checklist, registra evidencias e envia tudo no mesmo fluxo.
+                A gestao recebe informacao pronta para agir.
+              </p>
+
+              <div className="mt-8 grid gap-3 sm:grid-cols-2">
                 {[
-                  { label: 'Inspeções', value: '+100%', sub: 'rastreabilidade' },
-                  { label: 'Alertas', value: 'tempo real', sub: 'sem atraso' },
-                  { label: 'KPIs', value: '360°', sub: 'visão integrada' },
-                  { label: 'Conformidade', value: 'auditável', sub: 'fim a fim' },
-                ].map((stat) => (
-                  <div
-                    key={stat.label}
-                    className="rounded-xl border border-border/60 bg-card p-6 shadow-sm"
-                  >
-                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                      {stat.label}
-                    </p>
-                    <p className="mt-2 text-2xl font-bold text-foreground">
-                      {stat.value}
-                    </p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {stat.sub}
-                    </p>
+                  'Checklist pre-uso com QR Code',
+                  'Registro de fotos e evidencias',
+                  'Alertas com resposta rapida',
+                  'Historico rastreavel da operacao',
+                ].map((item) => (
+                  <div key={item} className="rounded-2xl border border-border/70 bg-white px-4 py-4 text-sm text-foreground">
+                    {item}
                   </div>
                 ))}
               </div>
-            </div>
-          </div>
-        </section>
 
-        <section id="app" className="border-t border-border/60 bg-background/40 py-20">
-          <div className="container grid items-center gap-12 lg:grid-cols-2">
-            <div className="relative order-2 lg:order-1">
-              <div className="absolute -inset-4 -z-10 rounded-3xl bg-gradient-to-br from-orange-500/20 via-primary/20 to-transparent blur-2xl" />
-              <div className="rounded-2xl border border-border/60 bg-card p-8 shadow-sm">
-                <div className="mx-auto flex h-48 w-48 items-center justify-center rounded-3xl bg-gradient-to-br from-primary to-orange-500 shadow-lg">
-                  <Smartphone className="h-24 w-24 text-white" />
-                </div>
-                <div className="mt-6 grid grid-cols-3 gap-4">
-                  {[
-                    { icon: QrCode, label: 'QR Code' },
-                    { icon: ClipboardCheck, label: 'Checklist' },
-                    { icon: Camera, label: 'Fotos' },
-                  ].map(({ icon: Icon, label }) => (
-                    <div key={label} className="flex flex-col items-center gap-2 rounded-lg bg-muted/50 p-3">
-                      <Icon className="h-5 w-5 text-primary" />
-                      <span className="text-xs font-medium text-muted-foreground">{label}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="order-1 lg:order-2">
-              <span className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
-                <Smartphone className="h-3.5 w-3.5" />
-                App Mobile
-              </span>
-              <h2 className="mt-4 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-                SSMA na palma da mão
-              </h2>
-              <p className="mt-4 text-muted-foreground">
-                O app Android permite que os operadores realizem checklists,
-                registrem atividades e recebam alertas diretamente no celular —
-                mesmo em campo. Escaneie o QR Code da máquina, responda os itens
-                de inspeção e anexe fotos com poucos toques.
-              </p>
-              <ul className="mt-6 space-y-3">
-                {[
-                  'Checklist pré-uso com QR Code da máquina',
-                  'Fotos obrigatórias do equipamento e ambiente',
-                  'Pré-operação com perguntas de segurança',
-                  'Alertas em tempo real via push notification',
-                ].map((item) => (
-                  <li key={item} className="flex items-start gap-3">
-                    <span className="mt-0.5 flex h-6 w-6 flex-none items-center justify-center rounded-full bg-primary/10 text-primary">
-                      <CheckCircle2 className="h-4 w-4" />
-                    </span>
-                    <span className="text-foreground">{item}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-8">
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <a
                   href="https://github.com/kawandevmarrua-svg/ssma/releases/latest"
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  <Button size="lg" className="gap-2 px-8 text-base shadow-lg shadow-primary/20">
-                    <Download className="h-5 w-5" />
-                    Baixar APK para Android
+                  <Button size="lg" className="rounded-full px-8">
+                    Baixar APK
                   </Button>
                 </a>
-                <p className="mt-3 text-xs text-muted-foreground">
-                  Disponível para Android. Baixe o APK direto do GitHub.
-                </p>
+                <Link href="/login">
+                  <Button size="lg" variant="outline" className="rounded-full px-8">
+                    Abrir plataforma
+                  </Button>
+                </Link>
               </div>
             </div>
           </div>
         </section>
 
-        <section id="cta" className="pb-24">
+        <section id="cta" className="py-20">
           <div className="container">
-            <div className="relative overflow-hidden rounded-2xl border border-primary/30 bg-gradient-to-br from-primary to-orange-600 p-10 text-center shadow-xl sm:p-16">
-              <div className="pointer-events-none absolute -left-10 -top-10 h-48 w-48 rounded-full bg-white/10 blur-2xl" />
-              <div className="pointer-events-none absolute -bottom-12 -right-12 h-56 w-56 rounded-full bg-white/10 blur-2xl" />
-              <h2 className="text-3xl font-bold tracking-tight text-primary-foreground sm:text-4xl">
-                Pronto para elevar sua gestão de SSMA?
+            <div className="animate-enter-up rounded-[2rem] border border-border/70 bg-white px-8 py-12 text-center sm:px-12">
+              <h2 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+                Pronto para simplificar sua operacao?
               </h2>
-              <p className="mx-auto mt-4 max-w-xl text-primary-foreground/90">
-                Acesse o painel e comece a operar com a visão 360° que sua
-                equipe precisa para decidir com confiança.
+              <p className="mx-auto mt-4 max-w-2xl text-muted-foreground">
+                Entre no painel e acompanhe a operacao com mais clareza, mais rastreabilidade e menos atrito.
               </p>
-              <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+              <div className="mt-8 flex justify-center">
                 <Link href="/login">
-                  <Button
-                    size="lg"
-                    variant="secondary"
-                    className="gap-2 bg-white px-8 text-base text-primary hover:bg-white/90"
-                  >
+                  <Button size="lg" className="gap-2 rounded-full px-8">
                     Fazer login
                     <ArrowRight className="h-4 w-4" />
                   </Button>
@@ -343,11 +331,11 @@ export default function LandingPage() {
         </section>
       </main>
 
-      <footer className="border-t border-border/60 bg-background/60">
+      <footer className="border-t border-border/60 bg-white">
         <div className="container flex flex-col items-center justify-between gap-3 py-8 text-sm text-muted-foreground sm:flex-row">
           <div className="flex items-center gap-2">
             <ShieldCheck className="h-4 w-4 text-primary" />
-            <span>Segurança em 360 · Smart Vision</span>
+            <span>Seguranca em 360</span>
           </div>
           <p>© {new Date().getFullYear()} Todos os direitos reservados.</p>
         </div>

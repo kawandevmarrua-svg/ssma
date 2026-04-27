@@ -44,5 +44,10 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  if (user && !isPublicRoute) {
+    supabaseResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    supabaseResponse.headers.set('Pragma', 'no-cache');
+  }
+
   return supabaseResponse;
 }

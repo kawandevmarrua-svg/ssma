@@ -91,7 +91,7 @@ create policy "usuarios_insert_authenticated"
         <CardContent>
           {error && !tableMissing ? (
             <p className="text-sm text-destructive">
-              Erro ao carregar usuários: {error.message}
+              Não foi possível carregar a lista de usuários. Tente novamente em instantes.
             </p>
           ) : usuarios.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhum usuário cadastrado.</p>

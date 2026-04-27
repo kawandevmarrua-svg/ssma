@@ -1,7 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { createClient } from '@/lib/supabase/client';
@@ -46,11 +45,12 @@ const STATUS_COLOR: Record<string, string> = {
 
 const STALE_MINUTES = 30;
 const STALE_MS = STALE_MINUTES * 60 * 1000;
+const RECENT_WINDOW_HOURS = 24;
 
-function statusIcon(status: string, stale: boolean): L.DivIcon {
+function statusIconHtml(status: string, stale: boolean): string {
   const color = stale ? '#9ca3af' : (STATUS_COLOR[status] ?? '#6b7280');
   const ring = stale ? '#9ca3af55' : `${color}66`;
-  const html = `
+  return `
     <div style="
       width: 28px; height: 28px; border-radius: 50%;
       background: ${color}; border: 3px solid white;
@@ -60,25 +60,41 @@ function statusIcon(status: string, stale: boolean): L.DivIcon {
     ">
       <div style="width:8px;height:8px;border-radius:50%;background:white;"></div>
     </div>`;
-  return L.divIcon({
-    html,
-    className: 'operator-marker',
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
-  });
 }
 
-function FitBounds({ rows }: { rows: Row[] }) {
-  const map = useMap();
-  const fittedRef = useRef(false);
-  useEffect(() => {
-    if (fittedRef.current) return;
-    if (rows.length === 0) return;
-    const bounds = L.latLngBounds(rows.map((r) => [r.latitude, r.longitude] as [number, number]));
-    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
-    fittedRef.current = true;
-  }, [rows, map]);
-  return null;
+function popupHtml(r: Row, stale: boolean, agoLabel: string): string {
+  const name = r.operator?.name ?? 'Operador';
+  const role = r.operator?.role ?? '';
+  const statusLabel = stale ? 'Offline / sem sinal' : (STATUS_LABEL[r.current_status] ?? r.current_status);
+  const color = stale ? '#9ca3af' : (STATUS_COLOR[r.current_status] ?? '#6b7280');
+  const acc = r.accuracy ? ` ± ${Math.round(r.accuracy)}m` : '';
+  return `
+    <div style="font-size:13px; line-height:1.4">
+      <div style="font-weight:600">${escapeHtml(name)}</div>
+      ${role ? `<div style="color:#6b7280;font-size:12px">${escapeHtml(role)}</div>` : ''}
+      <div style="margin-top:4px">
+        <span style="display:inline-block;border-radius:9999px;background:${color};color:white;padding:1px 8px;font-size:11px;font-weight:500">
+          ${escapeHtml(statusLabel)}
+        </span>
+      </div>
+      <div style="color:#6b7280;font-size:11px;margin-top:4px">Atualizado ${escapeHtml(agoLabel)}</div>
+      <div style="color:#6b7280;font-size:11px">${r.latitude.toFixed(5)}, ${r.longitude.toFixed(5)}${acc}</div>
+    </div>`;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string),
+  );
+}
+
+function minutesAgoLabel(now: number, iso: string): string {
+  const diff = Math.floor((now - new Date(iso).getTime()) / 60000);
+  if (diff < 1) return 'agora';
+  if (diff < 60) return `${diff} min atras`;
+  const h = Math.floor(diff / 60);
+  if (h < 24) return `${h}h atras`;
+  return new Date(iso).toLocaleString('pt-BR');
 }
 
 export default function AcompanhamentoClient() {
@@ -91,9 +107,40 @@ export default function AcompanhamentoClient() {
   const [realtimeStatus, setRealtimeStatus] = useState<'connecting' | 'live' | 'disconnected'>('connecting');
   const operatorsCacheRef = useRef<Map<string, OperatorInfo>>(new Map());
 
+  // Refs para o mapa Leaflet
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const markersRef = useRef<Map<string, { marker: L.Marker; circle: L.Circle | null }>>(new Map());
+  const fittedRef = useRef(false);
+
   useEffect(() => {
     const i = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(i);
+  }, []);
+
+  // Inicializa o mapa uma unica vez. Cleanup destroi pra suportar
+  // double-invoke do React 18 dev.
+  useEffect(() => {
+    if (!containerRef.current) return;
+    if (mapRef.current) return;
+
+    const map = L.map(containerRef.current, {
+      center: [-15.78, -47.93],
+      zoom: 4,
+      scrollWheelZoom: true,
+    });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 19,
+    }).addTo(map);
+    mapRef.current = map;
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+      markersRef.current.clear();
+      fittedRef.current = false;
+    };
   }, []);
 
   async function fetchOperatorInfo(ids: string[]): Promise<OperatorInfo[]> {
@@ -111,9 +158,11 @@ export default function AcompanhamentoClient() {
 
   async function loadAll() {
     setLoading(true);
+    const cutoff = new Date(Date.now() - RECENT_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
     const { data: locs, error } = await supabase
       .from('operator_locations')
       .select('*')
+      .gte('updated_at', cutoff)
       .order('updated_at', { ascending: false });
 
     if (error) {
@@ -179,6 +228,87 @@ export default function AcompanhamentoClient() {
 
   const visibleRows = showStale ? [...activeRows, ...staleRows] : activeRows;
 
+  // Sincroniza markers com visibleRows
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const visibleIds = new Set(visibleRows.map((r) => r.operator_id));
+
+    // Remove markers que sumiram
+    for (const [id, entry] of markersRef.current.entries()) {
+      if (!visibleIds.has(id)) {
+        entry.marker.remove();
+        entry.circle?.remove();
+        markersRef.current.delete(id);
+      }
+    }
+
+    // Adiciona/atualiza markers visiveis
+    visibleRows.forEach((r) => {
+      const stale = (now - new Date(r.updated_at).getTime()) > STALE_MS || r.current_status === 'offline';
+      const html = statusIconHtml(r.current_status, stale);
+      const existing = markersRef.current.get(r.operator_id);
+
+      const popup = popupHtml(r, stale, minutesAgoLabel(now, r.updated_at));
+
+      if (existing) {
+        existing.marker.setLatLng([r.latitude, r.longitude]);
+        existing.marker.setIcon(L.divIcon({ html, className: 'operator-marker', iconSize: [28, 28], iconAnchor: [14, 14] }));
+        existing.marker.setPopupContent(popup);
+
+        if (existing.circle) existing.circle.remove();
+        if (r.accuracy && r.accuracy < 200 && !stale) {
+          const circle = L.circle([r.latitude, r.longitude], {
+            radius: r.accuracy,
+            color: STATUS_COLOR[r.current_status] ?? '#6b7280',
+            fillColor: STATUS_COLOR[r.current_status] ?? '#6b7280',
+            fillOpacity: 0.1,
+            weight: 1,
+          }).addTo(map);
+          existing.circle = circle;
+        } else {
+          existing.circle = null;
+        }
+      } else {
+        const marker = L.marker([r.latitude, r.longitude], {
+          icon: L.divIcon({ html, className: 'operator-marker', iconSize: [28, 28], iconAnchor: [14, 14] }),
+        }).addTo(map);
+        marker.bindPopup(popup);
+        marker.on('click', () => setSelected(r.operator_id));
+
+        let circle: L.Circle | null = null;
+        if (r.accuracy && r.accuracy < 200 && !stale) {
+          circle = L.circle([r.latitude, r.longitude], {
+            radius: r.accuracy,
+            color: STATUS_COLOR[r.current_status] ?? '#6b7280',
+            fillColor: STATUS_COLOR[r.current_status] ?? '#6b7280',
+            fillOpacity: 0.1,
+            weight: 1,
+          }).addTo(map);
+        }
+        markersRef.current.set(r.operator_id, { marker, circle });
+      }
+    });
+
+    // Fit bounds na primeira vez que tiver dado
+    if (!fittedRef.current && visibleRows.length > 0) {
+      const bounds = L.latLngBounds(visibleRows.map((r) => [r.latitude, r.longitude]));
+      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
+      fittedRef.current = true;
+    }
+  }, [visibleRows, now]);
+
+  // Pan + abre popup quando seleciona pela lista
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !selected) return;
+    const entry = markersRef.current.get(selected);
+    if (!entry) return;
+    map.panTo(entry.marker.getLatLng());
+    entry.marker.openPopup();
+  }, [selected]);
+
   const counts = useMemo(() => {
     const acc: Record<string, number> = { online: 0, in_checklist: 0, in_activity: 0, idle: 0, offline: 0 };
     activeRows.forEach((r) => {
@@ -187,22 +317,6 @@ export default function AcompanhamentoClient() {
     });
     return acc;
   }, [activeRows]);
-
-  function minutesAgo(iso: string): string {
-    const diff = Math.floor((now - new Date(iso).getTime()) / 60000);
-    if (diff < 1) return 'agora';
-    if (diff < 60) return `${diff} min atras`;
-    const h = Math.floor(diff / 60);
-    if (h < 24) return `${h}h atras`;
-    return new Date(iso).toLocaleString('pt-BR');
-  }
-
-  const center: [number, number] = useMemo(() => {
-    if (visibleRows.length === 0) return [-15.78, -47.93];
-    const avgLat = visibleRows.reduce((s, r) => s + r.latitude, 0) / visibleRows.length;
-    const avgLng = visibleRows.reduce((s, r) => s + r.longitude, 0) / visibleRows.length;
-    return [avgLat, avgLng];
-  }, [visibleRows]);
 
   return (
     <div className="space-y-4">
@@ -245,68 +359,11 @@ export default function AcompanhamentoClient() {
 
       <div className="grid lg:grid-cols-[1fr_320px] gap-4">
         <div className="rounded-md border overflow-hidden bg-card relative" style={{ height: '70vh' }}>
-          <MapContainer
-            center={center}
-            zoom={visibleRows.length > 0 ? 13 : 4}
-            scrollWheelZoom
-            style={{ width: '100%', height: '100%' }}
-          >
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            <FitBounds rows={visibleRows} />
-            {visibleRows.map((r) => {
-              const stale = (now - new Date(r.updated_at).getTime()) > STALE_MS || r.current_status === 'offline';
-              return (
-                <Fragment key={r.operator_id}>
-                  {r.accuracy && r.accuracy < 200 && !stale && (
-                    <Circle
-                      center={[r.latitude, r.longitude]}
-                      radius={r.accuracy}
-                      pathOptions={{
-                        color: STATUS_COLOR[r.current_status] ?? '#6b7280',
-                        fillColor: STATUS_COLOR[r.current_status] ?? '#6b7280',
-                        fillOpacity: 0.1,
-                        weight: 1,
-                      }}
-                    />
-                  )}
-                  <Marker
-                    position={[r.latitude, r.longitude]}
-                    icon={statusIcon(r.current_status, stale)}
-                    eventHandlers={{ click: () => setSelected(r.operator_id) }}
-                  >
-                    <Popup>
-                      <div className="space-y-1 text-sm">
-                        <div className="font-semibold">{r.operator?.name ?? 'Operador'}</div>
-                        {r.operator?.role && (
-                          <div className="text-xs text-gray-500">{r.operator.role}</div>
-                        )}
-                        <div>
-                          <span
-                            className="inline-block rounded-full px-2 py-0.5 text-xs font-medium text-white"
-                            style={{ background: stale ? '#9ca3af' : (STATUS_COLOR[r.current_status] ?? '#6b7280') }}
-                          >
-                            {stale ? 'Offline / sem sinal' : (STATUS_LABEL[r.current_status] ?? r.current_status)}
-                          </span>
-                        </div>
-                        <div className="text-xs text-gray-500">Atualizado {minutesAgo(r.updated_at)}</div>
-                        <div className="text-xs text-gray-500">
-                          {r.latitude.toFixed(5)}, {r.longitude.toFixed(5)}
-                          {r.accuracy ? ` ± ${Math.round(r.accuracy)}m` : ''}
-                        </div>
-                      </div>
-                    </Popup>
-                  </Marker>
-                </Fragment>
-              );
-            })}
-          </MapContainer>
+          <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
 
           {visibleRows.length === 0 && !loading && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="bg-card/95 border rounded-md px-4 py-3 text-sm text-muted-foreground text-center pointer-events-auto shadow">
+              <div className="bg-card/95 border rounded-md px-4 py-3 text-sm text-muted-foreground text-center pointer-events-auto shadow z-[1000]">
                 <MapPin className="h-5 w-5 mx-auto mb-1 opacity-60" />
                 Nenhum operador online no momento.
                 {staleRows.length > 0 && (
@@ -350,7 +407,7 @@ export default function AcompanhamentoClient() {
                         {r.operator?.name ?? 'Operador'}
                       </div>
                       <div className="text-xs text-muted-foreground truncate">
-                        {stale ? 'Offline' : (STATUS_LABEL[r.current_status] ?? r.current_status)} · {minutesAgo(r.updated_at)}
+                        {stale ? 'Offline' : (STATUS_LABEL[r.current_status] ?? r.current_status)} · {minutesAgoLabel(now, r.updated_at)}
                       </div>
                     </div>
                   </div>

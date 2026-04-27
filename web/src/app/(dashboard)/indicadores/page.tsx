@@ -23,6 +23,21 @@ import {
   Activity,
   MapPin,
 } from 'lucide-react';
+import {
+  PieChart as RePieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  ResponsiveContainer,
+  BarChart as ReBarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  AreaChart,
+  Area,
+  Legend,
+} from 'recharts';
 
 // ── Types ──
 
@@ -46,10 +61,12 @@ interface ResponseRow {
   machine_checklist_items: {
     description: string;
     section: string | null;
+    is_blocking: boolean;
   } | null;
   checklist_template_items: {
     description: string;
     section: string | null;
+    is_blocking: boolean;
   } | null;
 }
 
@@ -101,22 +118,36 @@ function formatDay(iso: string): string {
   return `${d}/${m}`;
 }
 
-// ── Charts ──
+// ── Custom Tooltip ──
+
+function ChartTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-lg border bg-background px-3 py-2 shadow-lg text-xs">
+      {label && <p className="font-medium text-foreground mb-1">{label}</p>}
+      {payload.map((p: any, i: number) => (
+        <p key={i} className="flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: p.color || p.fill }} />
+          <span className="text-muted-foreground">{p.name}:</span>
+          <span className="font-semibold">{p.value}</span>
+        </p>
+      ))}
+    </div>
+  );
+}
+
+// ── Charts (Recharts) ──
 
 function PieChart({
   segments,
-  size = 120,
-  thickness,
+  size = 150,
   centerLabel,
 }: {
   segments: { value: number; color: string; label: string }[];
   size?: number;
-  thickness?: number;
   centerLabel?: string;
 }) {
   const total = segments.reduce((s, x) => s + x.value, 0);
-  const innerSize = size - (thickness ?? size * 0.3) * 2;
-
   if (total === 0) {
     return (
       <div className="rounded-full bg-muted/60 flex items-center justify-center" style={{ width: size, height: size }}>
@@ -125,65 +156,84 @@ function PieChart({
     );
   }
 
-  let acc = 0;
-  const stops: string[] = [];
-  segments.forEach((seg) => {
-    const startPct = (acc / total) * 100;
-    acc += seg.value;
-    const endPct = (acc / total) * 100;
-    stops.push(`${seg.color} ${startPct}% ${endPct}%`);
-  });
+  const data = segments.map((s) => ({ name: s.label, value: s.value, fill: s.color }));
 
   return (
-    <div className="relative rounded-full shrink-0" style={{ width: size, height: size, background: `conic-gradient(${stops.join(', ')})` }}>
-      <div
-        className="absolute rounded-full bg-background flex items-center justify-center"
-        style={{ width: innerSize, height: innerSize, top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}
-      >
-        {centerLabel && <span className="text-sm font-bold text-foreground">{centerLabel}</span>}
-      </div>
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <RePieChart>
+          <Pie
+            data={data}
+            cx="50%"
+            cy="50%"
+            innerRadius={size * 0.3}
+            outerRadius={size * 0.47}
+            dataKey="value"
+            strokeWidth={2}
+            stroke="hsl(var(--background))"
+            animationBegin={0}
+            animationDuration={800}
+            animationEasing="ease-out"
+          >
+            {data.map((entry, i) => (
+              <Cell key={i} fill={entry.fill} />
+            ))}
+          </Pie>
+          <Tooltip content={<ChartTooltip />} />
+        </RePieChart>
+      </ResponsiveContainer>
+      {centerLabel && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <span className="text-sm font-bold text-foreground">{centerLabel}</span>
+        </div>
+      )}
     </div>
   );
 }
 
 function BarChart({
   data,
-  maxValue,
-  color = 'bg-primary',
-  labelKey = 'label',
+  color = '#3b82f6',
+  labelWidth = 110,
 }: {
-  data: { label: string; value: number; color?: string }[];
-  maxValue?: number;
+  data: { label: string; value: number }[];
   color?: string;
-  labelKey?: string;
+  labelWidth?: number;
 }) {
-  const max = maxValue ?? Math.max(...data.map((d) => d.value), 1);
+  if (data.length === 0) return null;
   return (
-    <div className="space-y-2">
-      {data.map((item) => (
-        <div key={item.label} className="flex items-center gap-3">
-          <span className="text-xs text-muted-foreground w-28 truncate text-right shrink-0" title={item.label}>
-            {item.label}
-          </span>
-          <div className="flex-1 h-6 bg-muted/50 rounded overflow-hidden relative">
-            <div
-              className={`h-full rounded transition-all ${item.color || color}`}
-              style={{ width: `${max > 0 ? (item.value / max) * 100 : 0}%` }}
-            />
-            <span className="absolute inset-y-0 right-2 flex items-center text-xs font-semibold">
-              {item.value}
-            </span>
-          </div>
-        </div>
-      ))}
-    </div>
+    <ResponsiveContainer width="100%" height={data.length * 40 + 20}>
+      <ReBarChart data={data} layout="vertical" margin={{ left: 0, right: 20, top: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
+        <XAxis type="number" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
+        <YAxis
+          type="category"
+          dataKey="label"
+          width={labelWidth}
+          tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+          axisLine={false}
+          tickLine={false}
+        />
+        <Tooltip content={<ChartTooltip />} cursor={{ fill: 'hsl(var(--muted) / 0.5)' }} />
+        <Bar
+          dataKey="value"
+          name="Quantidade"
+          fill={color}
+          radius={[0, 6, 6, 0]}
+          animationBegin={0}
+          animationDuration={600}
+          animationEasing="ease-out"
+          barSize={24}
+        />
+      </ReBarChart>
+    </ResponsiveContainer>
   );
 }
 
 function TimelineChart({
   days,
   values,
-  color = 'bg-primary',
+  color = '#3b82f6',
   label,
 }: {
   days: string[];
@@ -191,35 +241,49 @@ function TimelineChart({
   color?: string;
   label: string;
 }) {
-  const max = Math.max(...Object.values(values), 1);
-  const showEvery = days.length > 14 ? Math.ceil(days.length / 10) : 1;
+  const data = days.map((day) => ({
+    day: formatDay(day),
+    [label]: values[day] || 0,
+  }));
 
   return (
-    <div>
-      <div className="flex items-end gap-px h-32">
-        {days.map((day, i) => {
-          const v = values[day] || 0;
-          const pct = (v / max) * 100;
-          return (
-            <div key={day} className="flex-1 flex flex-col items-center justify-end h-full group relative">
-              <div className={`w-full rounded-t ${color} min-h-[2px] transition-all`} style={{ height: `${Math.max(pct, 2)}%` }} />
-              <div className="absolute -top-6 hidden group-hover:block bg-foreground text-background text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap z-10">
-                {formatDay(day)}: {v} {label}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <div className="flex gap-px mt-1">
-        {days.map((day, i) => (
-          <div key={day} className="flex-1 text-center">
-            {i % showEvery === 0 && (
-              <span className="text-[9px] text-muted-foreground">{formatDay(day)}</span>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
+    <ResponsiveContainer width="100%" height={180}>
+      <AreaChart data={data} margin={{ left: -20, right: 10, top: 5, bottom: 0 }}>
+        <defs>
+          <linearGradient id={`grad-${label}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity={0.3} />
+            <stop offset="95%" stopColor={color} stopOpacity={0.02} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+        <XAxis
+          dataKey="day"
+          tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+          axisLine={false}
+          tickLine={false}
+          interval={days.length > 14 ? Math.ceil(days.length / 10) - 1 : 0}
+        />
+        <YAxis
+          tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+          axisLine={false}
+          tickLine={false}
+          allowDecimals={false}
+        />
+        <Tooltip content={<ChartTooltip />} />
+        <Area
+          type="monotone"
+          dataKey={label}
+          stroke={color}
+          strokeWidth={2.5}
+          fill={`url(#grad-${label})`}
+          animationBegin={0}
+          animationDuration={800}
+          animationEasing="ease-out"
+          dot={false}
+          activeDot={{ r: 5, strokeWidth: 2, stroke: 'hsl(var(--background))' }}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
   );
 }
 
@@ -247,7 +311,7 @@ export default function IndicadoresPage() {
         .limit(2000),
       supabase
         .from('checklist_responses')
-        .select('id, status, checklist_id, notes, machine_checklist_items(description, section), checklist_template_items(description, section)')
+        .select('id, status, checklist_id, notes, machine_checklist_items(description, section, is_blocking), checklist_template_items(description, section, is_blocking)')
         .eq('status', 'NC')
         .limit(5000),
       supabase
@@ -301,8 +365,16 @@ export default function IndicadoresPage() {
     const totalNC = responses.length;
     const conformityRate = total > 0 ? Math.round((released / total) * 100) : 0;
     const totalActivities = activities.length;
+    const totalRegistros = total + totalActivities;
+    const interferenceRate = totalRegistros > 0 ? Math.round((withInterference / totalRegistros) * 100) : 0;
+    const avgNCperChecklist = total > 0 ? (totalNC / total).toFixed(1) : '0';
+    const ncBlocking = responses.filter((r) => {
+      const item = r.machine_checklist_items || r.checklist_template_items;
+      return item?.is_blocking;
+    }).length;
+    const ncNonBlocking = totalNC - ncBlocking;
 
-    return { total, released, notReleased, pending, withInterference, clInterference, actInterference, totalNC, conformityRate, totalActivities };
+    return { total, released, notReleased, pending, withInterference, clInterference, actInterference, totalNC, conformityRate, totalActivities, interferenceRate, avgNCperChecklist, ncBlocking, ncNonBlocking };
   }, [checklists, responses, activities]);
 
   // NC por operador
@@ -351,8 +423,10 @@ export default function IndicadoresPage() {
   }, [checklists]);
 
   const interferenceByDay = useMemo(() => {
-    return groupByDay(checklists.filter((c) => c.had_interference));
-  }, [checklists]);
+    const clItems = checklists.filter((c) => c.had_interference).map((c) => ({ date: c.date }));
+    const actItems = activities.filter((a) => a.had_interference).map((a) => ({ date: a.date }));
+    return groupByDay([...clItems, ...actItems]);
+  }, [checklists, activities]);
 
   // Operadores com mais checklists não liberados
   const notReleasedByOperator = useMemo(() => {
@@ -364,6 +438,34 @@ export default function IndicadoresPage() {
     });
     return [...map.values()].sort((a, b) => b.count - a.count).slice(0, 10);
   }, [checklists]);
+
+  // Interferências por operador (checklists + atividades)
+  const interferenceByOperator = useMemo(() => {
+    const map = new Map<string, { name: string; count: number }>();
+    checklists.filter((c) => c.had_interference).forEach((c) => {
+      const entry = map.get(c.operator_id) ?? { name: c.operators?.name || 'Desconhecido', count: 0 };
+      entry.count += 1;
+      map.set(c.operator_id, entry);
+    });
+    activities.filter((a) => a.had_interference).forEach((a) => {
+      const entry = map.get(a.operator_id) ?? { name: a.operators?.name || 'Desconhecido', count: 0 };
+      entry.count += 1;
+      map.set(a.operator_id, entry);
+    });
+    return [...map.values()].sort((a, b) => b.count - a.count).slice(0, 10);
+  }, [checklists, activities]);
+
+  // NC por equipamento
+  const ncByEquipment = useMemo(() => {
+    const map = new Map<string, number>();
+    responses.forEach((r) => {
+      map.set(r.machine_name, (map.get(r.machine_name) || 0) + 1);
+    });
+    return [...map.entries()]
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10);
+  }, [responses]);
 
   // ── Render ──
 
@@ -402,16 +504,20 @@ export default function IndicadoresPage() {
       ) : (
         <>
           {/* KPI Cards */}
-          <div className="grid gap-3 grid-cols-2 md:grid-cols-4 lg:grid-cols-8">
+          <div className="grid gap-3 grid-cols-2 md:grid-cols-4 lg:grid-cols-6">
             {[
               { label: 'Total Checklists', value: stats.total, icon: ClipboardCheck, color: 'text-foreground' },
               { label: 'Total Atividades', value: stats.totalActivities, icon: Activity, color: 'text-foreground' },
               { label: 'Liberados', value: stats.released, icon: CheckCircle2, color: 'text-emerald-600' },
               { label: 'Nao Liberados', value: stats.notReleased, icon: XCircle, color: 'text-red-600' },
-              { label: 'Interferencias', value: stats.withInterference, icon: AlertTriangle, color: 'text-orange-600' },
-              { label: 'Total NC', value: stats.totalNC, icon: BarChart3, color: 'text-red-600' },
               { label: 'Taxa Conformidade', value: `${stats.conformityRate}%`, icon: TrendingUp, color: 'text-emerald-600' },
               { label: 'Pendentes', value: stats.pending, icon: Clock, color: 'text-yellow-600' },
+              { label: 'Interferencias', value: stats.withInterference, icon: AlertTriangle, color: 'text-orange-600' },
+              { label: 'Taxa Interferencia', value: `${stats.interferenceRate}%`, icon: AlertTriangle, color: 'text-orange-600' },
+              { label: 'Total NC', value: stats.totalNC, icon: BarChart3, color: 'text-red-600' },
+              { label: 'Media NC/Checklist', value: stats.avgNCperChecklist, icon: BarChart3, color: 'text-red-600' },
+              { label: 'NC Bloqueantes', value: stats.ncBlocking, icon: XCircle, color: 'text-red-700' },
+              { label: 'NC Nao Bloqueantes', value: stats.ncNonBlocking, icon: AlertTriangle, color: 'text-yellow-600' },
             ].map(({ label, value, icon: Icon, color }) => (
               <Card key={label}>
                 <CardContent className="p-4">
@@ -425,7 +531,7 @@ export default function IndicadoresPage() {
             ))}
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {/* Resultado dos Checklists (Pie) */}
             <Card>
               <CardHeader>
@@ -497,6 +603,40 @@ export default function IndicadoresPage() {
                 )}
               </CardContent>
             </Card>
+
+            {/* NC Bloqueantes vs Nao Bloqueantes (Pie) */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">NC por Severidade</CardTitle>
+                <CardDescription>Bloqueantes vs nao bloqueantes</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {stats.totalNC === 0 ? (
+                  <p className="text-sm text-muted-foreground py-8 text-center">Nenhuma NC registrada no periodo.</p>
+                ) : (
+                  <div className="flex items-center gap-8">
+                    <PieChart
+                      size={150}
+                      segments={[
+                        { value: stats.ncBlocking, color: '#dc2626', label: 'Bloqueantes' },
+                        { value: stats.ncNonBlocking, color: '#facc15', label: 'Nao Bloqueantes' },
+                      ]}
+                      centerLabel={String(stats.totalNC)}
+                    />
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <span className="h-3 w-3 rounded-sm bg-red-600" />
+                        <span className="text-sm">Bloqueantes: <span className="font-semibold text-red-600">{stats.ncBlocking}</span></span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="h-3 w-3 rounded-sm bg-yellow-400" />
+                        <span className="text-sm">Nao Bloqueantes: <span className="font-semibold text-yellow-600">{stats.ncNonBlocking}</span></span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
 
           {/* Timeline Charts */}
@@ -507,7 +647,7 @@ export default function IndicadoresPage() {
                 <CardDescription>Total de checklists realizados</CardDescription>
               </CardHeader>
               <CardContent>
-                <TimelineChart days={days} values={checklistsByDay} color="bg-primary" label="checklists" />
+                <TimelineChart days={days} values={checklistsByDay} color="#3b82f6" label="checklists" />
               </CardContent>
             </Card>
 
@@ -517,7 +657,7 @@ export default function IndicadoresPage() {
                 <CardDescription>Checklists com resultado nao liberado</CardDescription>
               </CardHeader>
               <CardContent>
-                <TimelineChart days={days} values={notReleasedByDay} color="bg-red-500" label="nao liberados" />
+                <TimelineChart days={days} values={notReleasedByDay} color="#ef4444" label="nao liberados" />
               </CardContent>
             </Card>
           </div>
@@ -529,7 +669,7 @@ export default function IndicadoresPage() {
                 <CardDescription>Checklists com registro de interferencia</CardDescription>
               </CardHeader>
               <CardContent>
-                <TimelineChart days={days} values={interferenceByDay} color="bg-orange-500" label="interferencias" />
+                <TimelineChart days={days} values={interferenceByDay} color="#f97316" label="interferencias" />
               </CardContent>
             </Card>
 
@@ -564,7 +704,7 @@ export default function IndicadoresPage() {
                               </span>
                             </div>
                           </div>
-                          <span className="text-xs text-primary opacity-0 group-hover:opacity-100 transition-opacity shrink-0 mt-0.5">
+                          <span className="text-xs text-primary font-medium underline shrink-0 mt-0.5">
                             Ver →
                           </span>
                         </Link>
@@ -589,7 +729,7 @@ export default function IndicadoresPage() {
                 ) : (
                   <BarChart
                     data={ncByOperator.map((o) => ({ label: o.name, value: o.count }))}
-                    color="bg-red-500"
+                    color="#ef4444"
                   />
                 )}
               </CardContent>
@@ -606,7 +746,44 @@ export default function IndicadoresPage() {
                 ) : (
                   <BarChart
                     data={notReleasedByOperator.map((o) => ({ label: o.name, value: o.count }))}
-                    color="bg-orange-500"
+                    color="#f97316"
+                  />
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* NC por Equipamento e Interferencias por Operador */}
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">NC por Equipamento</CardTitle>
+                <CardDescription>Top 10 equipamentos com mais nao conformidades</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {ncByEquipment.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-8 text-center">Nenhuma NC registrada no periodo.</p>
+                ) : (
+                  <BarChart
+                    data={ncByEquipment.map((o) => ({ label: o.label, value: o.value }))}
+                    color="#f87171"
+                  />
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Interferencias por Operador</CardTitle>
+                <CardDescription>Top 10 operadores com mais interferencias (checklists + atividades)</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {interferenceByOperator.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-8 text-center">Nenhuma interferencia registrada no periodo.</p>
+                ) : (
+                  <BarChart
+                    data={interferenceByOperator.map((o) => ({ label: o.name, value: o.count }))}
+                    color="#f97316"
                   />
                 )}
               </CardContent>
@@ -623,31 +800,11 @@ export default function IndicadoresPage() {
               {ncByItem.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-8 text-center">Nenhuma NC registrada no periodo.</p>
               ) : (
-                <div className="space-y-2">
-                  {ncByItem.map((item, i) => (
-                    <div key={item.label} className="flex items-center gap-3">
-                      <span className="text-xs font-bold text-muted-foreground w-5 text-right shrink-0">
-                        {i + 1}.
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 h-7 bg-muted/50 rounded overflow-hidden relative">
-                            <div
-                              className="h-full rounded bg-red-500 transition-all"
-                              style={{ width: `${(item.value / ncByItem[0].value) * 100}%` }}
-                            />
-                            <span className="absolute inset-y-0 left-2 flex items-center text-xs font-medium truncate pr-8" title={item.label}>
-                              {item.label}
-                            </span>
-                            <span className="absolute inset-y-0 right-2 flex items-center text-xs font-bold">
-                              {item.value}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <BarChart
+                  data={ncByItem}
+                  color="#ef4444"
+                  labelWidth={280}
+                />
               )}
             </CardContent>
           </Card>
@@ -803,7 +960,7 @@ export default function IndicadoresPage() {
                 }
 
                 return (
-                  <div className="overflow-x-auto">
+                  <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b text-left text-muted-foreground">

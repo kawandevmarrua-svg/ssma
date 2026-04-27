@@ -760,6 +760,57 @@ export type Database = {
         };
         Relationships: [];
       };
+      operator_locations: {
+        Row: {
+          operator_id: string;
+          latitude: number;
+          longitude: number;
+          accuracy: number | null;
+          speed: number | null;
+          heading: number | null;
+          battery_level: number | null;
+          current_status: string;
+          current_activity_id: string | null;
+          current_checklist_id: string | null;
+          recorded_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          operator_id: string;
+          latitude: number;
+          longitude: number;
+          accuracy?: number | null;
+          speed?: number | null;
+          heading?: number | null;
+          battery_level?: number | null;
+          current_status?: string;
+          current_activity_id?: string | null;
+          current_checklist_id?: string | null;
+          recorded_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          latitude?: number;
+          longitude?: number;
+          accuracy?: number | null;
+          speed?: number | null;
+          heading?: number | null;
+          battery_level?: number | null;
+          current_status?: string;
+          current_activity_id?: string | null;
+          current_checklist_id?: string | null;
+          recorded_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'operator_locations_operator_id_fkey';
+            columns: ['operator_id'];
+            referencedRelation: 'operators';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
     };
     Views: {};
     Functions: {};
@@ -783,3 +834,4 @@ export type BehavioralInspectionItem = Database['public']['Tables']['behavioral_
 export type BehavioralDeviation = Database['public']['Tables']['behavioral_deviations']['Row'];
 export type OperatorScore = Database['public']['Tables']['operator_scores']['Row'];
 export type ReviewComment = Database['public']['Tables']['review_comments']['Row'];
+export type OperatorLocation = Database['public']['Tables']['operator_locations']['Row'];

@@ -9,6 +9,7 @@ import { useAuth } from '../../src/contexts/AuthContext';
 import { supabase } from '../../src/lib/supabase';
 import { SafetyAlert } from '../../src/types/database';
 import { colors } from '../../src/theme/colors';
+import { useLocationTracking } from '../../src/hooks/useLocationTracking';
 
 const isExpoGo = Constants.appOwnership === 'expo';
 let Notifications: typeof import('expo-notifications') | null = null;
@@ -30,6 +31,8 @@ if (Notifications) {
 export default function OperatorLayout() {
   const insets = useSafeAreaInsets();
   const { operatorData } = useAuth();
+
+  useLocationTracking({ operatorId: operatorData?.id ?? null });
 
   useEffect(() => {
     setupNotificationChannel();

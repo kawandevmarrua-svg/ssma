@@ -10,9 +10,8 @@ import {
   ListChecks,
   Activity,
   Bell,
-  Eye,
   BarChart3,
-  Settings,
+  MapPin,
   ShieldCheck,
   UserCog,
   Menu,
@@ -22,15 +21,14 @@ import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/acompanhamento', label: 'Acompanhamento', icon: MapPin },
   { href: '/operadores', label: 'Operadores', icon: Users },
   { href: '/maquinas', label: 'Maquinas', icon: HardHat },
   { href: '/checklists', label: 'Checklists', icon: ListChecks },
   { href: '/atividades', label: 'Atividades', icon: Activity },
   { href: '/alertas', label: 'Alertas', icon: Bell },
-  { href: '/inspecoes', label: 'Inspeções', icon: Eye },
   { href: '/indicadores', label: 'Indicadores', icon: BarChart3 },
   { href: '/usuarios', label: 'Usuários', icon: UserCog },
-  { href: '/configuracoes', label: 'Configurações', icon: Settings },
 ];
 
 export function Sidebar() {

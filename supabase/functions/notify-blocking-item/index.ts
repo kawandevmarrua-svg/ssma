@@ -1,11 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
+import { authenticate, buildCorsHeaders } from "../_shared/auth.ts";
 
 interface PushPayload {
   title: string;
@@ -33,21 +26,83 @@ async function sendExpoPush(tokens: string[], payload: PushPayload) {
   return response.json();
 }
 
+async function tokensForRoles(
+  serviceClient: ReturnType<typeof import("https://esm.sh/@supabase/supabase-js@2").createClient>,
+  roles: string[],
+): Promise<string[]> {
+  const { data: profiles } = await serviceClient
+    .from("profiles")
+    .select("id")
+    .in("role", roles);
+
+  const ids = (profiles ?? []).map((p: { id: string }) => p.id);
+  if (ids.length === 0) return [];
+
+  const { data: tokens } = await serviceClient
+    .from("user_push_tokens")
+    .select("push_token")
+    .in("user_id", ids)
+    .not("push_token", "is", null);
+
+  return (tokens ?? [])
+    .map((t: { push_token: string | null }) => t.push_token)
+    .filter((t: string | null): t is string => !!t);
+}
+
+async function tokenForOperator(
+  serviceClient: ReturnType<typeof import("https://esm.sh/@supabase/supabase-js@2").createClient>,
+  operatorId: string,
+): Promise<string[]> {
+  const { data: operator } = await serviceClient
+    .from("operators")
+    .select("auth_user_id")
+    .eq("id", operatorId)
+    .single();
+
+  if (!operator?.auth_user_id) return [];
+
+  const { data: tok } = await serviceClient
+    .from("user_push_tokens")
+    .select("push_token")
+    .eq("user_id", operator.auth_user_id)
+    .maybeSingle();
+
+  return tok?.push_token ? [tok.push_token] : [];
+}
+
 Deno.serve(async (req) => {
+  const corsHeaders = buildCorsHeaders(req);
+
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
-  try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      status: 405,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
+  // Aceita admins/managers + chamadas internas (trigger SQL).
+  const auth = await authenticate(req, ["admin", "manager"]);
+  if (!auth.ok) {
+    return new Response(JSON.stringify({ error: auth.error }), {
+      status: auth.status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const supabase = auth.data.serviceClient;
+
+  try {
     const body = await req.json();
     const { alert_id, type, operator_id } = body;
 
     if (!type) {
-      throw new Error("Parametro 'type' obrigatorio: 'blocking_nc' | 'behavioral_inspection' | 'critical_deviation' | 'custom'");
+      throw new Error(
+        "Parametro 'type' obrigatorio: 'blocking_nc' | 'behavioral_inspection' | 'critical_deviation' | 'custom'",
+      );
     }
 
     let pushTokens: string[] = [];
@@ -55,16 +110,7 @@ Deno.serve(async (req) => {
 
     switch (type) {
       case "blocking_nc": {
-        // Notificar gestores e admins sobre item impeditivo NC
-        const { data: managers } = await supabase
-          .from("profiles")
-          .select("push_token")
-          .in("role", ["admin", "manager"])
-          .not("push_token", "is", null);
-
-        pushTokens = (managers || [])
-          .map((m: { push_token: string | null }) => m.push_token)
-          .filter(Boolean) as string[];
+        pushTokens = await tokensForRoles(supabase, ["admin", "manager"]);
 
         if (alert_id) {
           const { data: alert } = await supabase
@@ -89,28 +135,9 @@ Deno.serve(async (req) => {
       }
 
       case "behavioral_inspection": {
-        // Notificar o operador que foi inspecionado
-
         if (operator_id) {
-          const { data: operator } = await supabase
-            .from("operators")
-            .select("auth_user_id")
-            .eq("id", operator_id)
-            .single();
-
-          if (operator?.auth_user_id) {
-            const { data: profile } = await supabase
-              .from("profiles")
-              .select("push_token")
-              .eq("id", operator.auth_user_id)
-              .single();
-
-            if (profile?.push_token) {
-              pushTokens = [profile.push_token];
-            }
-          }
+          pushTokens = await tokenForOperator(supabase, operator_id);
         }
-
         pushPayload = {
           title: "Inspecao Comportamental",
           body: "Uma inspecao comportamental foi registrada para voce. Verifique seus alertas.",
@@ -120,17 +147,7 @@ Deno.serve(async (req) => {
       }
 
       case "critical_deviation": {
-        // Notificar toda equipe SSMA + gestores
-        const { data: ssmAndManagers } = await supabase
-          .from("profiles")
-          .select("push_token")
-          .in("role", ["admin", "manager"])
-          .not("push_token", "is", null);
-
-        pushTokens = (ssmAndManagers || [])
-          .map((m: { push_token: string | null }) => m.push_token)
-          .filter(Boolean) as string[];
-
+        pushTokens = await tokensForRoles(supabase, ["admin", "manager"]);
         pushPayload = {
           title: "Desvio Critico Identificado",
           body: "Um desvio critico foi identificado em inspecao comportamental. Acao imediata necessaria.",
@@ -140,10 +157,7 @@ Deno.serve(async (req) => {
       }
 
       case "custom": {
-        // Enviar push customizado baseado em um safety_alert existente
-        if (!alert_id) {
-          throw new Error("alert_id obrigatorio para tipo 'custom'");
-        }
+        if (!alert_id) throw new Error("alert_id obrigatorio para tipo 'custom'");
 
         const { data: alert } = await supabase
           .from("safety_alerts")
@@ -154,35 +168,9 @@ Deno.serve(async (req) => {
         if (!alert) throw new Error("Alerta nao encontrado");
 
         if (alert.operator_id) {
-          // Push para operador especifico
-          const { data: operator } = await supabase
-            .from("operators")
-            .select("auth_user_id")
-            .eq("id", alert.operator_id)
-            .single();
-
-          if (operator?.auth_user_id) {
-            const { data: profile } = await supabase
-              .from("profiles")
-              .select("push_token")
-              .eq("id", operator.auth_user_id)
-              .single();
-
-            if (profile?.push_token) {
-              pushTokens = [profile.push_token];
-            }
-          }
+          pushTokens = await tokenForOperator(supabase, alert.operator_id);
         } else {
-          // Broadcast: push para todos os operadores ativos
-          const { data: operatorProfiles } = await supabase
-            .from("profiles")
-            .select("push_token")
-            .eq("role", "operator")
-            .not("push_token", "is", null);
-
-          pushTokens = (operatorProfiles || [])
-            .map((m: { push_token: string | null }) => m.push_token)
-            .filter(Boolean) as string[];
+          pushTokens = await tokensForRoles(supabase, ["operator"]);
         }
 
         pushPayload = {
@@ -205,9 +193,7 @@ Deno.serve(async (req) => {
         tokens_count: pushTokens.length,
         push_result: pushResult,
       }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (err) {
     return new Response(
@@ -215,7 +201,7 @@ Deno.serve(async (req) => {
       {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      },
     );
   }
 });

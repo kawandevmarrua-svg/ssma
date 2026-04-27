@@ -11,7 +11,6 @@ import {
   Alert,
   Image,
 } from 'react-native';
-import { Link } from 'expo-router';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { loginSchema } from '../../src/schemas';
 import { useFormValidation } from '../../src/hooks/useFormValidation';
@@ -33,7 +32,7 @@ export default function LoginScreen() {
     setLoading(false);
 
     if (error) {
-      Alert.alert('Erro', error);
+      Alert.alert('Erro', 'Credenciais invalidas. Verifique e-mail e senha.');
     }
   }
 
@@ -89,15 +88,6 @@ export default function LoginScreen() {
             </Text>
           </TouchableOpacity>
 
-          {Platform.OS === 'web' && (
-            <Link href="/(auth)/register" asChild>
-              <TouchableOpacity style={styles.linkButton}>
-                <Text style={styles.linkText}>
-                  Nao tem conta? <Text style={styles.linkTextBold}>Criar conta</Text>
-                </Text>
-              </TouchableOpacity>
-            </Link>
-          )}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

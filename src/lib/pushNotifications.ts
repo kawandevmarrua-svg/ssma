@@ -14,10 +14,7 @@ Notifications.setNotificationHandler({
 });
 
 export async function registerPushTokenForUser(userId: string) {
-  if (!Device.isDevice) {
-    console.log('[Push] Skipping: not a physical device (emulator/simulator).');
-    return;
-  }
+  if (!Device.isDevice) return;
 
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('default', {
@@ -34,45 +31,26 @@ export async function registerPushTokenForUser(userId: string) {
     const { status } = await Notifications.requestPermissionsAsync();
     finalStatus = status;
   }
-  if (finalStatus !== 'granted') {
-    console.warn('[Push] Permission denied by user.');
-    return;
-  }
+  if (finalStatus !== 'granted') return;
 
   const projectId =
     Constants.expoConfig?.extra?.eas?.projectId ??
     Constants.easConfig?.projectId;
 
-  if (!projectId) {
-    console.error(
-      '[Push] Missing EAS projectId. Run `eas init` and add it to app.json (expo.extra.eas.projectId).',
-    );
-    return;
-  }
+  if (!projectId) return;
 
   const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });
   const token = tokenResponse.data;
-  console.log('[Push] Got Expo push token:', token.slice(0, 40) + '...');
 
   const { data: current } = await supabase
-    .from('profiles')
+    .from('user_push_tokens')
     .select('push_token')
-    .eq('id', userId)
-    .single();
+    .eq('user_id', userId)
+    .maybeSingle();
 
-  if (current?.push_token === token) {
-    console.log('[Push] Token unchanged, skipping update.');
-    return;
-  }
+  if (current?.push_token === token) return;
 
-  const { error } = await supabase
-    .from('profiles')
-    .update({ push_token: token })
-    .eq('id', userId);
-
-  if (error) {
-    console.error('[Push] Failed to save token:', error.message);
-  } else {
-    console.log('[Push] Token saved to profile', userId);
-  }
+  await supabase
+    .from('user_push_tokens')
+    .upsert({ user_id: userId, push_token: token, updated_at: new Date().toISOString() });
 }

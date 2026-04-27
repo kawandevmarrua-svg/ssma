@@ -3,13 +3,26 @@ import { createClient } from '@/lib/supabase/server';
 import { Sidebar } from '@/components/sidebar';
 import { Topbar } from '@/components/topbar';
 
+const ALLOWED_ROLES = new Set(['admin', 'manager']);
+
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) redirect('/login');
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single();
+
+  if (!profile || !ALLOWED_ROLES.has(profile.role)) {
+    await supabase.auth.signOut();
+    redirect('/login');
+  }
 
   return (
     <div className="flex h-screen">

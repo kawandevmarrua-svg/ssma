@@ -3,9 +3,12 @@ node_modules/
 out/
 build/
 dist/
+
+# Env (nunca commitar nada que comece com .env, exceto .example)
 .env
-.env.local
-.env*.local
+.env.*
+!.env.example
+
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -14,5 +17,3 @@ yarn-error.log*
 .vercel
 *.tsbuildinfo
 next-env.d.ts
-
-.vercel

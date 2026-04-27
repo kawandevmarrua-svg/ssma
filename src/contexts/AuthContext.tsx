@@ -58,30 +58,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .eq('id', userId)
       .single();
     if (!mountedRef.current) return;
-    if (error) {
-      console.error('Failed to fetch profile:', error.message);
+
+    // Sem profile valido = sessao inutilizavel. Limpa para forcar novo login.
+    if (error || !data || data.role === 'pending') {
+      await supabase.auth.signOut();
+      setSession(null);
+      setProfile(null);
+      setOperatorData(null);
+      setLoading(false);
+      return;
     }
+
     setProfile(data);
+    registerPushTokenForUser(userId).catch(() => { /* swallow */ });
 
-    if (data) {
-      console.log('[Auth] Profile loaded:', { role: data.role, id: data.id });
-      registerPushTokenForUser(userId).catch((err) => {
-        console.warn('Push token registration failed:', err);
-      });
-    }
-
-    if (data?.role === 'operator') {
-      const { data: opData, error: opError } = await supabase
+    if (data.role === 'operator') {
+      const { data: opData } = await supabase
         .from('operators')
         .select('*')
         .eq('auth_user_id', userId)
         .single();
-      console.log('[Auth] Operator data:', opData ? { id: opData.id, name: opData.name } : null, opError?.message);
-      if (mountedRef.current) {
-        setOperatorData(opData);
-      }
+      if (mountedRef.current) setOperatorData(opData);
     } else {
-      console.log('[Auth] Not operator role, skipping operatorData fetch. Role:', data?.role);
       setOperatorData(null);
     }
 

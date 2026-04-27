@@ -6,23 +6,45 @@ export type Database = {
           id: string;
           email: string;
           full_name: string | null;
-          role: 'admin' | 'manager' | 'operator';
-          push_token: string | null;
+          role: 'admin' | 'manager' | 'operator' | 'pending';
           created_at: string;
         };
         Insert: {
           id: string;
           email: string;
           full_name?: string | null;
-          role?: 'admin' | 'manager' | 'operator';
-          push_token?: string | null;
+          role?: 'admin' | 'manager' | 'operator' | 'pending';
         };
         Update: {
           full_name?: string | null;
-          role?: 'admin' | 'manager' | 'operator';
-          push_token?: string | null;
+          role?: 'admin' | 'manager' | 'operator' | 'pending';
         };
         Relationships: [];
+      };
+      user_push_tokens: {
+        Row: {
+          user_id: string;
+          push_token: string;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          push_token: string;
+          updated_at?: string;
+        };
+        Update: {
+          push_token?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'user_push_tokens_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: true;
+            referencedRelation: 'users';
+            referencedColumns: ['id'];
+          },
+        ];
       };
       operators: {
         Row: {

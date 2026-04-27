@@ -49,14 +49,14 @@ export async function uploadPhoto(
       });
 
     if (error) {
-      console.log(`[Upload] Erro ao enviar ${fullPath}:`, error.message);
-      Alert.alert('Falha no upload da foto', error.message);
+      console.error('[uploadPhoto] storage error', error);
+      Alert.alert('Falha no upload da foto', 'Nao foi possivel enviar a imagem. Tente novamente.');
       return null;
     }
     return fullPath;
   } catch (e: any) {
-    console.log('[Upload] Excecao:', e);
-    Alert.alert('Falha no upload da foto', e?.message ?? 'Erro inesperado ao enviar a imagem.');
+    console.error('[uploadPhoto] unexpected', e);
+    Alert.alert('Falha no upload da foto', 'Erro inesperado ao enviar a imagem.');
     return null;
   }
 }

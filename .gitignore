@@ -8,7 +8,11 @@ dist/
 *.mobileprovision
 *.orig.*
 web-build/
+
+# Env (nunca commitar nada que comece com .env, exceto .example)
 .env
+.env.*
+!.env.example
 
 # Android build
 android/build/

@@ -8,6 +8,10 @@ import {
   Users,
   ArrowRight,
   CheckCircle2,
+  Smartphone,
+  QrCode,
+  Camera,
+  Download,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -76,6 +80,9 @@ export default function LandingPage() {
             </a>
             <a href="#beneficios" className="transition-colors hover:text-foreground">
               Benefícios
+            </a>
+            <a href="#app" className="transition-colors hover:text-foreground">
+              App
             </a>
             <a href="#cta" className="transition-colors hover:text-foreground">
               Começar
@@ -231,6 +238,77 @@ export default function LandingPage() {
                     </p>
                   </div>
                 ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="app" className="border-t border-border/60 bg-background/40 py-20">
+          <div className="container grid items-center gap-12 lg:grid-cols-2">
+            <div className="relative order-2 lg:order-1">
+              <div className="absolute -inset-4 -z-10 rounded-3xl bg-gradient-to-br from-orange-500/20 via-primary/20 to-transparent blur-2xl" />
+              <div className="rounded-2xl border border-border/60 bg-card p-8 shadow-sm">
+                <div className="mx-auto flex h-48 w-48 items-center justify-center rounded-3xl bg-gradient-to-br from-primary to-orange-500 shadow-lg">
+                  <Smartphone className="h-24 w-24 text-white" />
+                </div>
+                <div className="mt-6 grid grid-cols-3 gap-4">
+                  {[
+                    { icon: QrCode, label: 'QR Code' },
+                    { icon: ClipboardCheck, label: 'Checklist' },
+                    { icon: Camera, label: 'Fotos' },
+                  ].map(({ icon: Icon, label }) => (
+                    <div key={label} className="flex flex-col items-center gap-2 rounded-lg bg-muted/50 p-3">
+                      <Icon className="h-5 w-5 text-primary" />
+                      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="order-1 lg:order-2">
+              <span className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
+                <Smartphone className="h-3.5 w-3.5" />
+                App Mobile
+              </span>
+              <h2 className="mt-4 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+                SSMA na palma da mão
+              </h2>
+              <p className="mt-4 text-muted-foreground">
+                O app Android permite que os operadores realizem checklists,
+                registrem atividades e recebam alertas diretamente no celular —
+                mesmo em campo. Escaneie o QR Code da máquina, responda os itens
+                de inspeção e anexe fotos com poucos toques.
+              </p>
+              <ul className="mt-6 space-y-3">
+                {[
+                  'Checklist pré-uso com QR Code da máquina',
+                  'Fotos obrigatórias do equipamento e ambiente',
+                  'Pré-operação com perguntas de segurança',
+                  'Alertas em tempo real via push notification',
+                ].map((item) => (
+                  <li key={item} className="flex items-start gap-3">
+                    <span className="mt-0.5 flex h-6 w-6 flex-none items-center justify-center rounded-full bg-primary/10 text-primary">
+                      <CheckCircle2 className="h-4 w-4" />
+                    </span>
+                    <span className="text-foreground">{item}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-8">
+                <a
+                  href="https://github.com/kawandevmarrua-svg/ssma/releases/latest"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Button size="lg" className="gap-2 px-8 text-base shadow-lg shadow-primary/20">
+                    <Download className="h-5 w-5" />
+                    Baixar APK para Android
+                  </Button>
+                </a>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Disponível para Android. Baixe o APK direto do GitHub.
+                </p>
               </div>
             </div>
           </div>

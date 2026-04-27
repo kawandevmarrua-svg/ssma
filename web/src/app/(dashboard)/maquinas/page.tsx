@@ -30,7 +30,7 @@ import {
   Pencil,
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 interface Machine {
   id: string;
@@ -254,12 +254,41 @@ export default function MaquinasPage() {
     await loadMachines();
   }
 
-  function parseSheet(ws: XLSX.WorkSheet): ParsedItem[] {
-    const aoa = XLSX.utils.sheet_to_json<unknown[]>(ws, {
-      header: 1,
-      blankrows: true,
-      defval: null,
-    });
+  function worksheetToAoA(ws: ExcelJS.Worksheet): (string | number | null)[][] {
+    const rows: (string | number | null)[][] = [];
+    const lastRow = ws.actualRowCount || ws.rowCount || 0;
+    const lastCol = ws.actualColumnCount || ws.columnCount || 0;
+    for (let r = 1; r <= lastRow; r++) {
+      const row = ws.getRow(r);
+      const out: (string | number | null)[] = [];
+      for (let c = 1; c <= lastCol; c++) {
+        const cell = row.getCell(c);
+        const v = cell.value;
+        if (v == null) {
+          out.push(null);
+        } else if (typeof v === 'number' || typeof v === 'string') {
+          out.push(v);
+        } else if (typeof v === 'object' && 'richText' in (v as object)) {
+          const rt = (v as { richText: { text: string }[] }).richText;
+          out.push(rt.map((t) => t.text).join(''));
+        } else if (typeof v === 'object' && 'text' in (v as object)) {
+          out.push(String((v as { text: string }).text));
+        } else if (typeof v === 'object' && 'result' in (v as object)) {
+          const res = (v as { result: unknown }).result;
+          out.push(res == null ? null : String(res));
+        } else if (v instanceof Date) {
+          out.push(v.toISOString());
+        } else {
+          out.push(String(v));
+        }
+      }
+      rows.push(out);
+    }
+    return rows;
+  }
+
+  function parseSheet(ws: ExcelJS.Worksheet): ParsedItem[] {
+    const aoa = worksheetToAoA(ws);
 
     const items: ParsedItem[] = [];
     let currentSection: string | null = null;
@@ -358,7 +387,8 @@ export default function MaquinasPage() {
 
     try {
       const buffer = await file.arrayBuffer();
-      const wb = XLSX.read(buffer, { type: 'array' });
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(buffer);
       const { data: { user: currentUser } } = await supabase.auth.getUser();
       if (!currentUser) {
         setImportResults([{ machineName: '-', itemsCount: 0, status: 'error', message: 'Usuario nao autenticado' }]);
@@ -368,11 +398,11 @@ export default function MaquinasPage() {
 
       const results: ImportResult[] = [];
 
-      for (const sheetName of wb.SheetNames) {
+      for (const ws of wb.worksheets) {
+        const sheetName = ws.name;
         const cleanName = sheetName.replace(/^\s*\d+\.\s*/, '').trim();
         if (!cleanName) continue;
 
-        const ws = wb.Sheets[sheetName];
         const items = parseSheet(ws);
 
         if (items.length === 0) {

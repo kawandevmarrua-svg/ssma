@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/contexts/AuthContext';
-import { supabase, createTempClient } from '../../src/lib/supabase';
+import { supabase } from '../../src/lib/supabase';
 import { colors, spacing, radius, fontSize } from '../../src/theme/colors';
 import { commonStyles } from '../../src/theme/commonStyles';
 
@@ -100,8 +100,11 @@ export default function UsersScreen() {
       Alert.alert('Atencao', 'Preencha o email.');
       return;
     }
-    if (!password.trim() || password.length < 8) {
-      Alert.alert('Atencao', 'A senha deve ter no minimo 8 caracteres.');
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{10,}$/.test(password)) {
+      Alert.alert(
+        'Atencao',
+        'A senha deve ter no minimo 10 caracteres, com letra maiuscula, minuscula e numero.',
+      );
       return;
     }
     if (!selectedCargo) {
@@ -112,49 +115,18 @@ export default function UsersScreen() {
     setSaving(true);
 
     try {
-      // Create auth user with a temp client so we don't lose our session
-      const tempClient = createTempClient();
-      const { data: authData, error: authError } = await tempClient.auth.signUp({
-        email: email.trim(),
-        password: password.trim(),
+      const { data, error } = await supabase.functions.invoke('create-operator', {
+        body: {
+          name: name.trim(),
+          email: email.trim().toLowerCase(),
+          password,
+          cargo: selectedCargo,
+        },
       });
 
-      if (authError || !authData.user) {
-        Alert.alert('Erro', authError?.message ?? 'Falha ao criar usuario.');
-        setSaving(false);
-        return;
-      }
-
-      const newUserId = authData.user.id;
-
-      // Create profile
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .upsert({
-          id: newUserId,
-          email: email.trim(),
-          full_name: name.trim(),
-          role: 'operator',
-        });
-
-      if (profileError) {
-        console.error('Profile error:', profileError.message);
-      }
-
-      // Create operator entry with the cargo
-      const { error: opError } = await supabase
-        .from('operators')
-        .insert({
-          name: name.trim(),
-          email: email.trim(),
-          role: selectedCargo,
-          created_by: user.id,
-          auth_user_id: newUserId,
-          active: true,
-        });
-
-      if (opError) {
-        Alert.alert('Erro', opError.message);
+      if (error || data?.success === false) {
+        const msg = (data?.error as string | undefined) ?? error?.message ?? 'Falha ao criar usuario.';
+        Alert.alert('Erro', msg);
         setSaving(false);
         return;
       }
@@ -164,7 +136,7 @@ export default function UsersScreen() {
       setModalVisible(false);
       loadUsers();
     } catch (err: any) {
-      Alert.alert('Erro', err.message ?? 'Erro inesperado.');
+      Alert.alert('Erro', err?.message ?? 'Erro inesperado.');
     } finally {
       setSaving(false);
     }

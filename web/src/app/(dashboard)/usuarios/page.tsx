@@ -20,7 +20,7 @@ interface Usuario {
 }
 
 export default async function UsuariosPage() {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data, error } = await supabase
     .from('usuarios')
     .select('id, nome, email, cargo, ativo, created_at')

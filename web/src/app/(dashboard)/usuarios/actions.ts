@@ -13,27 +13,46 @@ interface CreateUserInput {
   ativo: boolean;
 }
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const STRONG_PASSWORD = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{10,}$/;
+
 export async function createUserAction(input: CreateUserInput) {
-  const supabaseAuth = createServerClient();
+  const supabaseAuth = await createServerClient();
   const {
     data: { user },
   } = await supabaseAuth.auth.getUser();
-  if (!user) return { error: 'Não autenticado.' };
+  if (!user) return { error: 'Nao autenticado.' };
+
+  const { data: callerProfile, error: profileErr } = await supabaseAuth
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single();
+
+  if (profileErr || callerProfile?.role !== 'admin') {
+    return { error: 'Apenas administradores podem criar usuarios.' };
+  }
 
   const nome = input.nome.trim();
   const email = input.email.trim().toLowerCase();
   const senha = input.senha;
 
-  if (!nome || !email || !senha) return { error: 'Preencha todos os campos.' };
-  if (senha.length < 8) return { error: 'A senha deve ter no mínimo 8 caracteres.' };
-  if (!CARGOS.includes(input.cargo as Cargo)) return { error: 'Cargo inválido.' };
+  if (!nome || nome.length < 2) return { error: 'Nome invalido.' };
+  if (!EMAIL_REGEX.test(email)) return { error: 'E-mail invalido.' };
+  if (!STRONG_PASSWORD.test(senha)) {
+    return {
+      error:
+        'A senha deve ter no minimo 10 caracteres, com letra maiuscula, minuscula e numero.',
+    };
+  }
+  if (!CARGOS.includes(input.cargo as Cargo)) return { error: 'Cargo invalido.' };
 
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (!serviceKey || !url) {
     return {
       error:
-        'SUPABASE_SERVICE_ROLE_KEY não configurada no servidor. Adicione em web/.env.local e reinicie o dev server.',
+        'SUPABASE_SERVICE_ROLE_KEY nao configurada no servidor. Adicione no host (Vercel/etc) e reinicie.',
     };
   }
 
@@ -45,11 +64,16 @@ export async function createUserAction(input: CreateUserInput) {
     email,
     password: senha,
     email_confirm: true,
-    user_metadata: { full_name: nome, cargo: input.cargo },
+    user_metadata: {
+      full_name: nome,
+      cargo: input.cargo,
+      must_reset_password: true,
+      password_set_by_admin: true,
+    },
   });
 
   if (createErr || !created.user) {
-    return { error: createErr?.message ?? 'Falha ao criar usuário.' };
+    return { error: createErr?.message ?? 'Falha ao criar usuario.' };
   }
 
   const { error: insertErr } = await admin.from('usuarios').insert({

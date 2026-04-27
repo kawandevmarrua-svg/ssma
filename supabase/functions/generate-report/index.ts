@@ -1,25 +1,36 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
+import { authenticate, buildCorsHeaders } from "../_shared/auth.ts";
 
 Deno.serve(async (req) => {
+  const corsHeaders = buildCorsHeaders(req);
+
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
-  try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      status: 405,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
+  const auth = await authenticate(req, ["admin", "manager"]);
+  if (!auth.ok) {
+    return new Response(JSON.stringify({ error: auth.error }), {
+      status: auth.status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const supabase = auth.data.serviceClient;
+
+  try {
     const { type, operator_id, date_from, date_to } = await req.json();
 
     if (!type) {
-      throw new Error("Parametro 'type' obrigatorio: 'checklist' | 'inspection' | 'activity' | 'operator_summary'");
+      throw new Error(
+        "Parametro 'type' obrigatorio: 'checklist' | 'inspection' | 'activity' | 'operator_summary'",
+      );
     }
 
     let reportData: Record<string, unknown> = {
@@ -52,9 +63,7 @@ Deno.serve(async (req) => {
           .lte("date", filters.dateTo)
           .order("date", { ascending: false });
 
-        if (operator_id) {
-          query = query.eq("operator_id", operator_id);
-        }
+        if (operator_id) query = query.eq("operator_id", operator_id);
 
         const { data, error } = await query;
         if (error) throw error;
@@ -83,9 +92,7 @@ Deno.serve(async (req) => {
           .lte("date", filters.dateTo)
           .order("date", { ascending: false });
 
-        if (operator_id) {
-          query = query.eq("operator_id", operator_id);
-        }
+        if (operator_id) query = query.eq("operator_id", operator_id);
 
         const { data, error } = await query;
         if (error) throw error;
@@ -98,7 +105,7 @@ Deno.serve(async (req) => {
           total_deviations: data?.reduce(
             (sum: number, i: { behavioral_deviations: unknown[] }) =>
               sum + (i.behavioral_deviations?.length || 0),
-            0
+            0,
           ) || 0,
         };
 
@@ -114,23 +121,19 @@ Deno.serve(async (req) => {
           .lte("date", filters.dateTo)
           .order("date", { ascending: false });
 
-        if (operator_id) {
-          query = query.eq("operator_id", operator_id);
-        }
+        if (operator_id) query = query.eq("operator_id", operator_id);
 
         const { data, error } = await query;
         if (error) throw error;
 
         const completedActivities = data?.filter(
-          (a: { end_time: string | null }) => a.end_time !== null
+          (a: { end_time: string | null }) => a.end_time !== null,
         ) || [];
         let totalMinutes = 0;
         for (const act of completedActivities) {
           if (act.start_time && act.end_time) {
             totalMinutes +=
-              (new Date(act.end_time).getTime() -
-                new Date(act.start_time).getTime()) /
-              60000;
+              (new Date(act.end_time).getTime() - new Date(act.start_time).getTime()) / 60000;
           }
         }
 
@@ -138,7 +141,7 @@ Deno.serve(async (req) => {
           total: data?.length || 0,
           completed: completedActivities.length,
           with_interference: data?.filter(
-            (a: { had_interference: boolean }) => a.had_interference
+            (a: { had_interference: boolean }) => a.had_interference,
           ).length || 0,
           avg_duration_minutes:
             completedActivities.length > 0
@@ -211,7 +214,7 @@ Deno.serve(async (req) => {
       {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      },
     );
   }
 });

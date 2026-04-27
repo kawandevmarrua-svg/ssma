@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { createClient } from '@/lib/supabase/client';
@@ -44,14 +44,19 @@ const STATUS_COLOR: Record<string, string> = {
   offline: '#6b7280',
 };
 
-function statusIcon(status: string): L.DivIcon {
-  const color = STATUS_COLOR[status] ?? '#6b7280';
+const STALE_MINUTES = 30;
+const STALE_MS = STALE_MINUTES * 60 * 1000;
+
+function statusIcon(status: string, stale: boolean): L.DivIcon {
+  const color = stale ? '#9ca3af' : (STATUS_COLOR[status] ?? '#6b7280');
+  const ring = stale ? '#9ca3af55' : `${color}66`;
   const html = `
     <div style="
       width: 28px; height: 28px; border-radius: 50%;
       background: ${color}; border: 3px solid white;
-      box-shadow: 0 0 0 2px ${color}66, 0 2px 6px rgba(0,0,0,0.3);
+      box-shadow: 0 0 0 2px ${ring}, 0 2px 6px rgba(0,0,0,0.3);
       display:flex; align-items:center; justify-content:center;
+      ${stale ? 'opacity: 0.7;' : ''}
     ">
       <div style="width:8px;height:8px;border-radius:50%;background:white;"></div>
     </div>`;
@@ -82,9 +87,10 @@ export default function AcompanhamentoClient() {
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState<number>(() => Date.now());
   const [selected, setSelected] = useState<string | null>(null);
+  const [showStale, setShowStale] = useState(false);
+  const [realtimeStatus, setRealtimeStatus] = useState<'connecting' | 'live' | 'disconnected'>('connecting');
   const operatorsCacheRef = useRef<Map<string, OperatorInfo>>(new Map());
 
-  // tick para atualizar "ha X min"
   useEffect(() => {
     const i = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(i);
@@ -147,7 +153,12 @@ export default function AcompanhamentoClient() {
           });
         },
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') setRealtimeStatus('live');
+        else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          setRealtimeStatus('disconnected');
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
@@ -155,14 +166,27 @@ export default function AcompanhamentoClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const { activeRows, staleRows } = useMemo(() => {
+    const active: Row[] = [];
+    const stale: Row[] = [];
+    rows.forEach((r) => {
+      const age = now - new Date(r.updated_at).getTime();
+      if (age > STALE_MS || r.current_status === 'offline') stale.push(r);
+      else active.push(r);
+    });
+    return { activeRows: active, staleRows: stale };
+  }, [rows, now]);
+
+  const visibleRows = showStale ? [...activeRows, ...staleRows] : activeRows;
+
   const counts = useMemo(() => {
     const acc: Record<string, number> = { online: 0, in_checklist: 0, in_activity: 0, idle: 0, offline: 0 };
-    rows.forEach((r) => {
+    activeRows.forEach((r) => {
       if (acc[r.current_status] === undefined) acc[r.current_status] = 0;
       acc[r.current_status]++;
     });
     return acc;
-  }, [rows]);
+  }, [activeRows]);
 
   function minutesAgo(iso: string): string {
     const diff = Math.floor((now - new Date(iso).getTime()) / 60000);
@@ -174,28 +198,41 @@ export default function AcompanhamentoClient() {
   }
 
   const center: [number, number] = useMemo(() => {
-    if (rows.length === 0) return [-15.78, -47.93]; // Brasil
-    const avgLat = rows.reduce((s, r) => s + r.latitude, 0) / rows.length;
-    const avgLng = rows.reduce((s, r) => s + r.longitude, 0) / rows.length;
+    if (visibleRows.length === 0) return [-15.78, -47.93];
+    const avgLat = visibleRows.reduce((s, r) => s + r.latitude, 0) / visibleRows.length;
+    const avgLng = visibleRows.reduce((s, r) => s + r.longitude, 0) / visibleRows.length;
     return [avgLat, avgLng];
-  }, [rows]);
+  }, [visibleRows]);
 
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Acompanhamento ao vivo</h1>
-          <p className="text-sm text-muted-foreground">
-            Posicao em tempo real dos operadores em campo. Atualiza automaticamente.
+          <p className="text-sm text-muted-foreground flex items-center gap-2">
+            <RealtimeBadge status={realtimeStatus} />
+            <span>·</span>
+            <span>Posicao em tempo real dos operadores em campo.</span>
           </p>
         </div>
-        <button
-          onClick={loadAll}
-          className="inline-flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm hover:bg-accent"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          Atualizar
-        </button>
+        <div className="flex items-center gap-2">
+          <label className="inline-flex items-center gap-2 text-sm cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showStale}
+              onChange={(e) => setShowStale(e.target.checked)}
+              className="rounded"
+            />
+            Mostrar offline / antigos ({staleRows.length})
+          </label>
+          <button
+            onClick={loadAll}
+            className="inline-flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm hover:bg-accent"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            Atualizar
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -203,14 +240,14 @@ export default function AcompanhamentoClient() {
         <StatusCard label="Em checklist" value={counts.in_checklist} color={STATUS_COLOR.in_checklist} icon={ListChecks} />
         <StatusCard label="Em atividade" value={counts.in_activity} color={STATUS_COLOR.in_activity} icon={ActivityIcon} />
         <StatusCard label="Ocioso" value={counts.idle} color={STATUS_COLOR.idle} icon={CircleDot} />
-        <StatusCard label="Offline" value={counts.offline} color={STATUS_COLOR.offline} icon={WifiOff} />
+        <StatusCard label="Offline / sem sinal" value={staleRows.length} color={STATUS_COLOR.offline} icon={WifiOff} />
       </div>
 
       <div className="grid lg:grid-cols-[1fr_320px] gap-4">
-        <div className="rounded-md border overflow-hidden bg-card" style={{ height: '70vh' }}>
+        <div className="rounded-md border overflow-hidden bg-card relative" style={{ height: '70vh' }}>
           <MapContainer
             center={center}
-            zoom={rows.length > 0 ? 13 : 4}
+            zoom={visibleRows.length > 0 ? 13 : 4}
             scrollWheelZoom
             style={{ width: '100%', height: '100%' }}
           >
@@ -218,59 +255,90 @@ export default function AcompanhamentoClient() {
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
-            <FitBounds rows={rows} />
-            {rows.map((r) => (
-              <Marker
-                key={r.operator_id}
-                position={[r.latitude, r.longitude]}
-                icon={statusIcon(r.current_status)}
-                eventHandlers={{ click: () => setSelected(r.operator_id) }}
-              >
-                <Popup>
-                  <div className="space-y-1 text-sm">
-                    <div className="font-semibold">{r.operator?.name ?? 'Operador'}</div>
-                    {r.operator?.role && (
-                      <div className="text-xs text-gray-500">{r.operator.role}</div>
-                    )}
-                    <div>
-                      <span
-                        className="inline-block rounded-full px-2 py-0.5 text-xs font-medium text-white"
-                        style={{ background: STATUS_COLOR[r.current_status] ?? '#6b7280' }}
-                      >
-                        {STATUS_LABEL[r.current_status] ?? r.current_status}
-                      </span>
-                    </div>
-                    <div className="text-xs text-gray-500">Atualizado {minutesAgo(r.updated_at)}</div>
-                    <div className="text-xs text-gray-500">
-                      {r.latitude.toFixed(5)}, {r.longitude.toFixed(5)}
-                      {r.accuracy ? ` ± ${Math.round(r.accuracy)}m` : ''}
-                    </div>
-                  </div>
-                </Popup>
-              </Marker>
-            ))}
+            <FitBounds rows={visibleRows} />
+            {visibleRows.map((r) => {
+              const stale = (now - new Date(r.updated_at).getTime()) > STALE_MS || r.current_status === 'offline';
+              return (
+                <Fragment key={r.operator_id}>
+                  {r.accuracy && r.accuracy < 200 && !stale && (
+                    <Circle
+                      center={[r.latitude, r.longitude]}
+                      radius={r.accuracy}
+                      pathOptions={{
+                        color: STATUS_COLOR[r.current_status] ?? '#6b7280',
+                        fillColor: STATUS_COLOR[r.current_status] ?? '#6b7280',
+                        fillOpacity: 0.1,
+                        weight: 1,
+                      }}
+                    />
+                  )}
+                  <Marker
+                    position={[r.latitude, r.longitude]}
+                    icon={statusIcon(r.current_status, stale)}
+                    eventHandlers={{ click: () => setSelected(r.operator_id) }}
+                  >
+                    <Popup>
+                      <div className="space-y-1 text-sm">
+                        <div className="font-semibold">{r.operator?.name ?? 'Operador'}</div>
+                        {r.operator?.role && (
+                          <div className="text-xs text-gray-500">{r.operator.role}</div>
+                        )}
+                        <div>
+                          <span
+                            className="inline-block rounded-full px-2 py-0.5 text-xs font-medium text-white"
+                            style={{ background: stale ? '#9ca3af' : (STATUS_COLOR[r.current_status] ?? '#6b7280') }}
+                          >
+                            {stale ? 'Offline / sem sinal' : (STATUS_LABEL[r.current_status] ?? r.current_status)}
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-500">Atualizado {minutesAgo(r.updated_at)}</div>
+                        <div className="text-xs text-gray-500">
+                          {r.latitude.toFixed(5)}, {r.longitude.toFixed(5)}
+                          {r.accuracy ? ` ± ${Math.round(r.accuracy)}m` : ''}
+                        </div>
+                      </div>
+                    </Popup>
+                  </Marker>
+                </Fragment>
+              );
+            })}
           </MapContainer>
+
+          {visibleRows.length === 0 && !loading && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="bg-card/95 border rounded-md px-4 py-3 text-sm text-muted-foreground text-center pointer-events-auto shadow">
+                <MapPin className="h-5 w-5 mx-auto mb-1 opacity-60" />
+                Nenhum operador online no momento.
+                {staleRows.length > 0 && (
+                  <div className="text-xs mt-1">
+                    {staleRows.length} operador(es) com ultima posicao &gt; {STALE_MINUTES} min atras.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         <aside className="rounded-md border bg-card overflow-hidden flex flex-col" style={{ maxHeight: '70vh' }}>
           <div className="border-b px-3 py-2 text-sm font-semibold flex items-center gap-2">
             <MapPin className="h-4 w-4" />
-            Operadores ({rows.length})
+            Operadores ({visibleRows.length})
           </div>
           <div className="overflow-y-auto divide-y">
-            {rows.length === 0 && (
+            {visibleRows.length === 0 && (
               <div className="p-4 text-sm text-muted-foreground text-center">
-                {loading ? 'Carregando...' : 'Nenhum operador com localizacao registrada.'}
+                {loading ? 'Carregando...' : 'Nenhum operador para exibir.'}
               </div>
             )}
-            {rows.map((r) => {
-              const color = STATUS_COLOR[r.current_status] ?? '#6b7280';
+            {visibleRows.map((r) => {
+              const stale = (now - new Date(r.updated_at).getTime()) > STALE_MS || r.current_status === 'offline';
+              const color = stale ? '#9ca3af' : (STATUS_COLOR[r.current_status] ?? '#6b7280');
               const isSelected = selected === r.operator_id;
               return (
                 <button
                   key={r.operator_id}
                   onClick={() => setSelected(r.operator_id)}
-                  className={`w-full text-left px-3 py-2.5 hover:bg-accent transition-colors ${isSelected ? 'bg-accent' : ''}`}
+                  className={`w-full text-left px-3 py-2.5 hover:bg-accent transition-colors ${isSelected ? 'bg-accent' : ''} ${stale ? 'opacity-60' : ''}`}
                 >
                   <div className="flex items-center gap-2">
                     <span
@@ -282,7 +350,7 @@ export default function AcompanhamentoClient() {
                         {r.operator?.name ?? 'Operador'}
                       </div>
                       <div className="text-xs text-muted-foreground truncate">
-                        {STATUS_LABEL[r.current_status] ?? r.current_status} · {minutesAgo(r.updated_at)}
+                        {stale ? 'Offline' : (STATUS_LABEL[r.current_status] ?? r.current_status)} · {minutesAgo(r.updated_at)}
                       </div>
                     </div>
                   </div>
@@ -293,6 +361,31 @@ export default function AcompanhamentoClient() {
         </aside>
       </div>
     </div>
+  );
+}
+
+function RealtimeBadge({ status }: { status: 'connecting' | 'live' | 'disconnected' }) {
+  if (status === 'live') {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 text-green-700 px-2 py-0.5 text-xs font-medium">
+        <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+        Ao vivo
+      </span>
+    );
+  }
+  if (status === 'connecting') {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 text-amber-700 px-2 py-0.5 text-xs font-medium">
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+        Conectando...
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 text-red-700 px-2 py-0.5 text-xs font-medium">
+      <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+      Sem conexao em tempo real
+    </span>
   );
 }
 

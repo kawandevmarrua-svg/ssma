@@ -83,7 +83,7 @@ create policy operator_location_admin_select
     exists (
       select 1 from public.profiles
       where profiles.id = auth.uid()
-        and profiles.role in ('admin','manager','supervisor')
+        and profiles.role in ('admin','manager')
     )
   );
 

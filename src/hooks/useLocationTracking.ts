@@ -1,65 +1,109 @@
 import { useEffect, useRef } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
+import { Alert, AppState, AppStateStatus } from 'react-native';
 import * as Location from 'expo-location';
 import { supabase } from '../lib/supabase';
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
+const STATUS_REFRESH_MS = 60_000;
 const MIN_DISTANCE_METERS = 25;
 
 type Status = 'online' | 'in_checklist' | 'in_activity' | 'idle' | 'offline';
 
 interface Options {
   operatorId: string | null;
-  status?: Status;
-  currentChecklistId?: string | null;
-  currentActivityId?: string | null;
+}
+
+interface DerivedStatus {
+  status: Status;
+  currentChecklistId: string | null;
+  currentActivityId: string | null;
 }
 
 /**
  * Heartbeat de localizacao do operador → tabela operator_locations.
- * Pede permissao "When in use", atualiza a cada 30s ou a cada 25m de
- * deslocamento, e marca status='offline' ao sair do app.
+ * O status (online | in_checklist | in_activity) e os IDs sao derivados
+ * automaticamente lendo checklists pendentes e atividades em aberto do
+ * proprio operador, recalculados a cada 60s.
  */
-export function useLocationTracking({ operatorId, status, currentChecklistId, currentActivityId }: Options) {
+export function useLocationTracking({ operatorId }: Options) {
   const watcherRef = useRef<Location.LocationSubscription | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const statusIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastSentRef = useRef<{ lat: number; lng: number; sentAt: number } | null>(null);
   const lastFixRef = useRef<Location.LocationObject | null>(null);
-  const optsRef = useRef<Options>({ operatorId, status, currentChecklistId, currentActivityId });
-
-  useEffect(() => {
-    optsRef.current = { operatorId, status, currentChecklistId, currentActivityId };
-  }, [operatorId, status, currentChecklistId, currentActivityId]);
+  const derivedRef = useRef<DerivedStatus>({ status: 'online', currentChecklistId: null, currentActivityId: null });
+  const permissionAlertedRef = useRef(false);
 
   useEffect(() => {
     if (!operatorId) return;
+    const opIdAtMount = operatorId;
     let cancelled = false;
 
-    async function pushLocation(loc: Location.LocationObject, forceStatus?: Status) {
-      const opts = optsRef.current;
-      if (!opts.operatorId) return;
+    async function refreshDerivedStatus() {
+      try {
+        const [{ data: activity }, { data: checklist }] = await Promise.all([
+          supabase
+            .from('activities')
+            .select('id')
+            .eq('operator_id', opIdAtMount)
+            .is('end_time', null)
+            .order('start_time', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          supabase
+            .from('checklists')
+            .select('id')
+            .eq('operator_id', opIdAtMount)
+            .eq('status', 'pending')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+        ]);
 
+        if (activity) {
+          derivedRef.current = {
+            status: 'in_activity',
+            currentActivityId: activity.id,
+            currentChecklistId: checklist?.id ?? null,
+          };
+        } else if (checklist) {
+          derivedRef.current = {
+            status: 'in_checklist',
+            currentActivityId: null,
+            currentChecklistId: checklist.id,
+          };
+        } else {
+          derivedRef.current = { status: 'online', currentActivityId: null, currentChecklistId: null };
+        }
+      } catch (e) {
+        console.log('[Location] Falha ao derivar status:', e);
+      }
+    }
+
+    async function pushLocation(loc: Location.LocationObject, forceStatus?: Status) {
       const lat = loc.coords.latitude;
       const lng = loc.coords.longitude;
       const now = Date.now();
       const last = lastSentRef.current;
 
-      if (last) {
+      if (!forceStatus && last) {
         const elapsed = now - last.sentAt;
         const dist = haversineMeters(last.lat, last.lng, lat, lng);
         if (elapsed < 10_000 && dist < 5) return;
       }
 
+      const { status, currentChecklistId, currentActivityId } = derivedRef.current;
+
       const payload = {
-        operator_id: opts.operatorId,
+        operator_id: opIdAtMount,
         latitude: lat,
         longitude: lng,
         accuracy: loc.coords.accuracy ?? null,
         speed: loc.coords.speed ?? null,
         heading: loc.coords.heading ?? null,
-        current_status: forceStatus ?? opts.status ?? 'online',
-        current_checklist_id: opts.currentChecklistId ?? null,
-        current_activity_id: opts.currentActivityId ?? null,
+        current_status: forceStatus ?? status,
+        current_checklist_id: currentChecklistId,
+        current_activity_id: currentActivityId,
         recorded_at: new Date(loc.timestamp || now).toISOString(),
       };
 
@@ -75,13 +119,11 @@ export function useLocationTracking({ operatorId, status, currentChecklistId, cu
     }
 
     async function markOffline() {
-      const opts = optsRef.current;
-      if (!opts.operatorId) return;
       try {
         await supabase
           .from('operator_locations')
           .update({ current_status: 'offline' })
-          .eq('operator_id', opts.operatorId);
+          .eq('operator_id', opIdAtMount);
       } catch { /* ignore */ }
     }
 
@@ -89,9 +131,18 @@ export function useLocationTracking({ operatorId, status, currentChecklistId, cu
       try {
         const { status: perm } = await Location.requestForegroundPermissionsAsync();
         if (perm !== 'granted') {
-          console.log('[Location] Permissao de localizacao negada');
+          if (!permissionAlertedRef.current) {
+            permissionAlertedRef.current = true;
+            Alert.alert(
+              'Localizacao desativada',
+              'Sem acesso a localizacao a gestao nao consegue acompanhar voce em campo. Habilite o GPS nas configuracoes do app.',
+            );
+          }
           return;
         }
+        if (cancelled) return;
+
+        await refreshDerivedStatus();
         if (cancelled) return;
 
         const initial = await Location.getCurrentPositionAsync({
@@ -99,7 +150,7 @@ export function useLocationTracking({ operatorId, status, currentChecklistId, cu
         });
         if (cancelled) return;
         lastFixRef.current = initial;
-        await pushLocation(initial, 'online');
+        await pushLocation(initial, derivedRef.current.status);
 
         watcherRef.current = await Location.watchPositionAsync(
           {
@@ -118,6 +169,10 @@ export function useLocationTracking({ operatorId, status, currentChecklistId, cu
           if (!fix) return;
           void pushLocation(fix).catch(() => { /* swallow */ });
         }, HEARTBEAT_INTERVAL_MS);
+
+        statusIntervalRef.current = setInterval(() => {
+          void refreshDerivedStatus().catch(() => { /* swallow */ });
+        }, STATUS_REFRESH_MS);
       } catch (e) {
         console.log('[Location] Erro ao iniciar tracking:', e);
       }
@@ -125,9 +180,11 @@ export function useLocationTracking({ operatorId, status, currentChecklistId, cu
 
     function handleAppStateChange(state: AppStateStatus) {
       if (state === 'active') {
+        void refreshDerivedStatus();
         const fix = lastFixRef.current;
-        if (fix) void pushLocation(fix, 'online').catch(() => { /* swallow */ });
-      } else if (state === 'background' || state === 'inactive') {
+        if (fix) void pushLocation(fix, derivedRef.current.status).catch(() => { /* swallow */ });
+      } else if (state === 'background') {
+        // 'inactive' nao conta — em iOS toda interrupcao breve dispara isso
         void markOffline();
       }
     }
@@ -144,9 +201,12 @@ export function useLocationTracking({ operatorId, status, currentChecklistId, cu
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
+      if (statusIntervalRef.current) {
+        clearInterval(statusIntervalRef.current);
+        statusIntervalRef.current = null;
+      }
       void markOffline();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [operatorId]);
 }
 

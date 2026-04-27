@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Input } from '@/components/ui/input';
 import {
@@ -52,6 +53,8 @@ const STATUS_CONFIG = {
 
 export default function AtividadesPage() {
   const supabase = useMemo(() => createClient(), []);
+  const searchParams = useSearchParams();
+  const deepLinkId = searchParams.get('id');
 
   const [activities, setActivities] = useState<ActivityRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,6 +66,7 @@ export default function AtividadesPage() {
   const [selected, setSelected] = useState<ActivityRow | null>(null);
   const [photoModal, setPhotoModal] = useState<string | null>(null);
   const [resolvedPhotos, setResolvedPhotos] = useState<Record<string, string>>({});
+  const [deepLinked, setDeepLinked] = useState(false);
 
   const loadActivities = useCallback(async () => {
     const { data } = await supabase
@@ -72,11 +76,20 @@ export default function AtividadesPage() {
       .limit(200);
     setActivities((data as ActivityRow[] | null) ?? []);
     setLoading(false);
+    return (data as ActivityRow[] | null) ?? [];
   }, [supabase]);
 
   useEffect(() => {
-    loadActivities();
-  }, [loadActivities]);
+    loadActivities().then((data) => {
+      if (deepLinkId && !deepLinked && data.length > 0) {
+        const match = data.find((a) => a.id === deepLinkId);
+        if (match) {
+          setDeepLinked(true);
+          openDetail(match);
+        }
+      }
+    });
+  }, [loadActivities, deepLinkId]);
 
   // Realtime
   useEffect(() => {

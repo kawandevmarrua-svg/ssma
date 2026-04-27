@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -43,6 +44,10 @@ interface ChecklistRow {
   inspector_name: string | null;
   inspector_registration: string | null;
   notes: string | null;
+  end_notes: string | null;
+  ended_at: string | null;
+  had_interference: boolean;
+  interference_notes: string | null;
   created_at: string;
   operator_id: string;
   operators: { name: string } | null;
@@ -88,6 +93,8 @@ const STATUS_CONFIG = {
 
 export default function ChecklistsPage() {
   const supabase = useMemo(() => createClient(), []);
+  const searchParams = useSearchParams();
+  const deepLinkId = searchParams.get('id');
 
   const [checklists, setChecklists] = useState<ChecklistRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -100,20 +107,30 @@ export default function ChecklistsPage() {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [photoModal, setPhotoModal] = useState<string | null>(null);
   const [resolvedPhotos, setResolvedPhotos] = useState<Record<string, string>>({});
+  const [deepLinked, setDeepLinked] = useState(false);
 
   const loadChecklists = useCallback(async () => {
     const { data } = await supabase
       .from('checklists')
-      .select('id, machine_name, date, status, result, brand, model, tag, shift, max_load_capacity, inspector_name, inspector_registration, notes, created_at, operator_id, operators(name), equipment_types(name), equipment_photo_1_url, equipment_photo_2_url, equipment_photo_3_url, equipment_photo_4_url, environment_photo_url')
+      .select('id, machine_name, date, status, result, brand, model, tag, shift, max_load_capacity, inspector_name, inspector_registration, notes, end_notes, ended_at, had_interference, interference_notes, created_at, operator_id, operators(name), equipment_types(name), equipment_photo_1_url, equipment_photo_2_url, equipment_photo_3_url, equipment_photo_4_url, environment_photo_url')
       .order('created_at', { ascending: false })
       .limit(200);
     setChecklists((data as ChecklistRow[] | null) ?? []);
     setLoading(false);
+    return (data as ChecklistRow[] | null) ?? [];
   }, [supabase]);
 
   useEffect(() => {
-    loadChecklists();
-  }, [loadChecklists]);
+    loadChecklists().then((data) => {
+      if (deepLinkId && !deepLinked && data.length > 0) {
+        const match = data.find((c) => c.id === deepLinkId);
+        if (match) {
+          setDeepLinked(true);
+          openDetail(match);
+        }
+      }
+    });
+  }, [loadChecklists, deepLinkId]);
 
   // Realtime
   useEffect(() => {
@@ -270,7 +287,10 @@ export default function ChecklistsPage() {
                 Data
               </div>
               <p className="font-semibold">{formatDate(selected.date)}</p>
-              <p className="text-xs text-muted-foreground">{formatDateTime(selected.created_at)}</p>
+              <p className="text-xs text-muted-foreground">Início: {formatDateTime(selected.created_at)}</p>
+              {selected.ended_at && (
+                <p className="text-xs text-muted-foreground">Fim: {formatDateTime(selected.ended_at)}</p>
+              )}
             </CardContent>
           </Card>
           <Card>
@@ -313,6 +333,25 @@ export default function ChecklistsPage() {
             <p className="text-muted-foreground whitespace-pre-wrap">{selected.notes}</p>
           </div>
         )}
+
+        {selected.end_notes && (
+          <div className="rounded-md border bg-muted/50 p-3 text-sm">
+            <p className="font-medium mb-1">Observação de encerramento:</p>
+            <p className="text-muted-foreground whitespace-pre-wrap">{selected.end_notes}</p>
+          </div>
+        )}
+
+        <div className="rounded-md border p-3 text-sm">
+          <div className="flex items-center gap-2 mb-1">
+            <AlertTriangle className={`h-4 w-4 ${selected.had_interference ? 'text-red-600' : 'text-emerald-600'}`} />
+            <p className="font-medium">
+              {selected.had_interference ? 'Houve interferência' : 'Sem interferência'}
+            </p>
+          </div>
+          {selected.had_interference && selected.interference_notes && (
+            <p className="text-muted-foreground whitespace-pre-wrap ml-6">{selected.interference_notes}</p>
+          )}
+        </div>
 
         {/* Fotos do equipamento e ambiente */}
         {(() => {

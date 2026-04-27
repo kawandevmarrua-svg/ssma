@@ -33,3 +33,6 @@ Thumbs.db
 
 # Supabase
 supabase/.temp/
+
+# Claude Code (contém tokens locais)
+.claude/

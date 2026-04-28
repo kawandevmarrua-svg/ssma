@@ -1,29 +1,30 @@
 import { useEffect, useRef } from 'react';
-import { Alert, AppState, AppStateStatus } from 'react-native';
+import { Alert, AppState, AppStateStatus, Platform } from 'react-native';
 import * as Location from 'expo-location';
+import * as SecureStore from 'expo-secure-store';
 import { supabase } from '../lib/supabase';
+import {
+  LOCATION_TASK_NAME,
+  OPERATOR_ID_KEY,
+  DERIVED_STATUS_KEY,
+  DerivedStatusPayload,
+} from '../lib/locationTask';
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const STATUS_REFRESH_MS = 60_000;
 const MIN_DISTANCE_METERS = 25;
 
-type Status = 'online' | 'in_checklist' | 'in_activity' | 'idle' | 'offline';
-
 interface Options {
   operatorId: string | null;
 }
 
-interface DerivedStatus {
-  status: Status;
-  currentChecklistId: string | null;
-  currentActivityId: string | null;
-}
-
 /**
- * Heartbeat de localizacao do operador → tabela operator_locations.
- * O status (online | in_checklist | in_activity) e os IDs sao derivados
- * automaticamente lendo checklists pendentes e atividades em aberto do
- * proprio operador, recalculados a cada 60s.
+ * Heartbeat de localizacao em foreground + background.
+ *
+ * - Em foreground o hook escreve direto em operator_locations.
+ * - Em background quem escreve eh a task definida em locationTask.ts,
+ *   que le operatorId/derivedStatus do SecureStore para nao depender
+ *   do estado React.
  */
 export function useLocationTracking({ operatorId }: Options) {
   const watcherRef = useRef<Location.LocationSubscription | null>(null);
@@ -31,13 +32,30 @@ export function useLocationTracking({ operatorId }: Options) {
   const statusIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastSentRef = useRef<{ lat: number; lng: number; sentAt: number } | null>(null);
   const lastFixRef = useRef<Location.LocationObject | null>(null);
-  const derivedRef = useRef<DerivedStatus>({ status: 'online', currentChecklistId: null, currentActivityId: null });
+  const derivedRef = useRef<DerivedStatusPayload>({
+    status: 'online',
+    currentChecklistId: null,
+    currentActivityId: null,
+  });
   const permissionAlertedRef = useRef(false);
+  const backgroundStartedRef = useRef(false);
 
   useEffect(() => {
     if (!operatorId) return;
     const opIdAtMount = operatorId;
     let cancelled = false;
+
+    async function persistContextForBackgroundTask() {
+      try {
+        await SecureStore.setItemAsync(OPERATOR_ID_KEY, opIdAtMount);
+        await SecureStore.setItemAsync(
+          DERIVED_STATUS_KEY,
+          JSON.stringify(derivedRef.current),
+        );
+      } catch (e) {
+        console.log('[Location] falha ao persistir contexto da task:', e);
+      }
+    }
 
     async function refreshDerivedStatus() {
       try {
@@ -75,12 +93,14 @@ export function useLocationTracking({ operatorId }: Options) {
         } else {
           derivedRef.current = { status: 'online', currentActivityId: null, currentChecklistId: null };
         }
+
+        await persistContextForBackgroundTask();
       } catch (e) {
         console.log('[Location] Falha ao derivar status:', e);
       }
     }
 
-    async function pushLocation(loc: Location.LocationObject, forceStatus?: Status) {
+    async function pushLocation(loc: Location.LocationObject, forceStatus?: DerivedStatusPayload['status']) {
       const lat = loc.coords.latitude;
       const lng = loc.coords.longitude;
       const now = Date.now();
@@ -127,7 +147,53 @@ export function useLocationTracking({ operatorId }: Options) {
       } catch { /* ignore */ }
     }
 
-    function stopWatcher() {
+    async function startBackgroundUpdates() {
+      if (backgroundStartedRef.current) return;
+      try {
+        const { status: bgPerm } = await Location.requestBackgroundPermissionsAsync();
+        if (bgPerm !== 'granted') {
+          // Sem permissao "always" o app fica restrito ao foreground.
+          // Nao alertamos novamente para nao incomodar a cada retomada.
+          return;
+        }
+
+        const already = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
+        if (already) {
+          backgroundStartedRef.current = true;
+          return;
+        }
+
+        await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
+          accuracy: Location.Accuracy.Balanced,
+          distanceInterval: MIN_DISTANCE_METERS,
+          timeInterval: HEARTBEAT_INTERVAL_MS,
+          showsBackgroundLocationIndicator: true,
+          pausesUpdatesAutomatically: false,
+          activityType: Location.ActivityType.OtherNavigation,
+          foregroundService: Platform.OS === 'android' ? {
+            notificationTitle: 'Marrua em campo',
+            notificationBody: 'Compartilhando localizacao com sua gestao durante o expediente.',
+            notificationColor: '#F97316',
+            killServiceOnDestroy: false,
+          } : undefined,
+        });
+        backgroundStartedRef.current = true;
+      } catch (e) {
+        console.log('[Location] falha ao iniciar background updates:', e);
+      }
+    }
+
+    async function stopBackgroundUpdates() {
+      try {
+        const running = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
+        if (running) {
+          await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+        }
+      } catch { /* ignore */ }
+      backgroundStartedRef.current = false;
+    }
+
+    function stopForegroundWatcher() {
       watcherRef.current?.remove();
       watcherRef.current = null;
       if (intervalRef.current) {
@@ -155,11 +221,13 @@ export function useLocationTracking({ operatorId }: Options) {
         }
         if (cancelled) return;
 
-        // Garante que nao havera watcher/intervals duplicados ao reiniciar.
-        stopWatcher();
+        stopForegroundWatcher();
 
         await refreshDerivedStatus();
         if (cancelled) return;
+
+        // Inicia background updates em paralelo (nao bloqueia o foreground).
+        void startBackgroundUpdates();
 
         const initial = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
@@ -196,13 +264,11 @@ export function useLocationTracking({ operatorId }: Options) {
 
     function handleAppStateChange(state: AppStateStatus) {
       if (state === 'active') {
-        // O watcher do Expo morre quando o app e suspenso pelo iOS/Android.
-        // Reiniciar do zero garante heartbeat continuo apos desbloquear a tela.
+        // Foreground: religa watcher (background continua rodando via TaskManager).
         void start();
       } else if (state === 'background') {
-        // 'inactive' nao conta — em iOS toda interrupcao breve dispara isso
-        stopWatcher();
-        void markOffline();
+        // Apenas para o watcher em foreground; a task de background segue ativa.
+        stopForegroundWatcher();
       }
     }
 
@@ -212,8 +278,12 @@ export function useLocationTracking({ operatorId }: Options) {
     return () => {
       cancelled = true;
       sub.remove();
-      stopWatcher();
+      stopForegroundWatcher();
+      void stopBackgroundUpdates();
       void markOffline();
+      // Limpa contexto persistido para que a task nao reescreva apos logout.
+      void SecureStore.deleteItemAsync(OPERATOR_ID_KEY).catch(() => { /* ignore */ });
+      void SecureStore.deleteItemAsync(DERIVED_STATUS_KEY).catch(() => { /* ignore */ });
     };
   }, [operatorId]);
 }

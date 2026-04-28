@@ -4,6 +4,9 @@ import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
 import { AuthProvider, useAuth } from '../src/contexts/AuthContext';
 import { colors } from '../src/theme/colors';
+// Registra a task de localizacao em background no nivel do bundle.
+// Tem que ser importado antes de qualquer chamada de Location.startLocationUpdatesAsync.
+import '../src/lib/locationTask';
 
 
 function RootLayoutNav() {

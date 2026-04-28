@@ -14,14 +14,24 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.checklist.app"
+      "bundleIdentifier": "com.checklist.app",
+      "infoPlist": {
+        "UIBackgroundModes": ["location", "fetch"]
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#F97316"
       },
-      "package": "com.checklist.app"
+      "package": "com.checklist.app",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -42,7 +52,9 @@
         {
           "locationAlwaysAndWhenInUsePermission": "Permita acesso a localizacao para o gestor acompanhar sua posicao em tempo real durante o expediente.",
           "locationWhenInUsePermission": "Permita acesso a localizacao para o gestor acompanhar sua posicao em tempo real durante o expediente.",
-          "isAndroidBackgroundLocationEnabled": false
+          "locationAlwaysPermission": "Permita acesso continuo a localizacao para que o acompanhamento em tempo real continue ativo mesmo com o app em segundo plano.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ]
     ]

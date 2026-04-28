@@ -17,7 +17,7 @@ import {
   StatCard,
   ListItem,
 } from '../../src/components/ui';
-import { useOfflineQueueSize } from '../../src/hooks/useOfflineQueueSize';
+import { useOfflineQueueSize, useDeadLetterCount } from '../../src/hooks/useOfflineQueueSize';
 
 function formatToday() {
   return new Date().toLocaleDateString('pt-BR', {
@@ -81,6 +81,7 @@ export default function OperatorHomeScreen() {
   const name = profile?.full_name || operatorData?.name || 'Operador';
   const firstName = name.split(' ')[0];
   const pendingOffline = useOfflineQueueSize();
+  const deadLetterCount = useDeadLetterCount();
 
   return (
     <ScrollView
@@ -115,6 +116,15 @@ export default function OperatorHomeScreen() {
           <Ionicons name="cloud-upload-outline" size={18} color={colors.primary} />
           <Text variant="caption" style={styles.offlineText}>
             {pendingOffline} {pendingOffline === 1 ? 'item aguardando envio' : 'itens aguardando envio'} — serão sincronizados ao reconectar.
+          </Text>
+        </View>
+      )}
+
+      {deadLetterCount > 0 && (
+        <View style={styles.deadLetterBanner}>
+          <Ionicons name="alert-circle-outline" size={18} color={colors.danger} />
+          <Text variant="caption" style={styles.deadLetterText}>
+            {deadLetterCount} {deadLetterCount === 1 ? 'envio falhou' : 'envios falharam'} após várias tentativas. Acione o suporte.
           </Text>
         </View>
       )}
@@ -244,5 +254,21 @@ const styles = StyleSheet.create({
   offlineText: {
     flex: 1,
     color: colors.textSecondary,
+  },
+  deadLetterBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.danger,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  deadLetterText: {
+    flex: 1,
+    color: colors.danger,
   },
 });

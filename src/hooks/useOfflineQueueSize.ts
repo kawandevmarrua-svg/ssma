@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { subscribeQueueSize } from '../lib/offlineQueue';
+import { subscribeQueueSize, subscribeDeadLetterCount } from '../lib/offlineQueue';
 
 /**
  * Retorna a quantidade atual de jobs pendentes na fila offline.
@@ -14,4 +14,20 @@ export function useOfflineQueueSize(): number {
   }, []);
 
   return size;
+}
+
+/**
+ * Quantidade de jobs que falharam apos MAX_ATTEMPTS e foram movidos
+ * para a dead-letter. > 0 indica que houve perda real e operador
+ * deve acionar suporte.
+ */
+export function useDeadLetterCount(): number {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    const unsubscribe = subscribeDeadLetterCount(setCount);
+    return unsubscribe;
+  }, []);
+
+  return count;
 }

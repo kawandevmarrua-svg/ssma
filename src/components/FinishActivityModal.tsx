@@ -57,14 +57,22 @@ export function FinishActivityModal({ activity, userId, onClose, onFinished }: P
     let photoSpec = null;
     if (endPhotoUri && userId) {
       const localPath = await persistPhotoForQueue(endPhotoUri, `activity-${activity.id}-end`);
-      if (localPath) {
-        photoSpec = {
-          localPath,
-          bucket: 'activity-photos',
-          storagePath: `${userId}/${activity.id}/end`,
-          field: 'end_photo_url',
-        };
+      if (!localPath) {
+        // Falha ao persistir = foto sera perdida se prosseguirmos. Aborta
+        // para o operador refazer (disco cheio, permissao, formato invalido).
+        setSaving(false);
+        Alert.alert(
+          'Erro ao salvar foto',
+          'Nao foi possivel salvar a foto de encerramento localmente. Tire a foto novamente ou tente sem foto.',
+        );
+        return;
       }
+      photoSpec = {
+        localPath,
+        bucket: 'activity-photos',
+        storagePath: `${userId}/${activity.id}/end`,
+        field: 'end_photo_url',
+      };
     }
 
     const now = new Date().toISOString();

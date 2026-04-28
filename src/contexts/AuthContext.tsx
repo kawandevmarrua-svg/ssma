@@ -3,6 +3,8 @@ import { AppState, AppStateStatus } from 'react-native';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { registerPushTokenForUser } from '../lib/pushNotifications';
+import { bindOfflineQueueToUser } from '../lib/offlineQueue';
+import { markOperatorOffline } from '../lib/operatorPresence';
 import { Profile, Operator } from '../types/database';
 
 type AuthContextType = {
@@ -31,6 +33,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!mountedRef.current) return;
       setSession(session);
+      bindOfflineQueueToUser(session?.user?.id ?? null);
       if (session?.user) void fetchProfile(session.user.id);
       else setLoading(false);
     }).catch(() => {
@@ -40,6 +43,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!mountedRef.current) return;
       setSession(session);
+      // Cada usuario tem sua propria fila offline para nao misturar jobs
+      // entre logins no mesmo aparelho.
+      bindOfflineQueueToUser(session?.user?.id ?? null);
       if (session?.user) void fetchProfile(session.user.id);
       else {
         setProfile(null);
@@ -120,7 +126,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function signOut() {
+    // Marca operador como offline ANTES do signOut: depois o JWT vai embora
+    // e o RLS bloqueia o update, deixando o status como "online" eterno
+    // no dashboard ate o proximo login.
+    if (operatorData?.id) {
+      await markOperatorOffline(operatorData.id);
+    }
     await supabase.auth.signOut();
+    bindOfflineQueueToUser(null);
     setSession(null);
     setProfile(null);
     setOperatorData(null);

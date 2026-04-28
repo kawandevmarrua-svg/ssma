@@ -9,6 +9,7 @@ import {
   DERIVED_STATUS_KEY,
   DerivedStatusPayload,
 } from '../lib/locationTask';
+import { markOperatorOffline } from '../lib/operatorPresence';
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const STATUS_REFRESH_MS = 60_000;
@@ -138,23 +139,19 @@ export function useLocationTracking({ operatorId }: Options) {
       lastSentRef.current = { lat, lng, sentAt: now };
     }
 
-    async function markOffline() {
-      try {
-        await supabase
-          .from('operator_locations')
-          .update({ current_status: 'offline' })
-          .eq('operator_id', opIdAtMount);
-      } catch { /* ignore */ }
-    }
-
-    async function startBackgroundUpdates(): Promise<boolean> {
+    async function startBackgroundUpdates(promptIfNeeded = true): Promise<boolean> {
       try {
         if (await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME)) {
           backgroundStartedRef.current = true;
           return true;
         }
 
-        const { status: bgPerm } = await Location.requestBackgroundPermissionsAsync();
+        // Em foreground active recurrente, evita disparar prompt de novo:
+        // apenas verifica o status atual. O prompt so vem na primeira vez.
+        const { status: bgPerm } = promptIfNeeded
+          ? await Location.requestBackgroundPermissionsAsync()
+          : await Location.getBackgroundPermissionsAsync();
+
         if (bgPerm !== 'granted') {
           // Sem permissao "always" o app fica restrito ao foreground.
           // Nao alertamos novamente para nao incomodar a cada retomada.
@@ -206,9 +203,17 @@ export function useLocationTracking({ operatorId }: Options) {
       }
     }
 
-    async function start() {
+    /**
+     * @param isInitial - true so na primeira execucao (mount). Em retomadas
+     *   de foreground (active) passamos false: nao prompta permissoes nem
+     *   refaz getCurrentPositionAsync (a task de background ja esta dando fixes).
+     */
+    async function start(isInitial: boolean) {
       try {
-        const { status: perm } = await Location.requestForegroundPermissionsAsync();
+        const { status: perm } = isInitial
+          ? await Location.requestForegroundPermissionsAsync()
+          : await Location.getForegroundPermissionsAsync();
+
         if (perm !== 'granted') {
           if (!permissionAlertedRef.current) {
             permissionAlertedRef.current = true;
@@ -233,19 +238,24 @@ export function useLocationTracking({ operatorId }: Options) {
           void refreshDerivedStatus().catch(() => { /* swallow */ });
         }, STATUS_REFRESH_MS);
 
-        // Tenta usar a task de background. Se conseguir, ela cuida dos
-        // upserts mesmo em foreground — evita escrita duplicada.
-        const bgRunning = await startBackgroundUpdates();
+        // Tenta usar a task de background. Em foreground recurrente,
+        // checa apenas o status atual (sem prompt) — assim detectamos quando
+        // o usuario habilitou "Always" pelas configuracoes do iOS depois.
+        const bgRunning = await startBackgroundUpdates(isInitial);
         if (cancelled) return;
 
-        // Garante um fix inicial assim que possivel para a UI/dashboard,
-        // independente do modo (background pode demorar a entregar o primeiro fix).
-        const initial = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        if (cancelled) return;
-        lastFixRef.current = initial;
-        await pushLocation(initial, derivedRef.current.status);
+        // Fix inicial so faz sentido se nao temos nenhum ainda OU se o
+        // background nao esta rodando. Em retomadas com bg ativo, evita
+        // ligar o GPS sem necessidade (custa bateria).
+        const needsImmediateFix = !lastFixRef.current || !bgRunning;
+        if (needsImmediateFix) {
+          const initial = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          if (cancelled) return;
+          lastFixRef.current = initial;
+          await pushLocation(initial, derivedRef.current.status);
+        }
 
         if (bgRunning) {
           // Background ativo: nao precisamos de watcher/interval em foreground.
@@ -277,8 +287,9 @@ export function useLocationTracking({ operatorId }: Options) {
 
     function handleAppStateChange(state: AppStateStatus) {
       if (state === 'active') {
-        // Foreground: religa watcher (background continua rodando via TaskManager).
-        void start();
+        // Foreground recurrente: re-checa permissao (sem prompt) para detectar
+        // upgrade "While Using → Always" feito nas configuracoes do iOS.
+        void start(false);
       } else if (state === 'background') {
         // Apenas para o watcher em foreground; a task de background segue ativa.
         stopForegroundWatcher();
@@ -286,17 +297,24 @@ export function useLocationTracking({ operatorId }: Options) {
     }
 
     const sub = AppState.addEventListener('change', handleAppStateChange);
-    void start();
+    void start(true);
 
     return () => {
       cancelled = true;
       sub.remove();
       stopForegroundWatcher();
-      void stopBackgroundUpdates();
-      void markOffline();
-      // Limpa contexto persistido para que a task nao reescreva apos logout.
-      void SecureStore.deleteItemAsync(OPERATOR_ID_KEY).catch(() => { /* ignore */ });
-      void SecureStore.deleteItemAsync(DERIVED_STATUS_KEY).catch(() => { /* ignore */ });
+      // Ordem importa: para a task ANTES de marcar offline, senao a task
+      // pode disparar uma ultima escrita depois e voltar o status para online.
+      // Limpa contexto persistido (tambem antes do markOffline) para que a
+      // task, se acordar nesse intervalo, retorne sem escrever.
+      void (async () => {
+        await Promise.all([
+          SecureStore.deleteItemAsync(OPERATOR_ID_KEY).catch(() => undefined),
+          SecureStore.deleteItemAsync(DERIVED_STATUS_KEY).catch(() => undefined),
+        ]);
+        await stopBackgroundUpdates();
+        await markOperatorOffline(opIdAtMount);
+      })();
     };
   }, [operatorId]);
 }

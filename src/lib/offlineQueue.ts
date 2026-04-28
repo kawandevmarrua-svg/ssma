@@ -4,7 +4,9 @@ import { AppState, AppStateStatus } from 'react-native';
 import { supabase } from './supabase';
 import { uploadQueuedPhoto } from './imageUtils';
 
-const QUEUE_KEY = 'marrua.offline.queue.v1';
+const QUEUE_PREFIX = 'marrua.offline.queue.v1';
+const DEAD_LETTER_PREFIX = 'marrua.offline.deadletter.v1';
+const ANON_USER_KEY = '__anon__';
 const MAX_ATTEMPTS = 8;
 
 export type JobKind =
@@ -46,14 +48,51 @@ export interface StoredJob {
   job: Job;
 }
 
-let inFlight = false;
-const subscribers = new Set<(size: number) => void>();
-const pendingFinishSubs = new Set<(state: PendingFinishState) => void>();
-
 export interface PendingFinishState {
   checklistIds: Set<string>;
   activityIds: Set<string>;
 }
+
+// ---------- estado global ligado ao usuario logado ----------
+
+let currentUserId: string | null = null;
+let inFlight = false;
+const subscribers = new Set<(size: number) => void>();
+const pendingFinishSubs = new Set<(state: PendingFinishState) => void>();
+const deadLetterSubs = new Set<(count: number) => void>();
+
+function queueKey(userId = currentUserId): string {
+  return `${QUEUE_PREFIX}.${userId ?? ANON_USER_KEY}`;
+}
+
+function deadLetterKey(userId = currentUserId): string {
+  return `${DEAD_LETTER_PREFIX}.${userId ?? ANON_USER_KEY}`;
+}
+
+/**
+ * Liga a fila ao usuario atual. Cada usuario tem sua propria fila para
+ * que jobs de A nunca sejam aplicados com a sessao de B (corromperia
+ * dado entre usuarios no mesmo aparelho).
+ *
+ * Idempotente. Notifica subscribers para refletirem a fila do novo usuario.
+ */
+export function bindOfflineQueueToUser(userId: string | null): void {
+  if (currentUserId === userId) return;
+  currentUserId = userId;
+  void notifyAll();
+}
+
+async function notifyAll(): Promise<void> {
+  const [q, dlCount] = await Promise.all([readQueue(), readDeadLetterCount()]);
+  subscribers.forEach((cb) => cb(q.length));
+  if (pendingFinishSubs.size > 0) {
+    const state = derivePendingFinishes(q);
+    pendingFinishSubs.forEach((cb) => cb(state));
+  }
+  deadLetterSubs.forEach((cb) => cb(dlCount));
+}
+
+// ---------- helpers de derivacao / IO ----------
 
 function derivePendingFinishes(jobs: StoredJob[]): PendingFinishState {
   const checklistIds = new Set<string>();
@@ -77,7 +116,7 @@ function genId(): string {
 
 async function readQueue(): Promise<StoredJob[]> {
   try {
-    const raw = await AsyncStorage.getItem(QUEUE_KEY);
+    const raw = await AsyncStorage.getItem(queueKey());
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
@@ -87,13 +126,55 @@ async function readQueue(): Promise<StoredJob[]> {
 }
 
 async function writeQueue(jobs: StoredJob[]): Promise<void> {
-  await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(jobs));
+  await AsyncStorage.setItem(queueKey(), JSON.stringify(jobs));
   subscribers.forEach((cb) => cb(jobs.length));
   if (pendingFinishSubs.size > 0) {
     const state = derivePendingFinishes(jobs);
     pendingFinishSubs.forEach((cb) => cb(state));
   }
 }
+
+async function readDeadLetterCount(): Promise<number> {
+  try {
+    const raw = await AsyncStorage.getItem(deadLetterKey());
+    if (!raw) return 0;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function pushToDeadLetter(stored: StoredJob, error: string): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(deadLetterKey());
+    const dl: StoredJob[] = raw ? JSON.parse(raw) : [];
+    dl.push({ ...stored, lastError: error });
+    await AsyncStorage.setItem(deadLetterKey(), JSON.stringify(dl));
+    const count = dl.length;
+    deadLetterSubs.forEach((cb) => cb(count));
+  } catch (e) {
+    console.log('[OfflineQueue] falha ao gravar dead-letter:', e);
+  }
+}
+
+export async function getDeadLetter(): Promise<StoredJob[]> {
+  try {
+    const raw = await AsyncStorage.getItem(deadLetterKey());
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function clearDeadLetter(): Promise<void> {
+  await AsyncStorage.removeItem(deadLetterKey());
+  deadLetterSubs.forEach((cb) => cb(0));
+}
+
+// ---------- subscribers ----------
 
 export function subscribeQueueSize(cb: (size: number) => void): () => void {
   subscribers.add(cb);
@@ -113,10 +194,18 @@ export function subscribePendingFinishes(cb: (state: PendingFinishState) => void
   return () => { pendingFinishSubs.delete(cb); };
 }
 
+export function subscribeDeadLetterCount(cb: (count: number) => void): () => void {
+  deadLetterSubs.add(cb);
+  void readDeadLetterCount().then(cb);
+  return () => { deadLetterSubs.delete(cb); };
+}
+
 export async function getQueueSize(): Promise<number> {
   const q = await readQueue();
   return q.length;
 }
+
+// ---------- execucao ----------
 
 async function isOnline(): Promise<boolean> {
   try {
@@ -221,19 +310,36 @@ export async function flush(): Promise<{ processed: number; remaining: number }>
       return { processed: 0, remaining: q.length };
     }
 
-    let queue = await readQueue();
+    const queue = await readQueue();
     const next: StoredJob[] = [];
+    let abortRest = false;
 
     for (const stored of queue) {
+      if (abortRest) {
+        // Rede caiu durante o flush: preserva os restantes sem penalizar
+        // attempts (se penalizassemos, perderiamos jobs validos por rede ruim).
+        next.push(stored);
+        continue;
+      }
+
       const r = await executeJob(stored.job);
       if (r.ok) {
         processed += 1;
         continue;
       }
+
+      // Distingue erro de rede (preserva) de erro real (incrementa attempts).
+      if (!(await isOnline())) {
+        abortRest = true;
+        next.push(stored);
+        continue;
+      }
+
       const attempts = stored.attempts + 1;
       if (attempts >= MAX_ATTEMPTS) {
-        // descarta para nao travar a fila eternamente; loga em console.
-        console.log('[OfflineQueue] descartando job apos max tentativas:', stored.job.kind, r.error);
+        // Job que falhou MAX vezes vai para dead-letter: nao some
+        // silenciosamente; UI alerta o operador para acionar suporte.
+        await pushToDeadLetter(stored, r.error ?? 'erro desconhecido');
         continue;
       }
       next.push({ ...stored, attempts, lastError: r.error ?? null });
@@ -245,6 +351,8 @@ export async function flush(): Promise<{ processed: number; remaining: number }>
     inFlight = false;
   }
 }
+
+// ---------- auto flush ----------
 
 let started = false;
 let appStateSub: { remove: () => void } | null = null;

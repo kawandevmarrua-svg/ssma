@@ -11,10 +11,10 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '../lib/supabase';
 import { colors, spacing, radius, fontSize } from '../theme/colors';
 import { commonStyles } from '../theme/commonStyles';
 import { Button, Text } from './ui';
+import { enqueueOrExecute } from '../lib/offlineQueue';
 
 interface PendingChecklist {
   id: string;
@@ -60,16 +60,27 @@ export function FinishChecklistModal({ checklist, userId, onClose, onFinished }:
     setSaving(true);
 
     const now = new Date().toISOString();
-    const { error } = await supabase.from('checklists').update({
-      status: 'completed',
-      ended_at: now,
-      had_interference: hadInterference,
-      interference_notes: hadInterference ? interferenceNotes.trim() || null : null,
-      end_notes: endNotes.trim() || null,
-    }).eq('id', checklist.id);
+    const result = await enqueueOrExecute({
+      kind: 'updateChecklist',
+      payload: {
+        id: checklist.id,
+        patch: {
+          status: 'completed',
+          ended_at: now,
+          had_interference: hadInterference,
+          interference_notes: hadInterference ? interferenceNotes.trim() || null : null,
+          end_notes: endNotes.trim() || null,
+        },
+      },
+    });
     setSaving(false);
 
-    if (error) { Alert.alert('Erro', error.message); return; }
+    if (result.queued) {
+      Alert.alert(
+        'Salvo offline',
+        'Sem rede no momento. O encerramento foi guardado e sera enviado automaticamente assim que houver conexao.',
+      );
+    }
     reset();
     onFinished();
   }

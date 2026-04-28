@@ -12,8 +12,8 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '../lib/supabase';
 import { pickPhoto, uploadPhoto } from '../lib/imageUtils';
+import { enqueueOrExecute } from '../lib/offlineQueue';
 import { Activity } from '../types/database';
 import { colors, spacing, radius, fontSize } from '../theme/colors';
 import { commonStyles } from '../theme/commonStyles';
@@ -55,18 +55,29 @@ export function FinishActivityModal({ activity, userId, onClose, onFinished }: P
     }
 
     const now = new Date().toISOString();
-    const { error } = await supabase.from('activities').update({
-      end_time: now,
-      had_interference: hadInterference,
-      interference_notes: hadInterference ? interferenceNotes.trim() || null : null,
-      transit_start: now,
-      transit_end: now,
-      notes: endNotes.trim() || null,
-      end_photo_url: endPhotoPath,
-    }).eq('id', activity.id);
+    const result = await enqueueOrExecute({
+      kind: 'updateActivity',
+      payload: {
+        id: activity.id,
+        patch: {
+          end_time: now,
+          had_interference: hadInterference,
+          interference_notes: hadInterference ? interferenceNotes.trim() || null : null,
+          transit_start: now,
+          transit_end: now,
+          notes: endNotes.trim() || null,
+          end_photo_url: endPhotoPath,
+        },
+      },
+    });
     setSaving(false);
 
-    if (error) { Alert.alert('Erro', error.message); return; }
+    if (result.queued) {
+      Alert.alert(
+        'Salvo offline',
+        'Sem rede no momento. O encerramento foi guardado e sera enviado automaticamente assim que houver conexao.',
+      );
+    }
     reset();
     onFinished();
   }

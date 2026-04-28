@@ -17,6 +17,7 @@ import {
   StatCard,
   ListItem,
 } from '../../src/components/ui';
+import { useOfflineQueueSize } from '../../src/hooks/useOfflineQueueSize';
 
 function formatToday() {
   return new Date().toLocaleDateString('pt-BR', {
@@ -79,6 +80,7 @@ export default function OperatorHomeScreen() {
 
   const name = profile?.full_name || operatorData?.name || 'Operador';
   const firstName = name.split(' ')[0];
+  const pendingOffline = useOfflineQueueSize();
 
   return (
     <ScrollView
@@ -107,6 +109,15 @@ export default function OperatorHomeScreen() {
         </View>
         <Avatar name={name} size="md" />
       </View>
+
+      {pendingOffline > 0 && (
+        <View style={styles.offlineBanner}>
+          <Ionicons name="cloud-upload-outline" size={18} color={colors.primary} />
+          <Text variant="caption" style={styles.offlineText}>
+            {pendingOffline} {pendingOffline === 1 ? 'item aguardando envio' : 'itens aguardando envio'} — serão sincronizados ao reconectar.
+          </Text>
+        </View>
+      )}
 
       {/* Stats — grid de cards no estilo da imagem */}
       <View style={styles.statsRow}>
@@ -217,5 +228,21 @@ const styles = StyleSheet.create({
   },
   actions: {
     gap: spacing.sm,
+  },
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  offlineText: {
+    flex: 1,
+    color: colors.textSecondary,
   },
 });

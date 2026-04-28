@@ -17,6 +17,8 @@ import {
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Haptics from 'expo-haptics';
+import { useKeepAwake } from 'expo-keep-awake';
 import { decode } from 'base64-arraybuffer';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/contexts/AuthContext';
@@ -48,6 +50,8 @@ interface ChecklistRow {
 
 export default function ChecklistScreen() {
   const { user, operatorData } = useAuth();
+  // Mantem a tela acesa enquanto o operador esta preenchendo um checklist em campo.
+  useKeepAwake();
 
   // List
   const [checklists, setChecklists] = useState<ChecklistRow[]>([]);
@@ -170,6 +174,11 @@ export default function ChecklistScreen() {
 
   function setItemStatus(id: string, status: 'C' | 'NC' | 'NA') {
     setResponses((p) => ({ ...p, [id]: { ...p[id], status } }));
+    if (status === 'NC') {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+    } else {
+      void Haptics.selectionAsync().catch(() => {});
+    }
   }
 
   function setItemValue(id: string, value: string) {

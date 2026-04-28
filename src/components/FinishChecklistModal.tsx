@@ -11,6 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { colors, spacing, radius, fontSize } from '../theme/colors';
 import { commonStyles } from '../theme/commonStyles';
 import { Button, Text } from './ui';
@@ -76,10 +77,13 @@ export function FinishChecklistModal({ checklist, userId, onClose, onFinished }:
     setSaving(false);
 
     if (result.queued) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
       Alert.alert(
         'Salvo offline',
         'Sem rede no momento. O encerramento foi guardado e sera enviado automaticamente assim que houver conexao.',
       );
+    } else {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     }
     reset();
     onFinished();

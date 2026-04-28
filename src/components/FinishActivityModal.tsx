@@ -12,6 +12,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { pickPhoto, uploadPhoto } from '../lib/imageUtils';
 import { enqueueOrExecute } from '../lib/offlineQueue';
 import { Activity } from '../types/database';
@@ -73,10 +74,13 @@ export function FinishActivityModal({ activity, userId, onClose, onFinished }: P
     setSaving(false);
 
     if (result.queued) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
       Alert.alert(
         'Salvo offline',
         'Sem rede no momento. O encerramento foi guardado e sera enviado automaticamente assim que houver conexao.',
       );
+    } else {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     }
     reset();
     onFinished();

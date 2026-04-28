@@ -14,6 +14,7 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useKeepAwake } from 'expo-keep-awake';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { supabase } from '../../src/lib/supabase';
 import { pickPhoto, uploadPhoto } from '../../src/lib/imageUtils';
@@ -58,6 +59,7 @@ const INITIAL_PREOP: PreOpAnswers = {
 
 export default function AtividadeScreen() {
   const { user, operatorData } = useAuth();
+  useKeepAwake();
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);

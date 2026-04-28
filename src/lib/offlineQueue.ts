@@ -56,6 +56,10 @@ export interface PendingFinishState {
 // ---------- estado global ligado ao usuario logado ----------
 
 let currentUserId: string | null = null;
+// Distingue "ainda nao bindou" de "bindou para null" (logout): o auto-flush
+// inicial so deve disparar apos bind explicito, senao tenta drenar a fila
+// generica __anon__ antes do AuthProvider resolver a sessao.
+let bindCalled = false;
 let inFlight = false;
 const subscribers = new Set<(size: number) => void>();
 const pendingFinishSubs = new Set<(state: PendingFinishState) => void>();
@@ -74,16 +78,26 @@ function deadLetterKey(userId = currentUserId): string {
  * que jobs de A nunca sejam aplicados com a sessao de B (corromperia
  * dado entre usuarios no mesmo aparelho).
  *
- * Idempotente. Notifica subscribers para refletirem a fila do novo usuario.
+ * Idempotente. Notifica subscribers para refletirem a fila do novo usuario
+ * e dispara um flush imediato se o auto-flush ja estiver ativo.
  */
 export function bindOfflineQueueToUser(userId: string | null): void {
-  if (currentUserId === userId) return;
+  if (bindCalled && currentUserId === userId) return;
+  bindCalled = true;
   currentUserId = userId;
   void notifyAll();
+  if (started) void flush().catch(() => { /* ignore */ });
 }
 
 async function notifyAll(): Promise<void> {
-  const [q, dlCount] = await Promise.all([readQueue(), readDeadLetterCount()]);
+  // Captura o user no momento da chamada para evitar que um bind concorrente
+  // mande notificacoes com a fila do user errado para os subscribers.
+  const userAtCall = currentUserId;
+  const [q, dlCount] = await Promise.all([
+    readQueueFor(userAtCall),
+    readDeadLetterCountFor(userAtCall),
+  ]);
+  if (currentUserId !== userAtCall) return; // bind mudou: descarta
   subscribers.forEach((cb) => cb(q.length));
   if (pendingFinishSubs.size > 0) {
     const state = derivePendingFinishes(q);
@@ -115,8 +129,12 @@ function genId(): string {
 }
 
 async function readQueue(): Promise<StoredJob[]> {
+  return readQueueFor(currentUserId);
+}
+
+async function readQueueFor(userId: string | null): Promise<StoredJob[]> {
   try {
-    const raw = await AsyncStorage.getItem(queueKey());
+    const raw = await AsyncStorage.getItem(queueKey(userId));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
@@ -135,8 +153,12 @@ async function writeQueue(jobs: StoredJob[]): Promise<void> {
 }
 
 async function readDeadLetterCount(): Promise<number> {
+  return readDeadLetterCountFor(currentUserId);
+}
+
+async function readDeadLetterCountFor(userId: string | null): Promise<number> {
   try {
-    const raw = await AsyncStorage.getItem(deadLetterKey());
+    const raw = await AsyncStorage.getItem(deadLetterKey(userId));
     if (!raw) return 0;
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed.length : 0;
@@ -383,8 +405,10 @@ export function startOfflineQueueAutoFlush(): () => void {
     lastOnline = online;
   }, 15_000);
 
-  // tentativa inicial
-  void flush().catch(() => {});
+  // Tentativa inicial: so se ja houve bind explicito (auto-flush pode ter
+  // iniciado antes do AuthProvider resolver a sessao). Se ainda nao
+  // bind-ou, o proprio bindOfflineQueueToUser dispara um flush ao ser chamado.
+  if (bindCalled) void flush().catch(() => {});
 
   return () => {
     started = false;

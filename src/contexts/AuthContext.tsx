@@ -26,6 +26,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [operatorData, setOperatorData] = useState<Operator | null>(null);
   const [loading, setLoading] = useState(true);
   const mountedRef = useRef(true);
+  // Memoria fora do React para o handler de onAuthStateChange ler o
+  // operator id corrente sem re-criar listeners. Necessario para chamar
+  // markOperatorOffline em casos de expiracao de sessao (session=null
+  // sem o usuario ter chamado signOut explicito).
+  const lastOperatorIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -42,6 +47,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!mountedRef.current) return;
+      // Sessao perdida (logout, token expirou, refresh falhou): se ainda
+      // havia um operador ativo, marca offline antes do JWT desaparecer
+      // de vez. Sem isso, o dashboard mostra o operador como online
+      // eternamente quando a sessao expira em background.
+      if (!session?.user && lastOperatorIdRef.current) {
+        const opId = lastOperatorIdRef.current;
+        lastOperatorIdRef.current = null;
+        void markOperatorOffline(opId);
+      }
       setSession(session);
       // Cada usuario tem sua propria fila offline para nao misturar jobs
       // entre logins no mesmo aparelho.
@@ -60,7 +74,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (state !== 'active') return;
       supabase.auth.getSession().then(({ data: { session: s } }) => {
         if (!mountedRef.current) return;
+        // Mesmo tratamento que onAuthStateChange: se a sessao caiu enquanto
+        // o app estava em background, marca offline antes do JWT sumir.
+        if (!s?.user && lastOperatorIdRef.current) {
+          const opId = lastOperatorIdRef.current;
+          lastOperatorIdRef.current = null;
+          void markOperatorOffline(opId);
+        }
         setSession(s);
+        bindOfflineQueueToUser(s?.user?.id ?? null);
         if (s?.user) void fetchProfile(s.user.id);
       }).catch(() => { /* swallow */ });
     }
@@ -72,6 +94,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       appSub.remove();
     };
   }, []);
+
+  // Mantem o ref atualizado para que o handler de session=null (que nao
+  // re-cria com cada render) consiga marcar o operador offline.
+  useEffect(() => {
+    lastOperatorIdRef.current = operatorData?.id ?? null;
+  }, [operatorData]);
 
   async function fetchProfile(userId: string) {
     try {
@@ -131,6 +159,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // no dashboard ate o proximo login.
     if (operatorData?.id) {
       await markOperatorOffline(operatorData.id);
+      // Limpa o ref para o handler de onAuthStateChange (que vai disparar
+      // logo a seguir com session=null) nao re-chamar markOperatorOffline.
+      lastOperatorIdRef.current = null;
     }
     await supabase.auth.signOut();
     bindOfflineQueueToUser(null);

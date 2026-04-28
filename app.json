@@ -16,7 +16,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.checklist.app",
       "infoPlist": {
-        "UIBackgroundModes": ["location", "fetch"]
+        "UIBackgroundModes": ["location"]
       }
     },
     "android": {

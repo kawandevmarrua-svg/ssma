@@ -16,6 +16,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useKeepAwake } from 'expo-keep-awake';
 import { useAuth } from '../../src/contexts/AuthContext';
+import { usePendingFinishes } from '../../src/hooks/usePendingFinishes';
 import { supabase } from '../../src/lib/supabase';
 import { pickPhoto, uploadPhoto } from '../../src/lib/imageUtils';
 import { Activity } from '../../src/types/database';
@@ -60,6 +61,7 @@ const INITIAL_PREOP: PreOpAnswers = {
 export default function AtividadeScreen() {
   const { user, operatorData } = useAuth();
   useKeepAwake();
+  const pendingFinishes = usePendingFinishes();
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -230,13 +232,14 @@ export default function AtividadeScreen() {
   }
 
   function renderActivity({ item }: { item: Activity }) {
-    const inProgress = !item.end_time;
+    const isQueuedFinish = pendingFinishes.activityIds.has(item.id);
+    const inProgress = !item.end_time && !isQueuedFinish;
     return (
       <View style={[st.card, inProgress && st.ongoingCard]}>
         <View style={st.cardHeader}>
           <View style={st.headerLeft}>
             <Ionicons
-              name={inProgress ? 'time-outline' : 'checkmark-circle-outline'}
+              name={isQueuedFinish ? 'cloud-upload-outline' : inProgress ? 'time-outline' : 'checkmark-circle-outline'}
               size={14}
               color={colors.textSecondary}
             />
@@ -245,8 +248,8 @@ export default function AtividadeScreen() {
             </Text>
           </View>
           <Badge
-            label={inProgress ? 'EM ANDAMENTO' : 'FINALIZADA'}
-            variant={inProgress ? 'warning' : 'success'}
+            label={isQueuedFinish ? 'SINCRONIZANDO' : inProgress ? 'EM ANDAMENTO' : 'FINALIZADA'}
+            variant={isQueuedFinish ? 'warning' : inProgress ? 'warning' : 'success'}
             size="sm"
           />
         </View>

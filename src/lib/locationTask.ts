@@ -32,6 +32,16 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
     const operatorId = await SecureStore.getItemAsync(OPERATOR_ID_KEY);
     if (!operatorId) return;
 
+    // Quando o Android mata o app e acorda o JS so para rodar a task,
+    // o cliente Supabase eh re-instanciado e o JWT precisa ser carregado
+    // do SecureStore antes de qualquer chamada autenticada. Sem este
+    // await, as primeiras escritas vao sem Authorization e batem em RLS.
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      console.log('[LocationTask] sem sessao ativa, ignorando fix');
+      return;
+    }
+
     const derivedRaw = await SecureStore.getItemAsync(DERIVED_STATUS_KEY);
     const derived: DerivedStatusPayload = derivedRaw
       ? JSON.parse(derivedRaw)

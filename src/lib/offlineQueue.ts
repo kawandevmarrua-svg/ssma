@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Network from 'expo-network';
 import { AppState, AppStateStatus } from 'react-native';
 import { supabase } from './supabase';
+import { uploadQueuedPhoto } from './imageUtils';
 
 const QUEUE_KEY = 'marrua.offline.queue.v1';
 const MAX_ATTEMPTS = 8;
@@ -9,6 +10,7 @@ const MAX_ATTEMPTS = 8;
 export type JobKind =
   | 'updateChecklist'
   | 'updateActivity'
+  | 'updateActivityWithPhoto'
   | 'insertActivity'
   | 'tableUpsert';
 
@@ -17,9 +19,22 @@ export interface JobBase<K extends JobKind, P> {
   payload: P;
 }
 
+export interface QueuedPhoto {
+  localPath: string;
+  bucket: string;
+  storagePath: string;
+  field: string;
+  uploadedPath?: string; // preenchido apos upload bem-sucedido (idempotencia)
+}
+
 export type Job =
   | JobBase<'updateChecklist', { id: string; patch: Record<string, unknown> }>
   | JobBase<'updateActivity', { id: string; patch: Record<string, unknown> }>
+  | JobBase<'updateActivityWithPhoto', {
+      id: string;
+      patch: Record<string, unknown>;
+      photo: QueuedPhoto | null;
+    }>
   | JobBase<'insertActivity', Record<string, unknown>>
   | JobBase<'tableUpsert', { table: string; row: Record<string, unknown>; onConflict?: string }>;
 
@@ -33,6 +48,28 @@ export interface StoredJob {
 
 let inFlight = false;
 const subscribers = new Set<(size: number) => void>();
+const pendingFinishSubs = new Set<(state: PendingFinishState) => void>();
+
+export interface PendingFinishState {
+  checklistIds: Set<string>;
+  activityIds: Set<string>;
+}
+
+function derivePendingFinishes(jobs: StoredJob[]): PendingFinishState {
+  const checklistIds = new Set<string>();
+  const activityIds = new Set<string>();
+  for (const stored of jobs) {
+    const j = stored.job;
+    if (j.kind === 'updateChecklist' && j.payload.patch.status === 'completed') {
+      checklistIds.add(j.payload.id);
+    } else if (j.kind === 'updateActivity' && j.payload.patch.end_time) {
+      activityIds.add(j.payload.id);
+    } else if (j.kind === 'updateActivityWithPhoto' && j.payload.patch.end_time) {
+      activityIds.add(j.payload.id);
+    }
+  }
+  return { checklistIds, activityIds };
+}
 
 function genId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -52,12 +89,28 @@ async function readQueue(): Promise<StoredJob[]> {
 async function writeQueue(jobs: StoredJob[]): Promise<void> {
   await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(jobs));
   subscribers.forEach((cb) => cb(jobs.length));
+  if (pendingFinishSubs.size > 0) {
+    const state = derivePendingFinishes(jobs);
+    pendingFinishSubs.forEach((cb) => cb(state));
+  }
 }
 
 export function subscribeQueueSize(cb: (size: number) => void): () => void {
   subscribers.add(cb);
   void readQueue().then((q) => cb(q.length));
   return () => { subscribers.delete(cb); };
+}
+
+/**
+ * Notifica sempre que muda o conjunto de checklists/atividades com
+ * encerramento pendente na fila. Usado pelas telas de lista para
+ * tratar esses itens como "ja finalizados" (optimistic UI), evitando
+ * que o operador finalize 2x e duplique jobs.
+ */
+export function subscribePendingFinishes(cb: (state: PendingFinishState) => void): () => void {
+  pendingFinishSubs.add(cb);
+  void readQueue().then((q) => cb(derivePendingFinishes(q)));
+  return () => { pendingFinishSubs.delete(cb); };
 }
 
 export async function getQueueSize(): Promise<number> {
@@ -88,6 +141,30 @@ async function executeJob(job: Job): Promise<{ ok: boolean; error?: string }> {
         const { error } = await supabase
           .from('activities')
           .update(job.payload.patch as never)
+          .eq('id', job.payload.id);
+        return error ? { ok: false, error: error.message } : { ok: true };
+      }
+      case 'updateActivityWithPhoto': {
+        const { photo } = job.payload;
+        let photoUrl: string | null = null;
+        if (photo) {
+          if (photo.uploadedPath) {
+            photoUrl = photo.uploadedPath;
+          } else {
+            const r = await uploadQueuedPhoto(photo.localPath, photo.bucket, photo.storagePath);
+            if (!r.ok) return { ok: false, error: `upload foto: ${r.error}` };
+            photoUrl = r.uploadedPath ?? null;
+            // Memoiza no proprio job: se o update do DB falhar, o retry
+            // pula o re-upload (mutacao eh visivel ao caller pois o objeto
+            // job eh o mesmo armazenado na fila).
+            if (photoUrl) photo.uploadedPath = photoUrl;
+          }
+        }
+        const finalPatch: Record<string, unknown> = { ...job.payload.patch };
+        if (photo && photoUrl) finalPatch[photo.field] = photoUrl;
+        const { error } = await supabase
+          .from('activities')
+          .update(finalPatch as never)
           .eq('id', job.payload.id);
         return error ? { ok: false, error: error.message } : { ok: true };
       }

@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { pickPhoto, uploadPhoto } from '../lib/imageUtils';
+import { pickPhoto, persistPhotoForQueue } from '../lib/imageUtils';
 import { enqueueOrExecute } from '../lib/offlineQueue';
 import { Activity } from '../types/database';
 import { colors, spacing, radius, fontSize } from '../theme/colors';
@@ -50,14 +50,26 @@ export function FinishActivityModal({ activity, userId, onClose, onFinished }: P
     if (saving) return;
     if (!activity) return;
     setSaving(true);
-    let endPhotoPath: string | null = null;
+
+    // Foto eh sempre tratada via fila: copiamos para diretorio persistente
+    // (cache da camera pode ser limpo pelo OS) e o job faz upload + update
+    // atomicamente. Assim a foto nao se perde se estivermos offline.
+    let photoSpec = null;
     if (endPhotoUri && userId) {
-      endPhotoPath = await uploadPhoto(endPhotoUri, 'activity-photos', `${userId}/${activity.id}/end`);
+      const localPath = await persistPhotoForQueue(endPhotoUri, `activity-${activity.id}-end`);
+      if (localPath) {
+        photoSpec = {
+          localPath,
+          bucket: 'activity-photos',
+          storagePath: `${userId}/${activity.id}/end`,
+          field: 'end_photo_url',
+        };
+      }
     }
 
     const now = new Date().toISOString();
     const result = await enqueueOrExecute({
-      kind: 'updateActivity',
+      kind: 'updateActivityWithPhoto',
       payload: {
         id: activity.id,
         patch: {
@@ -67,8 +79,8 @@ export function FinishActivityModal({ activity, userId, onClose, onFinished }: P
           transit_start: now,
           transit_end: now,
           notes: endNotes.trim() || null,
-          end_photo_url: endPhotoPath,
         },
+        photo: photoSpec,
       },
     });
     setSaving(false);

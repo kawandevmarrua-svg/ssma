@@ -147,20 +147,18 @@ export function useLocationTracking({ operatorId }: Options) {
       } catch { /* ignore */ }
     }
 
-    async function startBackgroundUpdates() {
-      if (backgroundStartedRef.current) return;
+    async function startBackgroundUpdates(): Promise<boolean> {
       try {
+        if (await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME)) {
+          backgroundStartedRef.current = true;
+          return true;
+        }
+
         const { status: bgPerm } = await Location.requestBackgroundPermissionsAsync();
         if (bgPerm !== 'granted') {
           // Sem permissao "always" o app fica restrito ao foreground.
           // Nao alertamos novamente para nao incomodar a cada retomada.
-          return;
-        }
-
-        const already = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
-        if (already) {
-          backgroundStartedRef.current = true;
-          return;
+          return false;
         }
 
         await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
@@ -178,8 +176,10 @@ export function useLocationTracking({ operatorId }: Options) {
           } : undefined,
         });
         backgroundStartedRef.current = true;
+        return true;
       } catch (e) {
         console.log('[Location] falha ao iniciar background updates:', e);
+        return false;
       }
     }
 
@@ -226,9 +226,20 @@ export function useLocationTracking({ operatorId }: Options) {
         await refreshDerivedStatus();
         if (cancelled) return;
 
-        // Inicia background updates em paralelo (nao bloqueia o foreground).
-        void startBackgroundUpdates();
+        // O status precisa ser refrescado periodicamente em foreground para
+        // que a task de background tenha o contexto certo no SecureStore,
+        // independente de quem esta escrevendo a localizacao.
+        statusIntervalRef.current = setInterval(() => {
+          void refreshDerivedStatus().catch(() => { /* swallow */ });
+        }, STATUS_REFRESH_MS);
 
+        // Tenta usar a task de background. Se conseguir, ela cuida dos
+        // upserts mesmo em foreground — evita escrita duplicada.
+        const bgRunning = await startBackgroundUpdates();
+        if (cancelled) return;
+
+        // Garante um fix inicial assim que possivel para a UI/dashboard,
+        // independente do modo (background pode demorar a entregar o primeiro fix).
         const initial = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
         });
@@ -236,6 +247,12 @@ export function useLocationTracking({ operatorId }: Options) {
         lastFixRef.current = initial;
         await pushLocation(initial, derivedRef.current.status);
 
+        if (bgRunning) {
+          // Background ativo: nao precisamos de watcher/interval em foreground.
+          return;
+        }
+
+        // Fallback: sem permissao de background → mantem watcher de foreground.
         watcherRef.current = await Location.watchPositionAsync(
           {
             accuracy: Location.Accuracy.Balanced,
@@ -253,10 +270,6 @@ export function useLocationTracking({ operatorId }: Options) {
           if (!fix) return;
           void pushLocation(fix).catch(() => { /* swallow */ });
         }, HEARTBEAT_INTERVAL_MS);
-
-        statusIntervalRef.current = setInterval(() => {
-          void refreshDerivedStatus().catch(() => { /* swallow */ });
-        }, STATUS_REFRESH_MS);
       } catch (e) {
         console.log('[Location] Erro ao iniciar tracking:', e);
       }

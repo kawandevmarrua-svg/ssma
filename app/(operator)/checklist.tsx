@@ -28,6 +28,7 @@ import { colors, elevation, spacing, radius, fontSize } from '../../src/theme/co
 import { commonStyles } from '../../src/theme/commonStyles';
 import { Badge } from '../../src/components/ui';
 import { FinishChecklistModal } from '../../src/components/FinishChecklistModal';
+import { usePendingFinishes } from '../../src/hooks/usePendingFinishes';
 
 const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'heic', 'webp'];
 
@@ -52,6 +53,7 @@ export default function ChecklistScreen() {
   const { user, operatorData } = useAuth();
   // Mantem a tela acesa enquanto o operador esta preenchendo um checklist em campo.
   useKeepAwake();
+  const pendingFinishes = usePendingFinishes();
 
   // List
   const [checklists, setChecklists] = useState<ChecklistRow[]>([]);
@@ -857,11 +859,20 @@ export default function ChecklistScreen() {
         data={checklists}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => {
+          // Encerramento offline na fila: trata como ja finalizado (otimista),
+          // assim o operador nao tenta finalizar de novo e duplicar o job.
+          const isQueuedFinish = pendingFinishes.checklistIds.has(item.id);
           const isReleased = item.result === 'released';
-          const isPending = item.status === 'pending';
-          const variant = isPending ? 'warning' : isReleased ? 'success' : 'danger';
-          const label = isPending ? 'EM ANDAMENTO' : isReleased ? 'LIBERADO' : 'NÃO LIBERADO';
-          const icon = isPending ? 'time-outline' : isReleased ? 'checkmark-circle-outline' : 'close-circle-outline';
+          const isPending = item.status === 'pending' && !isQueuedFinish;
+          const variant = isQueuedFinish
+            ? 'warning'
+            : isPending ? 'warning' : isReleased ? 'success' : 'danger';
+          const label = isQueuedFinish
+            ? 'SINCRONIZANDO'
+            : isPending ? 'EM ANDAMENTO' : isReleased ? 'LIBERADO' : 'NÃO LIBERADO';
+          const icon = isQueuedFinish
+            ? 'cloud-upload-outline'
+            : isPending ? 'time-outline' : isReleased ? 'checkmark-circle-outline' : 'close-circle-outline';
           return (
             <View style={[st.listCard, isPending && st.pendingCard]}>
               <View style={st.listCardHeader}>

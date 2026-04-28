@@ -127,6 +127,19 @@ export function useLocationTracking({ operatorId }: Options) {
       } catch { /* ignore */ }
     }
 
+    function stopWatcher() {
+      watcherRef.current?.remove();
+      watcherRef.current = null;
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      if (statusIntervalRef.current) {
+        clearInterval(statusIntervalRef.current);
+        statusIntervalRef.current = null;
+      }
+    }
+
     async function start() {
       try {
         const { status: perm } = await Location.requestForegroundPermissionsAsync();
@@ -141,6 +154,9 @@ export function useLocationTracking({ operatorId }: Options) {
           return;
         }
         if (cancelled) return;
+
+        // Garante que nao havera watcher/intervals duplicados ao reiniciar.
+        stopWatcher();
 
         await refreshDerivedStatus();
         if (cancelled) return;
@@ -180,11 +196,12 @@ export function useLocationTracking({ operatorId }: Options) {
 
     function handleAppStateChange(state: AppStateStatus) {
       if (state === 'active') {
-        void refreshDerivedStatus();
-        const fix = lastFixRef.current;
-        if (fix) void pushLocation(fix, derivedRef.current.status).catch(() => { /* swallow */ });
+        // O watcher do Expo morre quando o app e suspenso pelo iOS/Android.
+        // Reiniciar do zero garante heartbeat continuo apos desbloquear a tela.
+        void start();
       } else if (state === 'background') {
         // 'inactive' nao conta — em iOS toda interrupcao breve dispara isso
+        stopWatcher();
         void markOffline();
       }
     }
@@ -195,16 +212,7 @@ export function useLocationTracking({ operatorId }: Options) {
     return () => {
       cancelled = true;
       sub.remove();
-      watcherRef.current?.remove();
-      watcherRef.current = null;
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      if (statusIntervalRef.current) {
-        clearInterval(statusIntervalRef.current);
-        statusIntervalRef.current = null;
-      }
+      stopWatcher();
       void markOffline();
     };
   }, [operatorId]);

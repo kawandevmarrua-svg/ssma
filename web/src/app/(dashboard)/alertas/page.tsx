@@ -128,24 +128,57 @@ export default function AlertasPage() {
 
     const { data: userData } = await supabase.auth.getUser();
 
-    const { error } = await supabase.from('safety_alerts').insert({
-      title: title.trim(),
-      message: message.trim(),
-      severity,
-      operator_id: operatorId || null,
-      created_by: userData.user?.id ?? null,
-      read: false,
-    });
+    const { data: inserted, error } = await supabase
+      .from('safety_alerts')
+      .insert({
+        title: title.trim(),
+        message: message.trim(),
+        severity,
+        operator_id: operatorId || null,
+        created_by: userData.user?.id ?? null,
+        read: false,
+      })
+      .select('id, operator_id')
+      .single();
 
-    setSending(false);
-
-    if (error) {
-      setFormError(error.message);
+    if (error || !inserted) {
+      setSending(false);
+      setFormError(error?.message ?? 'Falha ao criar alerta.');
       return;
     }
 
+    const { data: pushData, error: pushError } = await supabase.functions.invoke(
+      'notify-blocking-item',
+      {
+        body: {
+          type: 'custom',
+          alert_id: inserted.id,
+          operator_id: inserted.operator_id,
+        },
+      },
+    );
+
+    setSending(false);
     setShowModal(false);
     await loadAlerts();
+
+    if (pushError) {
+      setFeedback({
+        type: 'err',
+        text: `Alerta criado, mas falha ao enviar push: ${pushError.message}`,
+      });
+    } else {
+      const count = (pushData as { tokens_count?: number } | null)?.tokens_count ?? 0;
+      setFeedback({
+        type: count > 0 ? 'ok' : 'err',
+        text:
+          count > 0
+            ? `Alerta enviado por push para ${count} dispositivo(s).`
+            : 'Alerta criado, mas nenhum dispositivo com push token cadastrado.',
+      });
+    }
+
+    setTimeout(() => setFeedback(null), 4000);
   }
 
   async function handleDelete(alert: SafetyAlert) {

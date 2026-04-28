@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TextInput,
   TouchableOpacity,
@@ -18,6 +17,7 @@ import { pickPhoto, uploadPhoto } from '../lib/imageUtils';
 import { Activity } from '../types/database';
 import { colors, spacing, radius, fontSize } from '../theme/colors';
 import { commonStyles } from '../theme/commonStyles';
+import { Button, Text } from './ui';
 
 interface Props {
   activity: Activity | null;
@@ -84,57 +84,97 @@ export function FinishActivityModal({ activity, userId, onClose, onFinished }: P
             contentContainerStyle={{ paddingBottom: spacing.xl }}
           >
             <View style={commonStyles.modalHeader}>
-              <Text style={commonStyles.modalTitle}>Finalizar Atividade</Text>
-              <TouchableOpacity onPress={handleClose}>
-                <Ionicons name="close" size={24} color={colors.textSecondary} />
+              <Text variant="h2">Finalizar atividade</Text>
+              <TouchableOpacity onPress={handleClose} hitSlop={8}>
+                <Ionicons name="close" size={22} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
-            {activity?.equipment_tag && (
-              <Text style={st.context}>{activity.description || 'Atividade'} {activity.equipment_tag ? `· TAG: ${activity.equipment_tag}` : ''}</Text>
+            {activity && (
+              <View style={st.context}>
+                <Text variant="bodyStrong" numberOfLines={2}>
+                  {activity.description || 'Atividade'}
+                </Text>
+                {activity.equipment_tag && (
+                  <Text variant="caption" tone="muted" style={{ marginTop: 2 }}>
+                    TAG: {activity.equipment_tag}
+                  </Text>
+                )}
+              </View>
             )}
 
             <TouchableOpacity
               style={st.photoPickerFull}
               onPress={async () => { const uri = await pickPhoto(); if (uri) setEndPhotoUri(uri); }}
             >
-              {endPhotoUri
-                ? <Image source={{ uri: endPhotoUri }} style={st.photoPreviewFull} />
-                : <><Ionicons name="camera" size={32} color={colors.textLight} /><Text style={st.photoLabel}>Foto de Termino</Text></>
-              }
+              {endPhotoUri ? (
+                <Image source={{ uri: endPhotoUri }} style={st.photoPreviewFull} />
+              ) : (
+                <>
+                  <Ionicons name="camera-outline" size={28} color={colors.textSecondary} />
+                  <Text variant="caption" tone="muted" style={{ marginTop: spacing.xs, fontWeight: '500' }}>
+                    Foto de término
+                  </Text>
+                </>
+              )}
             </TouchableOpacity>
 
             <View style={commonStyles.inputGroup}>
-              <Text style={commonStyles.label}>Houve interferencia?</Text>
+              <Text style={commonStyles.label}>Houve interferência?</Text>
               <View style={st.toggleRow}>
-                <TouchableOpacity style={[st.toggleBtn, hadInterference && st.toggleYes]} onPress={() => setHadInterference(true)}>
-                  <Text style={[st.toggleText, hadInterference && st.toggleTextActive]}>Sim</Text>
+                <TouchableOpacity
+                  style={hadInterference ? [st.toggleBtn, st.toggleYes] : st.toggleBtn}
+                  onPress={() => setHadInterference(true)}
+                >
+                  <Text style={hadInterference ? [st.toggleText, st.toggleTextActive] : st.toggleText}>Sim</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[st.toggleBtn, !hadInterference && st.toggleNo]} onPress={() => setHadInterference(false)}>
-                  <Text style={[st.toggleText, !hadInterference && st.toggleTextActive]}>Nao</Text>
+                <TouchableOpacity
+                  style={!hadInterference ? [st.toggleBtn, st.toggleNo] : st.toggleBtn}
+                  onPress={() => setHadInterference(false)}
+                >
+                  <Text style={!hadInterference ? [st.toggleText, st.toggleTextActive] : st.toggleText}>Não</Text>
                 </TouchableOpacity>
               </View>
             </View>
 
             {hadInterference && (
               <View style={commonStyles.inputGroup}>
-                <Text style={commonStyles.label}>Detalhes da interferencia</Text>
-                <TextInput style={[commonStyles.input, commonStyles.textArea]} placeholder="Descreva a interferencia..." placeholderTextColor={colors.textLight} value={interferenceNotes} onChangeText={setInterferenceNotes} multiline numberOfLines={3} />
+                <Text style={commonStyles.label}>Detalhes da interferência</Text>
+                <TextInput
+                  style={[commonStyles.input, commonStyles.textArea]}
+                  placeholder="Descreva a interferência..."
+                  placeholderTextColor={colors.textLight}
+                  value={interferenceNotes}
+                  onChangeText={setInterferenceNotes}
+                  multiline
+                  numberOfLines={3}
+                />
               </View>
             )}
 
             <View style={commonStyles.inputGroup}>
-              <Text style={commonStyles.label}>Observacoes</Text>
-              <TextInput style={[commonStyles.input, commonStyles.textArea]} placeholder="Anomalias que impactaram..." placeholderTextColor={colors.textLight} value={endNotes} onChangeText={setEndNotes} multiline numberOfLines={3} />
+              <Text style={commonStyles.label}>Observações</Text>
+              <TextInput
+                style={[commonStyles.input, commonStyles.textArea]}
+                placeholder="Anomalias que impactaram..."
+                placeholderTextColor={colors.textLight}
+                value={endNotes}
+                onChangeText={setEndNotes}
+                multiline
+                numberOfLines={3}
+              />
             </View>
 
-            <TouchableOpacity
-              style={[commonStyles.saveButton, { marginBottom: spacing.lg }, saving && commonStyles.buttonDisabled]}
-              onPress={handleEnd}
+            <Button
+              label={saving ? 'Finalizando...' : 'Finalizar atividade'}
+              variant="primary"
+              size="lg"
+              fullWidth
+              loading={saving}
               disabled={saving}
-            >
-              <Text style={commonStyles.saveButtonText}>{saving ? 'Finalizando...' : 'Finalizar Atividade'}</Text>
-            </TouchableOpacity>
+              onPress={handleEnd}
+              style={{ marginBottom: spacing.lg }}
+            />
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
@@ -143,21 +183,39 @@ export function FinishActivityModal({ activity, userId, onClose, onFinished }: P
 }
 
 const st = StyleSheet.create({
-  context: { fontSize: fontSize.sm, color: colors.textSecondary, marginBottom: spacing.md },
-  photoPickerFull: {
-    height: 120, backgroundColor: colors.inputBg, borderWidth: 1,
-    borderColor: colors.border, borderRadius: radius.md, borderStyle: 'dashed',
-    justifyContent: 'center', alignItems: 'center', marginBottom: spacing.md,
+  context: {
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    marginBottom: spacing.md,
   },
-  photoPreviewFull: { width: '100%', height: '100%', borderRadius: radius.md },
-  photoLabel: { fontSize: fontSize.xs, color: colors.textLight, marginTop: spacing.xs },
+  photoPickerFull: {
+    height: 120,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+    overflow: 'hidden',
+  },
+  photoPreviewFull: { width: '100%', height: '100%' },
   toggleRow: { flexDirection: 'row', gap: spacing.sm },
   toggleBtn: {
-    flex: 1, paddingVertical: spacing.sm, borderRadius: radius.sm,
-    borderWidth: 1, borderColor: colors.border, alignItems: 'center',
+    flex: 1,
+    paddingVertical: spacing.sm + 2,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
   },
   toggleYes: { backgroundColor: colors.warning, borderColor: colors.warning },
   toggleNo: { backgroundColor: colors.success, borderColor: colors.success },
-  toggleText: { fontSize: fontSize.sm, fontWeight: '600', color: colors.textSecondary },
+  toggleText: { fontSize: fontSize.sm, fontWeight: '700', color: colors.textSecondary },
   toggleTextActive: { color: colors.white },
 });

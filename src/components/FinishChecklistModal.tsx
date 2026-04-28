@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TextInput,
   TouchableOpacity,
@@ -15,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { colors, spacing, radius, fontSize } from '../theme/colors';
 import { commonStyles } from '../theme/commonStyles';
+import { Button, Text } from './ui';
 
 interface PendingChecklist {
   id: string;
@@ -87,40 +87,45 @@ export function FinishChecklistModal({ checklist, userId, onClose, onFinished }:
             contentContainerStyle={{ paddingBottom: spacing.xl }}
           >
             <View style={commonStyles.modalHeader}>
-              <Text style={commonStyles.modalTitle}>Finalizar Checklist</Text>
-              <TouchableOpacity onPress={handleClose}>
-                <Ionicons name="close" size={24} color={colors.textSecondary} />
+              <Text variant="h2">Finalizar checklist</Text>
+              <TouchableOpacity onPress={handleClose} hitSlop={8}>
+                <Ionicons name="close" size={22} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
-            <Text style={st.context}>
-              {checklist?.machine_name}{checklist?.tag ? ` · TAG: ${checklist.tag}` : ''}
-            </Text>
+            <View style={st.context}>
+              <Text variant="bodyStrong">{checklist?.machine_name}</Text>
+              {checklist?.tag && (
+                <Text variant="caption" tone="muted" style={{ marginTop: 2 }}>
+                  TAG: {checklist.tag}
+                </Text>
+              )}
+            </View>
 
             <View style={commonStyles.inputGroup}>
-              <Text style={commonStyles.label}>Houve alguma interferencia?</Text>
+              <Text style={commonStyles.label}>Houve alguma interferência?</Text>
               <View style={st.toggleRow}>
                 <TouchableOpacity
-                  style={[st.toggleBtn, hadInterference === true && st.toggleYes]}
+                  style={hadInterference === true ? [st.toggleBtn, st.toggleYes] : st.toggleBtn}
                   onPress={() => setHadInterference(true)}
                 >
-                  <Text style={[st.toggleText, hadInterference === true && st.toggleTextActive]}>Sim</Text>
+                  <Text style={hadInterference === true ? [st.toggleText, st.toggleTextActive] : st.toggleText}>Sim</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[st.toggleBtn, hadInterference === false && st.toggleNo]}
+                  style={hadInterference === false ? [st.toggleBtn, st.toggleNo] : st.toggleBtn}
                   onPress={() => { setHadInterference(false); setInterferenceNotes(''); }}
                 >
-                  <Text style={[st.toggleText, hadInterference === false && st.toggleTextActive]}>Nao</Text>
+                  <Text style={hadInterference === false ? [st.toggleText, st.toggleTextActive] : st.toggleText}>Não</Text>
                 </TouchableOpacity>
               </View>
             </View>
 
             {hadInterference === true && (
               <View style={commonStyles.inputGroup}>
-                <Text style={commonStyles.label}>Detalhes da interferencia *</Text>
+                <Text style={commonStyles.label}>Detalhes da interferência *</Text>
                 <TextInput
                   style={[commonStyles.input, commonStyles.textArea]}
-                  placeholder="Descreva a interferencia..."
+                  placeholder="Descreva a interferência..."
                   placeholderTextColor={colors.textLight}
                   value={interferenceNotes}
                   onChangeText={setInterferenceNotes}
@@ -131,17 +136,28 @@ export function FinishChecklistModal({ checklist, userId, onClose, onFinished }:
             )}
 
             <View style={commonStyles.inputGroup}>
-              <Text style={commonStyles.label}>Observacao de encerramento</Text>
-              <TextInput style={[commonStyles.input, commonStyles.textArea]} placeholder="Observacao sobre o encerramento do checklist..." placeholderTextColor={colors.textLight} value={endNotes} onChangeText={setEndNotes} multiline numberOfLines={3} />
+              <Text style={commonStyles.label}>Observação de encerramento</Text>
+              <TextInput
+                style={[commonStyles.input, commonStyles.textArea]}
+                placeholder="Observação sobre o encerramento..."
+                placeholderTextColor={colors.textLight}
+                value={endNotes}
+                onChangeText={setEndNotes}
+                multiline
+                numberOfLines={3}
+              />
             </View>
 
-            <TouchableOpacity
-              style={[commonStyles.saveButton, { marginBottom: spacing.lg }, saving && commonStyles.buttonDisabled]}
-              onPress={handleEnd}
+            <Button
+              label={saving ? 'Finalizando...' : 'Finalizar checklist'}
+              variant="primary"
+              size="lg"
+              fullWidth
+              loading={saving}
               disabled={saving}
-            >
-              <Text style={commonStyles.saveButtonText}>{saving ? 'Finalizando...' : 'Finalizar Checklist'}</Text>
-            </TouchableOpacity>
+              onPress={handleEnd}
+              style={{ marginBottom: spacing.lg }}
+            />
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
@@ -150,14 +166,26 @@ export function FinishChecklistModal({ checklist, userId, onClose, onFinished }:
 }
 
 const st = StyleSheet.create({
-  context: { fontSize: fontSize.sm, color: colors.textSecondary, marginBottom: spacing.md },
+  context: {
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
   toggleRow: { flexDirection: 'row', gap: spacing.sm },
   toggleBtn: {
-    flex: 1, paddingVertical: spacing.sm, borderRadius: radius.sm,
-    borderWidth: 1, borderColor: colors.border, alignItems: 'center',
+    flex: 1,
+    paddingVertical: spacing.sm + 2,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
   },
   toggleYes: { backgroundColor: colors.warning, borderColor: colors.warning },
   toggleNo: { backgroundColor: colors.success, borderColor: colors.success },
-  toggleText: { fontSize: fontSize.sm, fontWeight: '600', color: colors.textSecondary },
+  toggleText: { fontSize: fontSize.sm, fontWeight: '700', color: colors.textSecondary },
   toggleTextActive: { color: colors.white },
 });

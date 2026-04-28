@@ -7,27 +7,26 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
-  Text,
-  TouchableOpacity,
   View,
 } from "react-native";
-
-const SCREEN_HEIGHT = Dimensions.get("window").height;
 import { useAuth } from "../../src/contexts/AuthContext";
 import { supabase } from "../../src/lib/supabase";
-import { colors, fontSize, radius, spacing } from "../../src/theme/colors";
+import { colors, elevation, radius, spacing } from "../../src/theme/colors";
+import { StatCard, Text } from "../../src/components/ui";
+
+const SCREEN_HEIGHT = Dimensions.get("window").height;
 
 const SAFETY_TIPS = [
-  { icon: "shield-checkmark" as const, text: "Sempre realize a pre-operacao antes de iniciar qualquer atividade." },
-  { icon: "warning" as const, text: "EPIs sao obrigatorios em todas as areas operacionais." },
+  { icon: "shield-checkmark" as const, text: "Sempre realize a pré-operação antes de iniciar qualquer atividade." },
+  { icon: "warning" as const, text: "EPIs são obrigatórios em todas as áreas operacionais." },
   { icon: "eye" as const, text: "Observe o ambiente ao redor antes de operar qualquer equipamento." },
-  { icon: "hand-left" as const, text: "Na duvida, pare! Seguranca sempre em primeiro lugar." },
-  { icon: "megaphone" as const, text: "Comunique qualquer condicao insegura imediatamente ao seu gestor." },
-  { icon: "fitness" as const, text: "Mantenha-se hidratado e faca pausas regulares durante a jornada." },
-  { icon: "alert-circle" as const, text: "Verifique sinalizacoes e isolamentos antes de acessar areas restritas." },
+  { icon: "hand-left" as const, text: "Na dúvida, pare! Segurança sempre em primeiro lugar." },
+  { icon: "megaphone" as const, text: "Comunique qualquer condição insegura imediatamente ao seu gestor." },
+  { icon: "fitness" as const, text: "Mantenha-se hidratado e faça pausas regulares durante a jornada." },
+  { icon: "alert-circle" as const, text: "Verifique sinalizações e isolamentos antes de acessar áreas restritas." },
   { icon: "construct" as const, text: "Equipamento com defeito deve ser interditado e reportado." },
-  { icon: "people" as const, text: "Trabalho em altura exige autorizacao e uso de cinto de seguranca." },
-  { icon: "flash" as const, text: "Desligue e bloqueie equipamentos antes de qualquer manutencao." },
+  { icon: "people" as const, text: "Trabalho em altura exige autorização e uso de cinto de segurança." },
+  { icon: "flash" as const, text: "Desligue e bloqueie equipamentos antes de qualquer manutenção." },
 ];
 
 export default function AdminDashboard() {
@@ -43,22 +42,21 @@ export default function AdminDashboard() {
 
   const today = new Date().toISOString().split("T")[0];
 
-  // Auto-rotate tips with fade animation
   useEffect(() => {
     const interval = setInterval(() => {
       Animated.timing(fadeAnim, {
         toValue: 0,
-        duration: 400,
+        duration: 350,
         useNativeDriver: true,
       }).start(() => {
         setTipIndex((prev) => (prev + 1) % SAFETY_TIPS.length);
         Animated.timing(fadeAnim, {
           toValue: 1,
-          duration: 400,
+          duration: 350,
           useNativeDriver: true,
         }).start();
       });
-    }, 5000);
+    }, 6000);
     return () => clearInterval(interval);
   }, [fadeAnim]);
 
@@ -113,16 +111,26 @@ export default function AdminDashboard() {
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
       }
+      showsVerticalScrollIndicator={false}
     >
-      {/* Safety tips banner */}
+      {/* Tips banner */}
       <View style={styles.tipsContainer}>
         <View style={styles.tipsHeader}>
-          <Ionicons name="shield-checkmark" size={20} color={colors.white} />
-          <Text style={styles.tipsTitle}>Dica de Seguranca</Text>
+          <View style={styles.tipBadge}>
+            <Ionicons name="shield-checkmark" size={14} color={colors.white} />
+          </View>
+          <Text variant="micro" tone="inverse">DICA DE SEGURANÇA</Text>
         </View>
-        <Animated.View style={[styles.tipCard, { opacity: fadeAnim }]}>
-          <Ionicons name={SAFETY_TIPS[tipIndex].icon} size={56} color={colors.white} style={styles.tipIcon} />
-          <Text style={styles.tipText}>{SAFETY_TIPS[tipIndex].text}</Text>
+        <Animated.View style={[styles.tipBody, { opacity: fadeAnim }]}>
+          <Ionicons
+            name={SAFETY_TIPS[tipIndex].icon}
+            size={48}
+            color={colors.white}
+            style={{ opacity: 0.9, marginBottom: spacing.md }}
+          />
+          <Text variant="h2" tone="inverse" align="center" style={styles.tipText}>
+            {SAFETY_TIPS[tipIndex].text}
+          </Text>
         </Animated.View>
         <View style={styles.dots}>
           {SAFETY_TIPS.map((_, i) => (
@@ -133,155 +141,81 @@ export default function AdminDashboard() {
 
       {/* Stats */}
       <View style={styles.statsRow}>
-        <TouchableOpacity
-          style={styles.statCard}
+        <StatCard
+          icon="checkbox-outline"
+          value={stats.checklistsToday}
+          label="Checklists hoje"
+          tone="primary"
           onPress={() => router.push("/(admin)/checklists")}
-        >
-          <Ionicons name="checkbox" size={28} color={colors.primary} />
-          <Text style={styles.statNumber}>{stats.checklistsToday}</Text>
-          <Text style={styles.statLabel}>Checklists Hoje</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.statCard}
+        />
+        <StatCard
+          icon="construct-outline"
+          value={stats.activitiesToday}
+          label="Atividades hoje"
+          tone="neutral"
           onPress={() => router.push("/(admin)/activities")}
-        >
-          <Ionicons name="construct" size={28} color={colors.success} />
-          <Text style={styles.statNumber}>{stats.activitiesToday}</Text>
-          <Text style={styles.statLabel}>Atividades Hoje</Text>
-        </TouchableOpacity>
+        />
       </View>
-
-      {/* Acoes Rapidas */}
-      <Text style={styles.sectionTitle}>Acoes Rapidas</Text>
-
-      <TouchableOpacity style={styles.actionCard} onPress={() => router.push("/(admin)/checklists")}>
-        <View style={[styles.actionIcon, { backgroundColor: colors.primary + "20" }]}>
-          <Ionicons name="clipboard" size={24} color={colors.primary} />
-        </View>
-        <View style={styles.actionText}>
-          <Text style={styles.actionTitle}>Novo Checklist Pre-Uso</Text>
-          <Text style={styles.actionSub}>Inspecionar equipamento antes do uso</Text>
-        </View>
-        <Ionicons name="chevron-forward" size={20} color={colors.textLight} />
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.actionCard} onPress={() => router.push("/(admin)/activities")}>
-        <View style={[styles.actionIcon, { backgroundColor: colors.success + "20" }]}>
-          <Ionicons name="add-circle" size={24} color={colors.success} />
-        </View>
-        <View style={styles.actionText}>
-          <Text style={styles.actionTitle}>Registrar Atividade</Text>
-          <Text style={styles.actionSub}>Iniciar nova atividade do dia</Text>
-        </View>
-        <Ionicons name="chevron-forward" size={20} color={colors.textLight} />
-      </TouchableOpacity>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, paddingBottom: spacing.xl },
+  content: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing["3xl"],
+  },
 
-  // Safety tips
+  // Tips
   tipsContainer: {
     backgroundColor: colors.primary,
-    borderRadius: radius.lg,
+    borderRadius: radius["2xl"],
+    padding: spacing.lg,
     marginBottom: spacing.lg,
-    overflow: "hidden",
     height: SCREEN_HEIGHT * 0.5,
-    justifyContent: "center",
+    ...elevation.brand,
   },
   tipsHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
+    marginBottom: spacing.md,
   },
-  tipsTitle: {
-    fontSize: fontSize.base,
-    fontWeight: "800",
-    color: colors.white,
-    textTransform: "uppercase",
-    letterSpacing: 1,
+  tipBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: radius.full,
+    backgroundColor: "rgba(255,255,255,0.25)",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  tipCard: {
+  tipBody: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: spacing.md,
   },
-  tipIcon: { marginBottom: spacing.lg, opacity: 0.85 },
-  tipText: {
-    fontSize: fontSize.xl,
-    color: colors.white,
-    fontWeight: "800",
-    lineHeight: 34,
-    textAlign: "center",
-  },
+  tipText: { lineHeight: 30 },
   dots: {
     flexDirection: "row",
     justifyContent: "center",
-    paddingBottom: spacing.md,
-    gap: spacing.xs,
+    marginTop: spacing.md,
+    gap: 6,
   },
   dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: colors.white,
-    opacity: 0.3,
+    opacity: 0.35,
   },
-  dotActive: { opacity: 1, width: 24 },
-
-  // Section
-  sectionTitle: { fontSize: fontSize.lg, fontWeight: "700", color: colors.text, marginBottom: spacing.md, marginTop: spacing.sm },
-
-  // Action cards
-  actionCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: spacing.sm,
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  actionIcon: { width: 44, height: 44, borderRadius: radius.sm, justifyContent: "center", alignItems: "center" },
-  actionText: { flex: 1, marginLeft: spacing.md },
-  actionTitle: { fontSize: fontSize.base, fontWeight: "600", color: colors.text },
-  actionSub: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2 },
+  dotActive: { opacity: 1, width: 18 },
 
   // Stats
-  statsRow: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.sm },
-  statCard: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    alignItems: "center",
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  statNumber: {
-    fontSize: fontSize.xl,
-    fontWeight: "800",
-    color: colors.text,
-    marginTop: spacing.xs,
-  },
-  statLabel: {
-    fontSize: fontSize.xs,
-    color: colors.textSecondary,
-    marginTop: 2,
-    textAlign: "center",
+  statsRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
   },
 });

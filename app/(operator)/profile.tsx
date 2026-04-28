@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, StyleSheet, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { supabase } from '../../src/lib/supabase';
 import { OperatorScore } from '../../src/types/database';
-import { colors, spacing, radius, fontSize } from '../../src/theme/colors';
+import { colors, elevation, radius, spacing } from '../../src/theme/colors';
+import { Avatar, Button, Card, Text } from '../../src/components/ui';
 
 export default function OperatorProfileScreen() {
   const { profile, operatorData, signOut } = useAuth();
@@ -22,142 +23,186 @@ export default function OperatorProfileScreen() {
       .then(({ data }) => setScore(data));
   }, [operatorData]);
 
+  const name = profile?.full_name || operatorData?.name || 'Operador';
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.card}>
-        <View style={styles.avatarContainer}>
-          <View style={styles.avatar}>
-            <Ionicons name="person" size={40} color={colors.primary} />
+      {/* Profile card */}
+      <Card variant="elevated" padding="lg">
+        <View style={styles.avatarRow}>
+          <Avatar name={name} size="xl" />
+          <View style={styles.identity}>
+            <Text variant="h2" numberOfLines={1}>{name}</Text>
+            <View style={styles.metaRow}>
+              <Text variant="caption" tone="muted">Operador ·</Text>
+              <Text variant="caption" tone="primary" style={styles.metaLink}>
+                {operatorData?.role || 'Sem função'}
+              </Text>
+            </View>
           </View>
-          <Text style={styles.name}>{profile?.full_name || operatorData?.name || 'Operador'}</Text>
-          <Text style={styles.role}>{operatorData?.role || 'Operador'}</Text>
         </View>
 
-        <View style={styles.infoSection}>
-          {profile?.email && (
-            <View style={styles.infoRow}>
-              <Ionicons name="mail-outline" size={20} color={colors.textSecondary} />
-              <Text style={styles.infoText}>{profile.email}</Text>
-            </View>
-          )}
-          {operatorData?.phone && (
-            <View style={styles.infoRow}>
-              <Ionicons name="call-outline" size={20} color={colors.textSecondary} />
-              <Text style={styles.infoText}>{operatorData.phone}</Text>
-            </View>
-          )}
-        </View>
-      </View>
+        {(profile?.email || operatorData?.phone) && (
+          <View style={styles.infoSection}>
+            {profile?.email && (
+              <View style={styles.infoRow}>
+                <Ionicons name="mail-outline" size={16} color={colors.textSecondary} />
+                <Text variant="bodyMedium">{profile.email}</Text>
+              </View>
+            )}
+            {operatorData?.phone && (
+              <View style={styles.infoRow}>
+                <Ionicons name="call-outline" size={16} color={colors.textSecondary} />
+                <Text variant="bodyMedium">{operatorData.phone}</Text>
+              </View>
+            )}
+          </View>
+        )}
+      </Card>
 
+      {/* Score */}
       {score && (
         <View style={styles.scoreCard}>
-          <Text style={styles.scoreTitle}>Indicadores do Mes</Text>
+          <View style={styles.cardHeader}>
+            <View style={styles.cardHeaderLeft}>
+              <Ionicons name="stats-chart-outline" size={14} color={colors.textSecondary} />
+              <Text variant="captionStrong" tone="muted">INDICADORES DO MÊS</Text>
+            </View>
+          </View>
+
           <View style={styles.scoreCircle}>
             <Text style={styles.scoreValue}>{score.score.toFixed(0)}</Text>
-            <Text style={styles.scoreLabel}>Score</Text>
+            <Text variant="caption" tone="muted">Score</Text>
           </View>
-          <View style={styles.scoreRow}>
-            <View style={styles.scoreItem}>
-              <Text style={styles.scoreItemValue}>{score.checklists_done}/{score.checklists_total}</Text>
-              <Text style={styles.scoreItemLabel}>Checklists</Text>
-            </View>
-            <View style={styles.scoreItem}>
-              <Text style={styles.scoreItemValue}>{score.inspections_done}/{score.inspections_total}</Text>
-              <Text style={styles.scoreItemLabel}>Inspecoes</Text>
-            </View>
-          </View>
-          <View style={styles.scoreRow}>
-            <View style={styles.scoreItem}>
-              <Text style={styles.scoreItemValue}>{score.deviations_count}</Text>
-              <Text style={styles.scoreItemLabel}>Desvios</Text>
-            </View>
-            <View style={styles.scoreItem}>
-              <Text style={styles.scoreItemValue}>{score.interventions_count}</Text>
-              <Text style={styles.scoreItemLabel}>Intervencoes</Text>
-            </View>
+
+          <View style={styles.scoreGrid}>
+            <ScoreItem
+              label="Checklists"
+              value={`${score.checklists_done}/${score.checklists_total}`}
+            />
+            <ScoreItem
+              label="Inspeções"
+              value={`${score.inspections_done}/${score.inspections_total}`}
+            />
+            <ScoreItem label="Desvios" value={score.deviations_count} />
+            <ScoreItem label="Intervenções" value={score.interventions_count} />
           </View>
         </View>
       )}
 
-      <TouchableOpacity style={styles.logoutBtn} onPress={signOut}>
-        <Ionicons name="log-out-outline" size={22} color={colors.danger} />
-        <Text style={styles.logoutText}>Sair</Text>
-      </TouchableOpacity>
+      {/* Logout */}
+      <Button
+        label="Sair"
+        icon="log-out-outline"
+        variant="secondary"
+        size="lg"
+        fullWidth
+        onPress={signOut}
+        style={styles.logoutBtn}
+      />
     </ScrollView>
+  );
+}
+
+function ScoreItem({ label, value }: { label: string; value: string | number }) {
+  return (
+    <View style={styles.scoreItem}>
+      <Text style={styles.scoreItemValue}>{value}</Text>
+      <Text variant="caption" tone="muted">{label}</Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  avatarContainer: { alignItems: 'center', marginBottom: spacing.lg },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: colors.primaryLight + '20',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  name: { fontSize: fontSize.xl, fontWeight: '800', color: colors.text },
-  role: { fontSize: fontSize.sm, color: colors.textSecondary, marginTop: spacing.xs },
-  infoSection: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.md },
-  infoRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.sm, gap: spacing.md },
-  infoText: { fontSize: fontSize.base, color: colors.text },
-  scoreCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    marginTop: spacing.md,
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  scoreTitle: { fontSize: fontSize.lg, fontWeight: '700', color: colors.text, marginBottom: spacing.md },
-  scoreCircle: {
-    alignItems: 'center',
-    alignSelf: 'center',
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: colors.primary + '15',
-    justifyContent: 'center',
-    marginBottom: spacing.md,
-  },
-  scoreValue: { fontSize: fontSize['2xl'], fontWeight: '800', color: colors.primary },
-  scoreLabel: { fontSize: fontSize.xs, color: colors.textSecondary },
-  scoreRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm },
-  scoreItem: {
-    flex: 1,
-    backgroundColor: colors.inputBg,
-    borderRadius: radius.sm,
-    padding: spacing.sm,
-    alignItems: 'center',
-  },
-  scoreItemValue: { fontSize: fontSize.lg, fontWeight: '700', color: colors.text },
-  scoreItemLabel: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2 },
-  logoutBtn: {
+  content: { padding: spacing.md, paddingBottom: spacing['2xl'] },
+
+  avatarRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.dangerLight,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginTop: spacing.lg,
+    gap: spacing.md,
+  },
+  identity: { flex: 1 },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 4,
+    marginTop: 2,
+  },
+  metaLink: { fontWeight: '600' },
+  infoSection: {
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
     gap: spacing.sm,
   },
-  logoutText: { fontSize: fontSize.base, fontWeight: '700', color: colors.danger },
+  infoRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+
+  // Score card
+  scoreCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    marginTop: spacing.md,
+    ...elevation.sm,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.lg,
+  },
+  cardHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  scoreCircle: {
+    alignSelf: 'center',
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: colors.primarySurface,
+    borderWidth: 1,
+    borderColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.lg,
+  },
+  scoreValue: {
+    fontSize: 30,
+    lineHeight: 34,
+    fontWeight: '800',
+    color: colors.primary,
+    letterSpacing: -0.5,
+  },
+  scoreGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  scoreItem: {
+    flexBasis: '48%',
+    flexGrow: 1,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    alignItems: 'flex-start',
+  },
+  scoreItemValue: {
+    fontSize: 20,
+    lineHeight: 24,
+    fontWeight: '700',
+    color: colors.text,
+    letterSpacing: -0.2,
+    marginBottom: 2,
+  },
+
+  logoutBtn: { marginTop: spacing.lg },
 });

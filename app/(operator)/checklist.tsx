@@ -22,8 +22,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { supabase } from '../../src/lib/supabase';
 import { Machine, MachineChecklistItem } from '../../src/types/database';
-import { colors, spacing, radius, fontSize } from '../../src/theme/colors';
+import { colors, elevation, spacing, radius, fontSize } from '../../src/theme/colors';
 import { commonStyles } from '../../src/theme/commonStyles';
+import { Badge } from '../../src/components/ui';
 import { FinishChecklistModal } from '../../src/components/FinishChecklistModal';
 
 const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'heic', 'webp'];
@@ -849,39 +850,24 @@ export default function ChecklistScreen() {
         renderItem={({ item }) => {
           const isReleased = item.result === 'released';
           const isPending = item.status === 'pending';
+          const variant = isPending ? 'warning' : isReleased ? 'success' : 'danger';
+          const label = isPending ? 'EM ANDAMENTO' : isReleased ? 'LIBERADO' : 'NÃO LIBERADO';
+          const icon = isPending ? 'time-outline' : isReleased ? 'checkmark-circle-outline' : 'close-circle-outline';
           return (
-            <View style={[commonStyles.card, isPending && st.pendingCard]}>
-              <View style={st.listRow}>
-                <View style={[st.listIcon, {
-                  backgroundColor: isPending ? colors.warning + '20' : isReleased ? colors.success + '20' : colors.danger + '20',
-                }]}>
-                  <Ionicons
-                    name={isPending ? 'time' : isReleased ? 'checkmark-circle' : 'close-circle'}
-                    size={24}
-                    color={isPending ? colors.warning : isReleased ? colors.success : colors.danger}
-                  />
+            <View style={[st.listCard, isPending && st.pendingCard]}>
+              <View style={st.listCardHeader}>
+                <View style={st.headerLeft}>
+                  <Ionicons name={icon} size={14} color={colors.textSecondary} />
+                  <Text style={st.metaLabel}>{new Date(item.date).toLocaleDateString('pt-BR')}</Text>
                 </View>
-                <View style={st.listInfo}>
-                  <Text style={st.listMachine}>{item.machine_name}</Text>
-                  {item.tag && <Text style={st.listDate}>TAG: {item.tag}</Text>}
-                  <View style={st.listMeta}>
-                    <Text style={st.listDate}>{new Date(item.date).toLocaleDateString('pt-BR')}</Text>
-                    <View style={[st.listBadge, {
-                      backgroundColor: isPending ? colors.warning + '20' : isReleased ? colors.success + '20' : colors.danger + '20',
-                    }]}>
-                      <Text style={[st.listBadgeText, {
-                        color: isPending ? colors.warning : isReleased ? colors.success : colors.danger,
-                      }]}>
-                        {isPending ? 'Em andamento' : isReleased ? 'Liberado' : 'Nao Liberado'}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
+                <Badge label={label} variant={variant} size="sm" />
               </View>
+              <Text style={st.listMachineName}>{item.machine_name}</Text>
+              {item.tag && <Text style={st.metaLabel}>TAG: {item.tag}</Text>}
               {isPending && (
                 <TouchableOpacity style={st.finishBtn} onPress={() => setChecklistToFinish(item)}>
-                  <Ionicons name="stop-circle" size={18} color={colors.white} />
-                  <Text style={st.finishBtnText}>Finalizar Checklist</Text>
+                  <Ionicons name="stop-circle-outline" size={18} color={colors.white} />
+                  <Text style={st.finishBtnText}>Finalizar checklist</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -891,7 +877,7 @@ export default function ChecklistScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await loadChecklists(); await loadMachines(); setRefreshing(false); }} tintColor={colors.primary} />}
         ListEmptyComponent={
           <View style={commonStyles.empty}>
-            <Ionicons name="clipboard-outline" size={48} color={colors.textLight} />
+            <Ionicons name="clipboard-outline" size={40} color={colors.textLight} />
             <Text style={commonStyles.emptyText}>Nenhum checklist realizado</Text>
           </View>
         }
@@ -1071,51 +1057,50 @@ const st = StyleSheet.create({
 
   // List
   listRow: { flexDirection: 'row', alignItems: 'center' },
-  listIcon: { width: 44, height: 44, borderRadius: radius.sm, justifyContent: 'center', alignItems: 'center' },
-  listInfo: { flex: 1, marginLeft: spacing.md },
-  listMachine: { fontSize: fontSize.base, fontWeight: '700', color: colors.text },
-  listMeta: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.xs, gap: spacing.sm },
-  listDate: { fontSize: fontSize.xs, color: colors.textLight },
-  listBadge: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.full },
-  listBadgeText: { fontSize: fontSize.xs, fontWeight: '700' },
-  pendingCard: { borderLeftWidth: 4, borderLeftColor: colors.warning },
+  // List card
+  listCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    ...elevation.sm,
+  },
+  pendingCard: { borderLeftWidth: 3, borderLeftColor: colors.warning },
+  listCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
+  listMachineName: { fontSize: 16, fontWeight: '700', color: colors.text, letterSpacing: -0.1 },
+  metaLabel: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
 
-  // Ongoing activities section
-  ongoingSection: { marginBottom: spacing.md },
-  ongoingTitle: {
-    fontSize: fontSize.sm, fontWeight: '700', color: colors.warning,
-    marginBottom: spacing.sm, marginLeft: spacing.xs,
-  },
-  ongoingCard: { borderLeftWidth: 4, borderLeftColor: colors.warning },
-  ongoingRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
-  ongoingIcon: {
-    width: 36, height: 36, borderRadius: radius.sm,
-    backgroundColor: colors.warningLight,
-    justifyContent: 'center', alignItems: 'center',
-  },
-  ongoingDesc: { fontSize: fontSize.base, fontWeight: '700', color: colors.text },
-  ongoingMeta: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2 },
   finishBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: colors.primary, paddingVertical: spacing.sm,
-    borderRadius: radius.sm, gap: spacing.xs, marginTop: spacing.sm,
+    backgroundColor: colors.primary, paddingVertical: spacing.sm + 2,
+    borderRadius: radius.sm, gap: spacing.xs, marginTop: spacing.md,
+    ...elevation.brand,
   },
-  finishBtnText: { fontSize: fontSize.sm, fontWeight: '700', color: colors.white },
-  sepLabel: {
-    fontSize: fontSize.sm, fontWeight: '600', color: colors.textSecondary,
-    marginTop: spacing.lg, marginBottom: spacing.xs, marginLeft: spacing.xs,
-  },
+  finishBtnText: { fontSize: fontSize.sm, fontWeight: '700', color: colors.white, letterSpacing: 0.2 },
 
   // FABs
-  fabRow: { position: 'absolute', bottom: spacing.lg, right: spacing.lg, flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
+  fabRow: {
+    position: 'absolute', bottom: spacing.lg, right: spacing.lg,
+    flexDirection: 'row', gap: spacing.sm, alignItems: 'center',
+  },
   fabSecondary: {
     width: 48, height: 48, borderRadius: 24, backgroundColor: colors.surface,
-    justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: colors.primary,
-    shadowColor: colors.black, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3,
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1, borderColor: colors.border,
+    ...elevation.sm,
   },
   fab: {
     width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary,
     justifyContent: 'center', alignItems: 'center',
-    shadowColor: colors.black, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 5,
+    ...elevation.brand,
   },
 });

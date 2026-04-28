@@ -22,8 +22,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { supabase } from '../../src/lib/supabase';
 import { Machine, MachineChecklistItem } from '../../src/types/database';
-import { colors, spacing, radius, fontSize } from '../../src/theme/colors';
+import { colors, elevation, spacing, radius, fontSize } from '../../src/theme/colors';
 import { commonStyles } from '../../src/theme/commonStyles';
+import { Badge } from '../../src/components/ui';
 import { FinishChecklistModal } from '../../src/components/FinishChecklistModal';
 
 const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'heic', 'webp'];
@@ -824,96 +825,78 @@ export default function AdminChecklistsScreen() {
         {pendingChecklists.length > 0 && (
           <View style={st.sectionWrap}>
             <View style={st.sectionHeader}>
-              <Ionicons name="time" size={18} color={colors.warning} />
-              <Text style={st.sectionHeaderText}>Em andamento</Text>
-              <View style={st.sectionCount}>
-                <Text style={st.sectionCountText}>{pendingChecklists.length}</Text>
+              <View style={st.sectionLeft}>
+                <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
+                <Text style={st.sectionHeaderText}>EM ANDAMENTO</Text>
               </View>
+              <Badge label={String(pendingChecklists.length)} variant="warning" size="sm" />
             </View>
             {pendingChecklists.map((item) => (
-              <View key={item.id} style={[commonStyles.card, st.pendingCard]}>
-                <View style={st.listRow}>
-                  <View style={[st.listIcon, { backgroundColor: colors.warning + '20' }]}>
-                    <Ionicons name="time" size={24} color={colors.warning} />
+              <View key={item.id} style={[st.listCard, st.pendingCard]}>
+                <View style={st.listCardHeader}>
+                  <View style={st.headerLeft}>
+                    <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
+                    <Text style={st.metaLabel}>
+                      {new Date(item.date).toLocaleDateString('pt-BR')} · {item.operators?.name || 'Operador'}
+                    </Text>
                   </View>
-                  <View style={st.listInfo}>
-                    <Text style={st.listMachine}>{item.machine_name}</Text>
-                    <Text style={st.listOperator}>{item.operators?.name || 'Operador'}</Text>
-                    {item.tag && <Text style={st.listDate}>TAG: {item.tag}</Text>}
-                    <View style={st.listMeta}>
-                      <Text style={st.listDate}>
-                        {new Date(item.date).toLocaleDateString('pt-BR')}
-                      </Text>
-                      <View style={[st.listBadge, { backgroundColor: colors.warning + '20' }]}>
-                        <Text style={[st.listBadgeText, { color: colors.warning }]}>Em andamento</Text>
-                      </View>
-                    </View>
-                  </View>
+                  <Badge label="EM ANDAMENTO" variant="warning" size="sm" />
                 </View>
+                <Text style={st.listMachine}>{item.machine_name}</Text>
+                {item.tag && <Text style={st.metaLabel}>TAG: {item.tag}</Text>}
                 <TouchableOpacity style={st.finishBtn} onPress={() => setChecklistToFinish(item)}>
-                  <Ionicons name="stop-circle" size={18} color={colors.white} />
-                  <Text style={st.finishBtnText}>Encerrar Checklist</Text>
+                  <Ionicons name="stop-circle-outline" size={18} color={colors.white} />
+                  <Text style={st.finishBtnText}>Encerrar checklist</Text>
                 </TouchableOpacity>
               </View>
             ))}
           </View>
         )}
 
-        {/* Historico de checklists concluidos */}
+        {/* Historico */}
         <View style={st.sectionWrap}>
           <View style={st.sectionHeader}>
-            <Ionicons name="checkmark-done" size={18} color={colors.success} />
-            <Text style={st.sectionHeaderText}>Historico</Text>
-            <View style={[st.sectionCount, { backgroundColor: colors.success + '20' }]}>
-              <Text style={[st.sectionCountText, { color: colors.success }]}>{completedChecklists.length}</Text>
+            <View style={st.sectionLeft}>
+              <Ionicons name="checkmark-done-outline" size={14} color={colors.textSecondary} />
+              <Text style={st.sectionHeaderText}>HISTÓRICO</Text>
             </View>
+            <Badge label={String(completedChecklists.length)} variant="success" size="sm" />
           </View>
           {completedChecklists.length === 0 && pendingChecklists.length === 0 && (
             <View style={commonStyles.empty}>
-              <Ionicons name="clipboard-outline" size={48} color={colors.textLight} />
+              <Ionicons name="clipboard-outline" size={40} color={colors.textLight} />
               <Text style={commonStyles.emptyText}>Nenhum checklist realizado</Text>
             </View>
           )}
           {completedChecklists.length === 0 && pendingChecklists.length > 0 && (
             <View style={st.emptyHistory}>
-              <Ionicons name="document-text-outline" size={32} color={colors.textLight} />
-              <Text style={st.emptyHistoryText}>Nenhum checklist concluido ainda</Text>
+              <Ionicons name="document-text-outline" size={28} color={colors.textLight} />
+              <Text style={st.emptyHistoryText}>Nenhum checklist concluído ainda</Text>
             </View>
           )}
           {completedChecklists.map((item) => {
             const isReleased = item.result === 'released';
             return (
-              <View key={item.id} style={commonStyles.card}>
-                <View style={st.listRow}>
-                  <View style={[st.listIcon, {
-                    backgroundColor: isReleased ? colors.success + '20' : colors.danger + '20',
-                  }]}>
+              <View key={item.id} style={st.listCard}>
+                <View style={st.listCardHeader}>
+                  <View style={st.headerLeft}>
                     <Ionicons
-                      name={isReleased ? 'checkmark-circle' : 'close-circle'}
-                      size={24}
-                      color={isReleased ? colors.success : colors.danger}
+                      name={isReleased ? 'checkmark-circle-outline' : 'close-circle-outline'}
+                      size={14}
+                      color={colors.textSecondary}
                     />
+                    <Text style={st.metaLabel}>
+                      {new Date(item.date).toLocaleDateString('pt-BR')} · {item.operators?.name || 'Operador'}
+                    </Text>
                   </View>
-                  <View style={st.listInfo}>
-                    <Text style={st.listMachine}>{item.machine_name}</Text>
-                    <Text style={st.listOperator}>{item.operators?.name || 'Operador'}</Text>
-                    {item.tag && <Text style={st.listDate}>TAG: {item.tag}</Text>}
-                    <View style={st.listMeta}>
-                      <Text style={st.listDate}>
-                        {new Date(item.date).toLocaleDateString('pt-BR')}
-                      </Text>
-                      <View style={[st.listBadge, {
-                        backgroundColor: isReleased ? colors.success + '20' : colors.danger + '20',
-                      }]}>
-                        <Text style={[st.listBadgeText, {
-                          color: isReleased ? colors.success : colors.danger,
-                        }]}>
-                          {isReleased ? 'Liberado' : 'Nao Liberado'}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
+                  <Badge
+                    label={isReleased ? 'LIBERADO' : 'NÃO LIBERADO'}
+                    variant={isReleased ? 'success' : 'danger'}
+                    size="sm"
+                  />
                 </View>
+                <Text style={st.listMachine}>{item.machine_name}</Text>
+                {item.tag && <Text style={st.metaLabel}>TAG: {item.tag}</Text>}
               </View>
             );
           })}
@@ -946,7 +929,37 @@ const st = StyleSheet.create({
   scroll: { padding: spacing.lg, paddingBottom: spacing.xl * 2 },
 
   backRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.lg },
-  backText: { fontSize: fontSize.base, color: colors.primary, fontWeight: '600' },
+  backText: { fontSize: fontSize.sm, color: colors.primary, fontWeight: '600' },
+
+  // List view
+  listCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    ...elevation.sm,
+  },
+  pendingCard: { borderLeftWidth: 3, borderLeftColor: colors.warning },
+  listCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
+  listMachine: { fontSize: 16, fontWeight: '700', color: colors.text, letterSpacing: -0.1 },
+  metaLabel: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+  sectionLeft: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  finishBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    marginTop: spacing.md, paddingVertical: spacing.sm + 2,
+    borderRadius: radius.sm, backgroundColor: colors.primary, gap: spacing.xs,
+    ...elevation.brand,
+  },
+  finishBtnText: { fontSize: fontSize.sm, fontWeight: '700', color: colors.white, letterSpacing: 0.2 },
 
   // Scanner
   scanContainer: { flex: 1, backgroundColor: '#000' },
@@ -1091,69 +1104,39 @@ const st = StyleSheet.create({
   },
   saveBtnText: { fontSize: fontSize.base, fontWeight: '700', color: colors.white },
 
-  // List
-  listRow: { flexDirection: 'row', alignItems: 'center' },
-  listIcon: { width: 44, height: 44, borderRadius: radius.sm, justifyContent: 'center', alignItems: 'center' },
-  listInfo: { flex: 1, marginLeft: spacing.md },
-  listMachine: { fontSize: fontSize.base, fontWeight: '700', color: colors.text },
-  listOperator: { fontSize: fontSize.sm, color: colors.textSecondary, marginTop: 2 },
-  listMeta: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.xs, gap: spacing.sm },
-  listDate: { fontSize: fontSize.xs, color: colors.textLight },
-  listBadge: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.full },
-  listBadgeText: { fontSize: fontSize.xs, fontWeight: '700' },
-  pendingCard: { borderLeftWidth: 4, borderLeftColor: colors.warning },
-
   // Sections
-  sectionWrap: { marginBottom: spacing.md },
+  sectionWrap: { marginBottom: spacing.lg },
+  sectionHeaderText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    letterSpacing: 0.4,
+  },
   sectionHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    marginBottom: spacing.sm, paddingHorizontal: spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing['2xs'],
   },
-  sectionHeaderText: { fontSize: fontSize.base, fontWeight: '700', color: colors.text, flex: 1 },
-  sectionCount: {
-    backgroundColor: colors.warning + '20', paddingHorizontal: spacing.sm,
-    paddingVertical: 2, borderRadius: radius.full, minWidth: 24, alignItems: 'center',
-  },
-  sectionCountText: { fontSize: fontSize.xs, fontWeight: '700', color: colors.warning },
   emptyHistory: { alignItems: 'center', paddingVertical: spacing.xl },
-  emptyHistoryText: { fontSize: fontSize.sm, color: colors.textLight, marginTop: spacing.sm },
-
-  // Ongoing activities section
-  ongoingSection: { marginBottom: spacing.md },
-  ongoingTitle: {
-    fontSize: fontSize.sm, fontWeight: '700', color: colors.warning,
-    marginBottom: spacing.sm, marginLeft: spacing.xs,
-  },
-  ongoingCard: { borderLeftWidth: 4, borderLeftColor: colors.warning },
-  ongoingRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
-  ongoingIcon: {
-    width: 36, height: 36, borderRadius: radius.sm,
-    backgroundColor: colors.warningLight,
-    justifyContent: 'center', alignItems: 'center',
-  },
-  ongoingDesc: { fontSize: fontSize.base, fontWeight: '700', color: colors.text },
-  ongoingMeta: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2 },
-  finishBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: colors.primary, paddingVertical: spacing.sm,
-    borderRadius: radius.sm, gap: spacing.xs, marginTop: spacing.sm,
-  },
-  finishBtnText: { fontSize: fontSize.sm, fontWeight: '700', color: colors.white },
-  sepLabel: {
-    fontSize: fontSize.sm, fontWeight: '600', color: colors.textSecondary,
-    marginTop: spacing.lg, marginBottom: spacing.xs, marginLeft: spacing.xs,
-  },
+  emptyHistoryText: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: spacing.sm },
 
   // FABs
-  fabRow: { position: 'absolute', bottom: spacing.lg, right: spacing.lg, flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
+  fabRow: {
+    position: 'absolute', bottom: spacing.lg, right: spacing.lg,
+    flexDirection: 'row', gap: spacing.sm, alignItems: 'center',
+  },
   fabSecondary: {
-    width: 48, height: 48, borderRadius: 24, backgroundColor: colors.surface,
-    justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: colors.primary,
-    shadowColor: colors.black, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3,
+    width: 48, height: 48, borderRadius: 24,
+    backgroundColor: colors.surface,
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1, borderColor: colors.border,
+    ...elevation.sm,
   },
   fab: {
     width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary,
     justifyContent: 'center', alignItems: 'center',
-    shadowColor: colors.black, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 5,
+    ...elevation.brand,
   },
 });

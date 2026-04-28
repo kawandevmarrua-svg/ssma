@@ -1,4 +1,6 @@
 /** @type {import('next').NextConfig} */
+const path = require('path');
+
 const isProd = process.env.NODE_ENV === 'production';
 
 const supabaseHost = (process.env.NEXT_PUBLIC_SUPABASE_URL || '')
@@ -35,6 +37,7 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
+  outputFileTracingRoot: path.join(__dirname),
   reactStrictMode: true,
   poweredByHeader: false,
   images: {

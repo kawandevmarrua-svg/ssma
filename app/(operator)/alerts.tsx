@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
@@ -18,14 +17,15 @@ import { supabase } from '../../src/lib/supabase';
 import { alertResponseSchema } from '../../src/schemas';
 import { useFormValidation } from '../../src/hooks/useFormValidation';
 import { SafetyAlert } from '../../src/types/database';
-import { colors, spacing, radius, fontSize } from '../../src/theme/colors';
+import { colors, elevation, radius, spacing } from '../../src/theme/colors';
 import { commonStyles } from '../../src/theme/commonStyles';
+import { Badge, Button, Text } from '../../src/components/ui';
 
 const SEVERITY_CONFIG = {
-  low: { color: colors.primaryLight, bg: colors.primaryLight + '20', label: 'Baixo', icon: 'information-circle' as const },
-  medium: { color: colors.warning, bg: colors.warningLight, label: 'Medio', icon: 'alert-circle' as const },
-  high: { color: '#F97316', bg: '#FFF7ED', label: 'Alto', icon: 'warning' as const },
-  critical: { color: colors.danger, bg: colors.dangerLight, label: 'Critico', icon: 'alert' as const },
+  low: { variant: 'info' as const, label: 'Baixo', icon: 'information-circle-outline' as const },
+  medium: { variant: 'warning' as const, label: 'Médio', icon: 'alert-circle-outline' as const },
+  high: { variant: 'primary' as const, label: 'Alto', icon: 'warning-outline' as const },
+  critical: { variant: 'danger' as const, label: 'Crítico', icon: 'alert-outline' as const },
 };
 
 export default function OperatorAlertsScreen() {
@@ -40,13 +40,10 @@ export default function OperatorAlertsScreen() {
 
   const loadAlerts = useCallback(async () => {
     if (!operatorData) {
-      console.log('[Alerts] No operatorData, skipping load');
       setLoading(false);
       return;
     }
 
-    console.log('[Alerts] Loading alerts for operator:', operatorData.id);
-    // Buscar alertas direcionados ao operador + alertas broadcast
     const { data, error } = await supabase
       .from('safety_alerts')
       .select('*')
@@ -55,10 +52,8 @@ export default function OperatorAlertsScreen() {
       .limit(50);
 
     if (error) {
-      console.error('[Alerts] Error loading alerts:', error.message);
       Alert.alert('Erro', 'Falha ao carregar alertas.');
     }
-    console.log('[Alerts] Loaded:', data?.length ?? 0, 'alerts');
     setAlerts(data ?? []);
     setLoading(false);
   }, [operatorData]);
@@ -67,17 +62,12 @@ export default function OperatorAlertsScreen() {
     loadAlerts();
   }, [loadAlerts]);
 
-  // Realtime: auto-refresh quando alertas mudam
   useEffect(() => {
     if (!operatorData) return;
 
     const channel = supabase
       .channel('operator-alerts-refresh')
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'safety_alerts',
-      }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'safety_alerts' }, () => {
         loadAlerts();
       })
       .subscribe();
@@ -130,50 +120,49 @@ export default function OperatorAlertsScreen() {
     const config = SEVERITY_CONFIG[item.severity];
     return (
       <TouchableOpacity
-        style={[commonStyles.card, !item.read && styles.cardUnread]}
+        activeOpacity={0.95}
+        style={[styles.card, !item.read && styles.cardUnread]}
         onPress={() => {
           if (!item.read) markAsRead(item.id);
         }}
       >
-        <View style={styles.cardRow}>
-          <View style={[styles.severityIcon, { backgroundColor: config.bg }]}>
-            <Ionicons name={config.icon} size={24} color={config.color} />
+        <View style={styles.cardHeader}>
+          <View style={styles.headerLeft}>
+            <Ionicons name={config.icon} size={14} color={colors.textSecondary} />
+            <Text variant="captionStrong" tone="muted">
+              {new Date(item.created_at).toLocaleDateString('pt-BR')}
+            </Text>
           </View>
-          <View style={styles.cardInfo}>
-            <View style={styles.cardTitleRow}>
-              <Text style={styles.cardTitle}>{item.title}</Text>
-              {!item.read && <View style={styles.unreadDot} />}
-            </View>
-            <Text style={styles.cardMessage} numberOfLines={3}>{item.message}</Text>
-            <View style={styles.cardMeta}>
-              <View style={[styles.severityBadge, { backgroundColor: config.bg }]}>
-                <Text style={[styles.severityText, { color: config.color }]}>{config.label}</Text>
-              </View>
-              <Text style={styles.cardDate}>
-                {new Date(item.created_at).toLocaleDateString('pt-BR')}
-              </Text>
-            </View>
-
-            {item.response ? (
-              <View style={styles.responseContainer}>
-                <Text style={styles.responseLabel}>Sua resposta:</Text>
-                <Text style={styles.responseText}>{item.response}</Text>
-              </View>
-            ) : (
-              <TouchableOpacity
-                style={styles.respondBtn}
-                onPress={() => {
-                  setRespondingAlert(item);
-                  setResponseText('');
-                  clearErrors();
-                }}
-              >
-                <Ionicons name="chatbubble-outline" size={16} color={colors.primary} />
-                <Text style={styles.respondBtnText}>Responder</Text>
-              </TouchableOpacity>
-            )}
+          <View style={styles.headerRight}>
+            <Badge label={config.label.toUpperCase()} variant={config.variant} size="sm" />
+            {!item.read && <View style={styles.unreadDot} />}
           </View>
         </View>
+
+        <Text variant="h3" style={styles.cardTitle}>{item.title}</Text>
+        <Text variant="body" tone="muted" numberOfLines={3} style={styles.cardMessage}>
+          {item.message}
+        </Text>
+
+        {item.response ? (
+          <View style={styles.responseContainer}>
+            <Text variant="captionStrong" tone="success">SUA RESPOSTA</Text>
+            <Text variant="bodyMedium" style={{ marginTop: 4 }}>{item.response}</Text>
+          </View>
+        ) : (
+          <Button
+            label="Responder"
+            icon="chatbubble-outline"
+            variant="secondary"
+            size="sm"
+            onPress={() => {
+              setRespondingAlert(item);
+              setResponseText('');
+              clearErrors();
+            }}
+            style={{ marginTop: spacing.md }}
+          />
+        )}
       </TouchableOpacity>
     );
   }
@@ -184,13 +173,15 @@ export default function OperatorAlertsScreen() {
         data={alerts}
         keyExtractor={(item) => item.id}
         renderItem={renderAlert}
-        contentContainerStyle={commonStyles.list}
+        contentContainerStyle={styles.listContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
         ListEmptyComponent={
           !loading ? (
             <View style={commonStyles.empty}>
-              <Ionicons name="shield-checkmark-outline" size={48} color={colors.textLight} />
-              <Text style={commonStyles.emptyText}>Nenhum alerta recebido</Text>
+              <Ionicons name="shield-checkmark-outline" size={40} color={colors.textLight} />
+              <Text variant="callout" tone="muted" style={{ marginTop: spacing.md }}>
+                Nenhum alerta recebido
+              </Text>
             </View>
           ) : null
         }
@@ -200,16 +191,18 @@ export default function OperatorAlertsScreen() {
         <KeyboardAvoidingView style={commonStyles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={commonStyles.modalContent}>
             <View style={commonStyles.modalHeader}>
-              <Text style={commonStyles.modalTitle}>Responder Alerta</Text>
-              <TouchableOpacity onPress={() => { setRespondingAlert(null); clearErrors(); }}>
-                <Ionicons name="close" size={24} color={colors.textSecondary} />
+              <Text variant="h2">Responder alerta</Text>
+              <TouchableOpacity onPress={() => { setRespondingAlert(null); clearErrors(); }} hitSlop={8}>
+                <Ionicons name="close" size={22} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
             {respondingAlert && (
               <View style={styles.alertPreview}>
-                <Text style={styles.alertPreviewTitle}>{respondingAlert.title}</Text>
-                <Text style={styles.alertPreviewMessage}>{respondingAlert.message}</Text>
+                <Text variant="bodyStrong">{respondingAlert.title}</Text>
+                <Text variant="caption" tone="muted" style={{ marginTop: 4 }}>
+                  {respondingAlert.message}
+                </Text>
               </View>
             )}
 
@@ -224,16 +217,18 @@ export default function OperatorAlertsScreen() {
                 multiline
                 numberOfLines={4}
               />
-              {errors.response && <Text style={commonStyles.error}>{errors.response}</Text>}
+              {errors.response && <Text variant="caption" tone="danger" style={{ marginTop: 4 }}>{errors.response}</Text>}
             </View>
 
-            <TouchableOpacity
-              style={[commonStyles.saveButton, saving && commonStyles.buttonDisabled]}
-              onPress={handleRespond}
+            <Button
+              label={saving ? 'Enviando...' : 'Enviar resposta'}
+              variant="primary"
+              size="lg"
+              fullWidth
+              loading={saving}
               disabled={saving}
-            >
-              <Text style={commonStyles.saveButtonText}>{saving ? 'Enviando...' : 'Enviar Resposta'}</Text>
-            </TouchableOpacity>
+              onPress={handleRespond}
+            />
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -242,34 +237,43 @@ export default function OperatorAlertsScreen() {
 }
 
 const styles = StyleSheet.create({
+  listContent: { padding: spacing.md, gap: spacing.sm },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    ...elevation.sm,
+  },
   cardUnread: { borderLeftWidth: 3, borderLeftColor: colors.primary },
-  cardRow: { flexDirection: 'row', alignItems: 'flex-start' },
-  severityIcon: { width: 44, height: 44, borderRadius: radius.sm, justifyContent: 'center', alignItems: 'center' },
-  cardInfo: { flex: 1, marginLeft: spacing.md },
-  cardTitleRow: { flexDirection: 'row', alignItems: 'center' },
-  cardTitle: { fontSize: fontSize.base, fontWeight: '700', color: colors.text, flex: 1 },
-  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary, marginLeft: spacing.sm },
-  cardMessage: { fontSize: fontSize.sm, color: colors.textSecondary, marginTop: 4, lineHeight: 20 },
-  cardMeta: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.sm, gap: spacing.sm },
-  severityBadge: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.full },
-  severityText: { fontSize: fontSize.xs, fontWeight: '600' },
-  cardDate: { fontSize: fontSize.xs, color: colors.textLight },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary },
+  cardTitle: { marginBottom: 4 },
+  cardMessage: { lineHeight: 20 },
+
   responseContainer: {
-    marginTop: spacing.sm, padding: spacing.sm,
-    backgroundColor: colors.success + '10', borderRadius: radius.sm,
-    borderLeftWidth: 3, borderLeftColor: colors.success,
+    marginTop: spacing.md,
+    padding: spacing.md,
+    backgroundColor: colors.successSurface,
+    borderRadius: radius.sm,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.success,
   },
-  responseLabel: { fontSize: fontSize.xs, fontWeight: '600', color: colors.success, marginBottom: 2 },
-  responseText: { fontSize: fontSize.sm, color: colors.text },
-  respondBtn: {
-    flexDirection: 'row', alignItems: 'center', marginTop: spacing.sm,
-    paddingVertical: spacing.xs, gap: spacing.xs,
-  },
-  respondBtnText: { fontSize: fontSize.sm, fontWeight: '600', color: colors.primary },
+
   alertPreview: {
-    backgroundColor: colors.inputBg, padding: spacing.md,
-    borderRadius: radius.sm, marginBottom: spacing.md,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    borderRadius: radius.sm,
+    marginBottom: spacing.md,
   },
-  alertPreviewTitle: { fontSize: fontSize.base, fontWeight: '700', color: colors.text },
-  alertPreviewMessage: { fontSize: fontSize.sm, color: colors.textSecondary, marginTop: spacing.xs },
 });

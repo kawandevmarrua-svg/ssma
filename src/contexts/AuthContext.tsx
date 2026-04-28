@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { registerPushTokenForUser } from '../lib/pushNotifications';
@@ -30,14 +31,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!mountedRef.current) return;
       setSession(session);
-      if (session?.user) fetchProfile(session.user.id);
+      if (session?.user) void fetchProfile(session.user.id);
       else setLoading(false);
+    }).catch(() => {
+      if (mountedRef.current) setLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!mountedRef.current) return;
       setSession(session);
-      if (session?.user) fetchProfile(session.user.id);
+      if (session?.user) void fetchProfile(session.user.id);
       else {
         setProfile(null);
         setOperatorData(null);
@@ -45,45 +48,70 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
+    // Ao voltar do background, revalida a sessao para o autoRefresh do Supabase
+    // executar com a rede ja restabelecida e destravar o app.
+    function handleAppStateChange(state: AppStateStatus) {
+      if (state !== 'active') return;
+      supabase.auth.getSession().then(({ data: { session: s } }) => {
+        if (!mountedRef.current) return;
+        setSession(s);
+        if (s?.user) void fetchProfile(s.user.id);
+      }).catch(() => { /* swallow */ });
+    }
+    const appSub = AppState.addEventListener('change', handleAppStateChange);
+
     return () => {
       mountedRef.current = false;
       subscription.unsubscribe();
+      appSub.remove();
     };
   }, []);
 
   async function fetchProfile(userId: string) {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
-    if (!mountedRef.current) return;
-
-    // Sem profile valido = sessao inutilizavel. Limpa para forcar novo login.
-    if (error || !data || data.role === 'pending') {
-      await supabase.auth.signOut();
-      setSession(null);
-      setProfile(null);
-      setOperatorData(null);
-      setLoading(false);
-      return;
-    }
-
-    setProfile(data);
-    registerPushTokenForUser(userId).catch(() => { /* swallow */ });
-
-    if (data.role === 'operator') {
-      const { data: opData } = await supabase
-        .from('operators')
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
         .select('*')
-        .eq('auth_user_id', userId)
-        .single();
-      if (mountedRef.current) setOperatorData(opData);
-    } else {
-      setOperatorData(null);
-    }
+        .eq('id', userId)
+        .maybeSingle();
+      if (!mountedRef.current) return;
 
-    setLoading(false);
+      // Profile inexistente ou ainda pendente: limpa sessao para forcar novo login.
+      // Erros de rede NAO derrubam a sessao — mantem o que ja estava em memoria.
+      if (!error && (!data || data.role === 'pending')) {
+        await supabase.auth.signOut();
+        setSession(null);
+        setProfile(null);
+        setOperatorData(null);
+        return;
+      }
+
+      if (error || !data) {
+        if (error) console.log('[Auth] fetchProfile falhou, mantendo sessao:', error.message);
+        return;
+      }
+
+      setProfile(data);
+      registerPushTokenForUser(userId).catch((err) => {
+        console.error('[Push] registerPushTokenForUser falhou:', err);
+      });
+
+      if (data.role === 'operator') {
+        const { data: opData, error: opError } = await supabase
+          .from('operators')
+          .select('*')
+          .eq('auth_user_id', userId)
+          .maybeSingle();
+        if (!mountedRef.current) return;
+        if (!opError && opData) setOperatorData(opData);
+      } else {
+        setOperatorData(null);
+      }
+    } catch (e) {
+      console.log('[Auth] fetchProfile excecao:', e);
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
   }
 
   async function signIn(email: string, password: string) {

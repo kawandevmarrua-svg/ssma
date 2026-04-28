@@ -112,26 +112,39 @@ export default function OperatorLayout() {
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textLight,
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+          marginTop: 2,
+        },
         tabBarStyle: {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
-          height: 60 + insets.bottom,
+          borderTopWidth: 0.5,
+          height: 64 + insets.bottom,
           paddingBottom: insets.bottom,
-          paddingTop: 4,
+          paddingTop: 8,
         },
         headerStyle: {
-          backgroundColor: colors.primary,
+          backgroundColor: colors.surface,
+          shadowColor: 'transparent',
+          elevation: 0,
+          borderBottomWidth: 0.5,
+          borderBottomColor: colors.border,
         },
-        headerTintColor: colors.white,
+        headerTintColor: colors.text,
         headerTitleStyle: {
           fontWeight: '700',
+          fontSize: 17,
         },
+        headerShadowVisible: false,
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Inicio',
+          title: 'Início',
+          headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="home" size={size} color={color} />
           ),

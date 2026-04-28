@@ -1,9 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
-  FlatList,
   TouchableOpacity,
   TextInput,
   Modal,
@@ -20,8 +18,9 @@ import { useAuth } from '../../src/contexts/AuthContext';
 import { supabase } from '../../src/lib/supabase';
 import { pickPhoto, uploadPhoto } from '../../src/lib/imageUtils';
 import { Activity } from '../../src/types/database';
-import { colors, spacing, radius, fontSize } from '../../src/theme/colors';
+import { colors, elevation, spacing, radius, fontSize } from '../../src/theme/colors';
 import { commonStyles } from '../../src/theme/commonStyles';
+import { Badge, Button, Text } from '../../src/components/ui';
 import { FinishActivityModal } from '../../src/components/FinishActivityModal';
 
 const PRE_OP_QUESTIONS = [
@@ -265,46 +264,59 @@ export default function AdminActivitiesScreen() {
 
   function renderActivityCard(item: ActivityRow, isOngoing: boolean) {
     return (
-      <View key={item.id} style={[commonStyles.card, isOngoing && st.ongoingCard]}>
-        <View style={st.row}>
-          <View style={[st.icon, { backgroundColor: isOngoing ? colors.warning + '20' : colors.success + '20' }]}>
-            <Ionicons name={isOngoing ? 'time' : 'checkmark-circle'} size={24} color={isOngoing ? colors.warning : colors.success} />
+      <View key={item.id} style={[st.card, isOngoing && st.ongoingCard]}>
+        <View style={st.cardHeader}>
+          <View style={st.headerLeft}>
+            <Ionicons
+              name={isOngoing ? 'time-outline' : 'checkmark-circle-outline'}
+              size={14}
+              color={colors.textSecondary}
+            />
+            <Text variant="captionStrong" tone="muted">
+              {new Date(item.date).toLocaleDateString('pt-BR')} · {formatTime(item.start_time)} - {formatTime(item.end_time)}
+            </Text>
           </View>
-          <View style={st.info}>
-            {item.description && <Text style={st.descText} numberOfLines={2}>{item.description}</Text>}
-            {item.operators?.name && (
-              <Text style={st.operatorText}>{item.operators.name}</Text>
-            )}
-            <View style={st.meta}>
-              {item.equipment_tag && (
-                <View style={st.metaItem}>
-                  <Ionicons name="pricetag-outline" size={12} color={colors.textSecondary} />
-                  <Text style={st.metaText}>{item.equipment_tag}</Text>
-                </View>
-              )}
-              {item.location && (
-                <View style={st.metaItem}>
-                  <Ionicons name="location-outline" size={12} color={colors.textSecondary} />
-                  <Text style={st.metaText}>{item.location}</Text>
-                </View>
-              )}
-            </View>
-            <View style={st.footer}>
-              <Text style={st.dateText}>{new Date(item.date).toLocaleDateString('pt-BR')}</Text>
-              <Text style={st.dateText}>{formatTime(item.start_time)} - {formatTime(item.end_time)}</Text>
-              <View style={[st.statusBadge, { backgroundColor: isOngoing ? colors.warning + '20' : colors.success + '20' }]}>
-                <Text style={[st.statusLabel, { color: isOngoing ? colors.warning : colors.success }]}>
-                  {isOngoing ? 'Em andamento' : 'Concluida'}
-                </Text>
-              </View>
-            </View>
-          </View>
+          <Badge
+            label={isOngoing ? 'EM ANDAMENTO' : 'CONCLUÍDA'}
+            variant={isOngoing ? 'warning' : 'success'}
+            size="sm"
+          />
         </View>
+
+        {item.description && (
+          <Text variant="h3" numberOfLines={2} style={{ marginBottom: 4 }}>
+            {item.description}
+          </Text>
+        )}
+        {item.operators?.name && (
+          <Text variant="caption" tone="muted">{item.operators.name}</Text>
+        )}
+
+        <View style={st.meta}>
+          {item.equipment_tag && (
+            <View style={st.metaItem}>
+              <Ionicons name="pricetag-outline" size={12} color={colors.textSecondary} />
+              <Text variant="caption" tone="muted">{item.equipment_tag}</Text>
+            </View>
+          )}
+          {item.location && (
+            <View style={st.metaItem}>
+              <Ionicons name="location-outline" size={12} color={colors.textSecondary} />
+              <Text variant="caption" tone="muted">{item.location}</Text>
+            </View>
+          )}
+        </View>
+
         {isOngoing && (
-          <TouchableOpacity style={st.finishBtn} onPress={() => setActivityToFinish(item as unknown as Activity)}>
-            <Ionicons name="stop-circle" size={18} color={colors.white} />
-            <Text style={st.finishBtnText}>Finalizar Atividade</Text>
-          </TouchableOpacity>
+          <Button
+            label="Finalizar atividade"
+            icon="stop-circle-outline"
+            variant="primary"
+            size="md"
+            fullWidth
+            onPress={() => setActivityToFinish(item as unknown as Activity)}
+            style={{ marginTop: spacing.md }}
+          />
         )}
       </View>
     );
@@ -320,36 +332,42 @@ export default function AdminActivitiesScreen() {
         {hasOngoing && (
           <View style={st.sectionWrap}>
             <View style={st.sectionHeader}>
-              <Ionicons name="time" size={18} color={colors.warning} />
-              <Text style={st.sectionHeaderText}>Em andamento</Text>
-              <View style={st.sectionCount}>
-                <Text style={st.sectionCountText}>{ongoingActivities.length}</Text>
+              <View style={st.sectionLeft}>
+                <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
+                <Text variant="captionStrong" tone="muted">EM ANDAMENTO</Text>
               </View>
+              <Badge label={String(ongoingActivities.length)} variant="warning" size="sm" />
             </View>
             {ongoingActivities.map((item) => renderActivityCard(item, true))}
           </View>
         )}
 
-        {/* Historico de atividades concluidas */}
+        {/* Historico */}
         <View style={st.sectionWrap}>
           <View style={st.sectionHeader}>
-            <Ionicons name="checkmark-done" size={18} color={colors.success} />
-            <Text style={st.sectionHeaderText}>Concluidas</Text>
-            <View style={[st.sectionCount, { backgroundColor: colors.success + '20' }]}>
-              <Text style={[st.sectionCountText, { color: colors.success }]}>{completedActivities.length}</Text>
+            <View style={st.sectionLeft}>
+              <Ionicons name="checkmark-done-outline" size={14} color={colors.textSecondary} />
+              <Text variant="captionStrong" tone="muted">CONCLUÍDAS</Text>
             </View>
+            <Badge label={String(completedActivities.length)} variant="success" size="sm" />
           </View>
           {completedActivities.length === 0 && !hasOngoing && (
             <View style={commonStyles.empty}>
-              <Ionicons name="construct-outline" size={48} color={colors.textLight} />
-              <Text style={commonStyles.emptyText}>Nenhuma atividade</Text>
-              <Text style={st.hintText}>Toque em + para registrar uma atividade</Text>
+              <Ionicons name="construct-outline" size={40} color={colors.textLight} />
+              <Text variant="callout" tone="muted" style={{ marginTop: spacing.md }}>
+                Nenhuma atividade
+              </Text>
+              <Text variant="caption" tone="subtle" style={{ marginTop: 4 }}>
+                Toque em + para registrar
+              </Text>
             </View>
           )}
           {completedActivities.length === 0 && hasOngoing && (
             <View style={st.emptySection}>
-              <Ionicons name="document-text-outline" size={32} color={colors.textLight} />
-              <Text style={st.emptySectionText}>Nenhuma atividade concluida ainda</Text>
+              <Ionicons name="document-text-outline" size={28} color={colors.textLight} />
+              <Text variant="caption" tone="muted" style={{ marginTop: spacing.sm }}>
+                Nenhuma atividade concluída ainda
+              </Text>
             </View>
           )}
           {completedActivities.map((item) => renderActivityCard(item, false))}
@@ -376,9 +394,9 @@ export default function AdminActivitiesScreen() {
           <View style={commonStyles.modalContent}>
             <ScrollView showsVerticalScrollIndicator={false}>
               <View style={commonStyles.modalHeader}>
-                <Text style={commonStyles.modalTitle}>Nova Atividade</Text>
-                <TouchableOpacity onPress={() => { setCreateModal(false); resetCreateForm(); }}>
-                  <Ionicons name="close" size={24} color={colors.textSecondary} />
+                <Text variant="h2">Nova atividade</Text>
+                <TouchableOpacity onPress={() => { setCreateModal(false); resetCreateForm(); }} hitSlop={8}>
+                  <Ionicons name="close" size={22} color={colors.textSecondary} />
                 </TouchableOpacity>
               </View>
 
@@ -400,13 +418,13 @@ export default function AdminActivitiesScreen() {
                       style={[st.preopAnswerBtn, preopAnswers[q.key] === true && st.preopAnswerYes]}
                       onPress={() => setPreopAnswer(q.key, true)}
                     >
-                      <Text style={[st.preopAnswerText, preopAnswers[q.key] === true && st.preopAnswerTextActive]}>Sim</Text>
+                      <Text style={preopAnswers[q.key] === true ? [st.preopAnswerText, st.preopAnswerTextActive] : st.preopAnswerText}>Sim</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[st.preopAnswerBtn, preopAnswers[q.key] === false && st.preopAnswerNo]}
                       onPress={() => setPreopAnswer(q.key, false)}
                     >
-                      <Text style={[st.preopAnswerText, preopAnswers[q.key] === false && st.preopAnswerTextActive]}>Nao</Text>
+                      <Text style={preopAnswers[q.key] === false ? [st.preopAnswerText, st.preopAnswerTextActive] : st.preopAnswerText}>Não</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -459,13 +477,16 @@ export default function AdminActivitiesScreen() {
                 </TouchableOpacity>
               </View>
 
-              <TouchableOpacity
-                style={[commonStyles.saveButton, { marginBottom: spacing.lg }, saving && commonStyles.buttonDisabled]}
-                onPress={handleCreate}
+              <Button
+                label={saving ? 'Criando...' : 'Iniciar atividade'}
+                variant="primary"
+                size="lg"
+                fullWidth
+                loading={saving}
                 disabled={saving}
-              >
-                <Text style={commonStyles.saveButtonText}>{saving ? 'Criando...' : 'Iniciar Atividade'}</Text>
-              </TouchableOpacity>
+                onPress={handleCreate}
+                style={{ marginBottom: spacing.lg }}
+              />
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
@@ -484,90 +505,88 @@ export default function AdminActivitiesScreen() {
 const st = StyleSheet.create({
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
 
-  // List
-  row: { flexDirection: 'row', alignItems: 'flex-start' },
-  icon: { width: 44, height: 44, borderRadius: radius.sm, justifyContent: 'center', alignItems: 'center', marginTop: 2 },
-  info: { flex: 1, marginLeft: spacing.md },
-  descText: { fontSize: fontSize.base, fontWeight: '700', color: colors.text },
-  operatorText: { fontSize: fontSize.sm, color: colors.textSecondary, marginTop: 2 },
-  meta: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginTop: spacing.xs },
-  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  metaText: { fontSize: fontSize.xs, color: colors.textSecondary },
-  footer: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
-  dateText: { fontSize: fontSize.xs, color: colors.textLight },
-  statusBadge: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.full },
-  statusLabel: { fontSize: fontSize.xs, fontWeight: '700' },
-  hintText: { fontSize: fontSize.sm, color: colors.textLight, marginTop: spacing.xs },
-  ongoingCard: { borderLeftWidth: 4, borderLeftColor: colors.warning },
-  finishBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    marginTop: spacing.sm, paddingVertical: spacing.sm,
-    borderRadius: radius.sm, backgroundColor: colors.primary, gap: spacing.xs,
+  // Card
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    ...elevation.sm,
   },
-  finishBtnText: { fontSize: fontSize.sm, fontWeight: '700', color: colors.white },
+  ongoingCard: { borderLeftWidth: 3, borderLeftColor: colors.warning },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
+  meta: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginTop: spacing.sm },
+  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
 
   // Sections
-  sectionWrap: { marginBottom: spacing.md },
+  sectionWrap: { marginBottom: spacing.lg },
   sectionHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    marginBottom: spacing.sm, paddingHorizontal: spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing['2xs'],
   },
-  sectionHeaderText: { fontSize: fontSize.base, fontWeight: '700', color: colors.text, flex: 1 },
-  sectionCount: {
-    backgroundColor: colors.warning + '20', paddingHorizontal: spacing.sm,
-    paddingVertical: 2, borderRadius: radius.full, minWidth: 24, alignItems: 'center',
-  },
-  sectionCountText: { fontSize: fontSize.xs, fontWeight: '700', color: colors.warning },
+  sectionLeft: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   emptySection: { alignItems: 'center', paddingVertical: spacing.xl },
-  emptySectionText: { fontSize: fontSize.sm, color: colors.textLight, marginTop: spacing.sm },
 
   // Create modal photos
   photoRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
   photoPicker: {
-    flex: 1, height: 100, backgroundColor: colors.inputBg, borderWidth: 1,
-    borderColor: colors.border, borderRadius: radius.md, borderStyle: 'dashed',
+    flex: 1, height: 100, backgroundColor: colors.background, borderWidth: 1,
+    borderColor: colors.border, borderRadius: radius.sm, borderStyle: 'dashed',
     justifyContent: 'center', alignItems: 'center',
   },
-  photoPreview: { width: '100%', height: '100%', borderRadius: radius.md },
-  photoLabel: { fontSize: fontSize.xs, color: colors.textLight, marginTop: spacing.xs },
+  photoPreview: { width: '100%', height: '100%', borderRadius: radius.sm },
+  photoLabel: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: spacing.xs, fontWeight: '500' },
 
-  // Pre-op questions in create-activity modal
+  // Pre-op questions
   preopSectionTitle: {
-    fontSize: fontSize.base, fontWeight: '700', color: colors.primary,
-    marginTop: spacing.md, marginBottom: spacing.xs, paddingBottom: spacing.xs,
-    borderBottomWidth: 1, borderBottomColor: colors.primary + '30',
+    fontSize: fontSize.xs, fontWeight: '700', color: colors.textSecondary,
+    marginTop: spacing.lg, marginBottom: spacing.sm,
+    textTransform: 'uppercase', letterSpacing: 0.4,
   },
-  preopSectionHint: { fontSize: fontSize.sm, color: colors.textSecondary, marginBottom: spacing.sm },
+  preopSectionHint: { fontSize: fontSize.xs, color: colors.textSecondary, marginBottom: spacing.sm },
   preopCard: {
-    backgroundColor: colors.surface, borderRadius: radius.md, padding: spacing.md,
+    backgroundColor: colors.surface, borderRadius: radius.sm, padding: spacing.md,
     marginBottom: spacing.sm, borderWidth: 1, borderColor: colors.border,
   },
   preopCardCritical: { borderLeftWidth: 3, borderLeftColor: colors.danger },
-  preopHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: spacing.sm },
-  preopText: { flex: 1, fontSize: fontSize.sm, fontWeight: '600', color: colors.text },
+  preopHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: spacing.sm, gap: spacing.sm },
+  preopText: { flex: 1, fontSize: fontSize.sm, fontWeight: '600', color: colors.text, lineHeight: 18 },
   preopCriticalBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 2,
-    backgroundColor: colors.dangerLight, paddingHorizontal: spacing.sm, paddingVertical: 2,
-    borderRadius: radius.full, marginLeft: spacing.xs,
+    backgroundColor: colors.dangerSurface, paddingHorizontal: spacing.sm, paddingVertical: 2,
+    borderRadius: radius.full,
   },
-  preopCriticalText: { fontSize: 10, fontWeight: '700', color: colors.danger },
+  preopCriticalText: { fontSize: 10, fontWeight: '700', color: colors.danger, letterSpacing: 0.3 },
   preopAnswerRow: { flexDirection: 'row', gap: spacing.sm },
   preopAnswerBtn: {
-    flex: 1, paddingVertical: spacing.sm, borderRadius: radius.sm,
+    flex: 1, paddingVertical: spacing.sm + 2, borderRadius: radius.sm,
     borderWidth: 1, borderColor: colors.border, alignItems: 'center',
+    backgroundColor: colors.surface,
   },
   preopAnswerYes: { backgroundColor: colors.success, borderColor: colors.success },
   preopAnswerNo: { backgroundColor: colors.danger, borderColor: colors.danger },
   preopAnswerText: { fontSize: fontSize.sm, fontWeight: '700', color: colors.textSecondary },
   preopAnswerTextActive: { color: colors.white },
 
-  // Seletor de maquina (checklist do dia)
+  // Seletor de maquina
   machineChoice: {
     flexDirection: 'row', alignItems: 'center', padding: spacing.md,
-    backgroundColor: colors.surface, borderRadius: radius.md,
+    backgroundColor: colors.surface, borderRadius: radius.sm,
     borderWidth: 1, borderColor: colors.border, marginBottom: spacing.sm,
   },
-  machineChoiceSel: { borderColor: colors.primary, backgroundColor: colors.primary + '10' },
-  machineChoiceName: { fontSize: fontSize.base, fontWeight: '700', color: colors.text },
+  machineChoiceSel: { borderColor: colors.primary, backgroundColor: colors.primarySurface },
+  machineChoiceName: { fontSize: fontSize.sm, fontWeight: '700', color: colors.text },
   machineChoiceTag: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2 },
 });

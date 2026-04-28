@@ -1,9 +1,6 @@
 import { useState } from 'react';
 import {
   View,
-  Text,
-  TextInput,
-  TouchableOpacity,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
@@ -14,7 +11,8 @@ import {
 import { useAuth } from '../../src/contexts/AuthContext';
 import { loginSchema } from '../../src/schemas';
 import { useFormValidation } from '../../src/hooks/useFormValidation';
-import { colors, spacing, radius, fontSize } from '../../src/theme/colors';
+import { colors, spacing } from '../../src/theme/colors';
+import { Text, Input, PasswordInput, Button } from '../../src/components/ui';
 
 export default function LoginScreen() {
   const { signIn } = useAuth();
@@ -32,62 +30,75 @@ export default function LoginScreen() {
     setLoading(false);
 
     if (error) {
-      Alert.alert('Erro', 'Credenciais invalidas. Verifique e-mail e senha.');
+      Alert.alert('Não foi possível entrar', 'Verifique seu e-mail e senha e tente novamente.');
     }
   }
 
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <View style={styles.header}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.hero}>
           <Image
             source={require('../../logo.jpeg')}
             style={styles.logo}
             resizeMode="contain"
           />
+          <Text variant="h1" align="center" style={styles.title}>
+            Bem-vindo de volta
+          </Text>
+          <Text variant="callout" tone="muted" align="center" style={styles.subtitle}>
+            Entre com suas credenciais para continuar acompanhando suas atividades.
+          </Text>
         </View>
 
         <View style={styles.form}>
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Email</Text>
-            <TextInput
-              style={[styles.input, errors.email && styles.inputError]}
-              placeholder="seu@email.com"
-              placeholderTextColor={colors.textLight}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-            {errors.email && <Text style={styles.error}>{errors.email}</Text>}
-          </View>
+          <Input
+            label="E-mail"
+            placeholder="seu@email.com"
+            leftIcon="mail-outline"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoComplete="email"
+            error={errors.email}
+            returnKeyType="next"
+          />
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Senha</Text>
-            <TextInput
-              style={[styles.input, errors.password && styles.inputError]}
-              placeholder="Sua senha"
-              placeholderTextColor={colors.textLight}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
-            {errors.password && <Text style={styles.error}>{errors.password}</Text>}
-          </View>
+          <PasswordInput
+            label="Senha"
+            placeholder="Digite sua senha"
+            leftIcon="lock-closed-outline"
+            value={password}
+            onChangeText={setPassword}
+            error={errors.password}
+            containerStyle={{ marginTop: spacing.md }}
+            returnKeyType="done"
+            onSubmitEditing={handleLogin}
+          />
 
-          <TouchableOpacity
-            style={[styles.button, loading && styles.buttonDisabled]}
+          <Button
+            label={loading ? 'Entrando...' : 'Entrar'}
             onPress={handleLogin}
+            loading={loading}
             disabled={loading}
-          >
-            <Text style={styles.buttonText}>
-              {loading ? 'Entrando...' : 'Entrar'}
-            </Text>
-          </TouchableOpacity>
+            fullWidth
+            size="lg"
+            style={{ marginTop: spacing.xl }}
+          />
+        </View>
 
+        <View style={styles.footer}>
+          <Text variant="caption" tone="muted" align="center">
+            Problemas para acessar? Fale com o administrador.
+          </Text>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -97,75 +108,29 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
   },
   scroll: {
     flexGrow: 1,
     justifyContent: 'center',
-    padding: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing['2xl'],
   },
-  header: {
+  hero: {
     alignItems: 'center',
-    marginBottom: spacing.xl,
+    marginBottom: spacing['2xl'],
   },
   logo: {
-    width: 200,
-    height: 200,
+    width: 96,
+    height: 96,
+    marginBottom: spacing.lg,
+    borderRadius: 24,
   },
-  form: {
-  },
-  inputGroup: {
-    marginBottom: spacing.md,
-  },
-  label: {
-    fontSize: fontSize.sm,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  input: {
-    backgroundColor: colors.inputBg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    padding: spacing.md,
-    fontSize: fontSize.base,
-    color: colors.text,
-  },
-  inputError: {
-    borderColor: colors.danger,
-  },
-  error: {
-    color: colors.danger,
-    fontSize: fontSize.xs,
-    marginTop: spacing.xs,
-  },
-  button: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.sm,
-    padding: spacing.md,
+  title: { marginBottom: spacing.sm },
+  subtitle: { maxWidth: 320 },
+  form: { width: '100%' },
+  footer: {
+    marginTop: spacing['2xl'],
     alignItems: 'center',
-    marginTop: spacing.sm,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  buttonText: {
-    color: colors.white,
-    fontSize: fontSize.base,
-    fontWeight: '700',
-  },
-  linkButton: {
-    alignItems: 'center',
-    marginTop: spacing.md,
-    padding: spacing.sm,
-  },
-  linkText: {
-    color: colors.textSecondary,
-    fontSize: fontSize.sm,
-  },
-  linkTextBold: {
-    color: colors.primary,
-    fontWeight: '700',
   },
 });

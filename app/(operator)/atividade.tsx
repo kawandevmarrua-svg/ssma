@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
@@ -19,8 +18,9 @@ import { useAuth } from '../../src/contexts/AuthContext';
 import { supabase } from '../../src/lib/supabase';
 import { pickPhoto, uploadPhoto } from '../../src/lib/imageUtils';
 import { Activity } from '../../src/types/database';
-import { colors, spacing, radius, fontSize } from '../../src/theme/colors';
+import { colors, elevation, spacing, radius, fontSize } from '../../src/theme/colors';
 import { commonStyles } from '../../src/theme/commonStyles';
+import { Badge, Button, Text } from '../../src/components/ui';
 import { FinishActivityModal } from '../../src/components/FinishActivityModal';
 
 const PRE_OP_QUESTIONS = [
@@ -230,46 +230,62 @@ export default function AtividadeScreen() {
   function renderActivity({ item }: { item: Activity }) {
     const inProgress = !item.end_time;
     return (
-      <View style={commonStyles.card}>
-        <View style={st.actHeader}>
-          <View style={[st.dot, { backgroundColor: inProgress ? colors.warning : colors.success }]} />
-          <View style={st.actInfo}>
-            <Text style={st.actDesc}>{item.description}</Text>
-            {item.location && <Text style={st.actLocation}>{item.location}</Text>}
-            {item.equipment_tag && <Text style={st.actTag}>TAG: {item.equipment_tag}</Text>}
-          </View>
-          <View style={[st.badge, { backgroundColor: inProgress ? colors.warningLight : colors.success + '20' }]}>
-            <Text style={[st.badgeText, { color: inProgress ? colors.warning : colors.success }]}>
-              {inProgress ? 'Em Andamento' : 'Finalizada'}
+      <View style={[st.card, inProgress && st.ongoingCard]}>
+        <View style={st.cardHeader}>
+          <View style={st.headerLeft}>
+            <Ionicons
+              name={inProgress ? 'time-outline' : 'checkmark-circle-outline'}
+              size={14}
+              color={colors.textSecondary}
+            />
+            <Text variant="captionStrong" tone="muted">
+              {formatTime(item.start_time)}{item.end_time ? ` - ${formatTime(item.end_time)}` : ''}
             </Text>
           </View>
+          <Badge
+            label={inProgress ? 'EM ANDAMENTO' : 'FINALIZADA'}
+            variant={inProgress ? 'warning' : 'success'}
+            size="sm"
+          />
         </View>
 
-        <View style={st.timeRow}>
-          <View style={st.timeItem}>
-            <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
-            <Text style={st.timeText}>Inicio: {formatTime(item.start_time)}</Text>
-          </View>
-          {item.end_time && (
-            <View style={st.timeItem}>
-              <Ionicons name="checkmark-circle-outline" size={14} color={colors.success} />
-              <Text style={st.timeText}>Fim: {formatTime(item.end_time)}</Text>
+        <Text variant="h3" numberOfLines={2} style={{ marginBottom: 4 }}>
+          {item.description}
+        </Text>
+        <View style={st.metaRow}>
+          {item.location && (
+            <View style={st.metaItem}>
+              <Ionicons name="location-outline" size={12} color={colors.textSecondary} />
+              <Text variant="caption" tone="muted">{item.location}</Text>
+            </View>
+          )}
+          {item.equipment_tag && (
+            <View style={st.metaItem}>
+              <Ionicons name="pricetag-outline" size={12} color={colors.textSecondary} />
+              <Text variant="caption" tone="muted">{item.equipment_tag}</Text>
             </View>
           )}
         </View>
 
         {item.had_interference && (
           <View style={st.interferNote}>
-            <Ionicons name="alert-circle" size={14} color={colors.warning} />
-            <Text style={st.interferText}>Interferencia: {item.interference_notes || 'Sim'}</Text>
+            <Ionicons name="alert-circle-outline" size={14} color={colors.warningDark} />
+            <Text variant="caption" tone="warning" style={{ flex: 1 }}>
+              Interferência: {item.interference_notes || 'Sim'}
+            </Text>
           </View>
         )}
 
         {inProgress && (
-          <TouchableOpacity style={st.endBtn} onPress={() => setActivityToFinish(item)}>
-            <Ionicons name="stop-circle" size={18} color={colors.primary} />
-            <Text style={st.endBtnText}>Finalizar Atividade</Text>
-          </TouchableOpacity>
+          <Button
+            label="Finalizar atividade"
+            icon="stop-circle-outline"
+            variant="primary"
+            size="md"
+            fullWidth
+            onPress={() => setActivityToFinish(item)}
+            style={{ marginTop: spacing.md }}
+          />
         )}
       </View>
     );
@@ -286,19 +302,23 @@ export default function AtividadeScreen() {
         ListEmptyComponent={
           !loading ? (
             <View style={commonStyles.empty}>
-              <Ionicons name="construct-outline" size={48} color={colors.textLight} />
-              <Text style={commonStyles.emptyText}>Nenhuma atividade hoje</Text>
-              <Text style={[commonStyles.emptyText, { fontSize: fontSize.sm }]}>Toque em + para registrar</Text>
+              <Ionicons name="construct-outline" size={40} color={colors.textLight} />
+              <Text variant="callout" tone="muted" style={{ marginTop: spacing.md }}>
+                Nenhuma atividade hoje
+              </Text>
+              <Text variant="caption" tone="subtle" style={{ marginTop: 4 }}>
+                Toque em + para registrar
+              </Text>
             </View>
           ) : null
         }
       />
 
       <TouchableOpacity
-        style={[commonStyles.fab, { backgroundColor: colors.primary }]}
+        style={st.fab}
         onPress={openCreateModal}
       >
-        <Ionicons name="add" size={28} color={colors.white} />
+        <Ionicons name="add" size={26} color={colors.white} />
       </TouchableOpacity>
 
       {/* Create Modal */}
@@ -307,9 +327,9 @@ export default function AtividadeScreen() {
           <View style={commonStyles.modalContent}>
             <ScrollView showsVerticalScrollIndicator={false}>
               <View style={commonStyles.modalHeader}>
-                <Text style={commonStyles.modalTitle}>Nova Atividade</Text>
-                <TouchableOpacity onPress={() => { setCreateModal(false); resetCreateForm(); }}>
-                  <Ionicons name="close" size={24} color={colors.textSecondary} />
+                <Text variant="h2">Nova atividade</Text>
+                <TouchableOpacity onPress={() => { setCreateModal(false); resetCreateForm(); }} hitSlop={8}>
+                  <Ionicons name="close" size={22} color={colors.textSecondary} />
                 </TouchableOpacity>
               </View>
 
@@ -331,13 +351,13 @@ export default function AtividadeScreen() {
                       style={[st.answerBtn, preopAnswers[q.key] === true && st.answerYes]}
                       onPress={() => setPreopAnswer(q.key, true)}
                     >
-                      <Text style={[st.answerText, preopAnswers[q.key] === true && st.answerTextActive]}>Sim</Text>
+                      <Text style={preopAnswers[q.key] === true ? [st.answerText, st.answerTextActive] : st.answerText}>Sim</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[st.answerBtn, preopAnswers[q.key] === false && st.answerNo]}
                       onPress={() => setPreopAnswer(q.key, false)}
                     >
-                      <Text style={[st.answerText, preopAnswers[q.key] === false && st.answerTextActive]}>Nao</Text>
+                      <Text style={preopAnswers[q.key] === false ? [st.answerText, st.answerTextActive] : st.answerText}>Não</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -390,13 +410,16 @@ export default function AtividadeScreen() {
                 </TouchableOpacity>
               </View>
 
-              <TouchableOpacity
-                style={[commonStyles.saveButton, { marginBottom: spacing.lg }, saving && commonStyles.buttonDisabled]}
-                onPress={handleCreate}
+              <Button
+                label={saving ? 'Criando...' : 'Iniciar atividade'}
+                variant="primary"
+                size="lg"
+                fullWidth
+                loading={saving}
                 disabled={saving}
-              >
-                <Text style={commonStyles.saveButtonText}>{saving ? 'Criando...' : 'Iniciar Atividade'}</Text>
-              </TouchableOpacity>
+                onPress={handleCreate}
+                style={{ marginBottom: spacing.lg }}
+              />
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
@@ -413,67 +436,93 @@ export default function AtividadeScreen() {
 }
 
 const st = StyleSheet.create({
-  actHeader: { flexDirection: 'row', alignItems: 'center' },
-  dot: { width: 10, height: 10, borderRadius: 5 },
-  actInfo: { flex: 1, marginLeft: spacing.md },
-  actDesc: { fontSize: fontSize.base, fontWeight: '700', color: colors.text },
-  actLocation: { fontSize: fontSize.sm, color: colors.textSecondary, marginTop: 2 },
-  actTag: { fontSize: fontSize.xs, color: colors.textLight, marginTop: 2 },
-  badge: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radius.full },
-  badgeText: { fontSize: fontSize.xs, fontWeight: '600' },
-  timeRow: { flexDirection: 'row', gap: spacing.lg, marginTop: spacing.sm, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
-  timeItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  timeText: { fontSize: fontSize.xs, color: colors.textSecondary },
-  interferNote: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.sm, gap: spacing.xs, backgroundColor: colors.warningLight, padding: spacing.sm, borderRadius: radius.sm },
-  interferText: { fontSize: fontSize.xs, color: colors.warning, flex: 1 },
-  endBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: spacing.sm, paddingVertical: spacing.sm, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.primary, gap: spacing.xs },
-  endBtnText: { fontSize: fontSize.sm, fontWeight: '600', color: colors.primary },
+  // Card
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    ...elevation.sm,
+  },
+  ongoingCard: { borderLeftWidth: 3, borderLeftColor: colors.warning },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
+  metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginTop: spacing.sm },
+  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  interferNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.sm,
+    gap: spacing.xs,
+    backgroundColor: colors.warningSurface,
+    padding: spacing.sm,
+    borderRadius: radius.sm,
+  },
+
+  // FAB
+  fab: {
+    position: 'absolute', bottom: spacing.lg, right: spacing.lg,
+    width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary,
+    justifyContent: 'center', alignItems: 'center',
+    ...elevation.brand,
+  },
+
+  // Modal photos
   photoRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
   photoPicker: {
-    flex: 1, height: 100, backgroundColor: colors.inputBg, borderWidth: 1,
-    borderColor: colors.border, borderRadius: radius.md, borderStyle: 'dashed',
+    flex: 1, height: 100, backgroundColor: colors.background, borderWidth: 1,
+    borderColor: colors.border, borderRadius: radius.sm, borderStyle: 'dashed',
     justifyContent: 'center', alignItems: 'center',
   },
-  photoPreview: { width: '100%', height: '100%', borderRadius: radius.md },
-  photoLabel: { fontSize: fontSize.xs, color: colors.textLight, marginTop: spacing.xs },
+  photoPreview: { width: '100%', height: '100%', borderRadius: radius.sm },
+  photoLabel: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: spacing.xs, fontWeight: '500' },
 
-  // Pre-op no modal de nova atividade
+  // Pre-op
   sectionTitle: {
-    fontSize: fontSize.base, fontWeight: '700', color: colors.primary,
-    marginTop: spacing.md, marginBottom: spacing.xs, paddingBottom: spacing.xs,
-    borderBottomWidth: 1, borderBottomColor: colors.primary + '30',
+    fontSize: fontSize.xs, fontWeight: '700', color: colors.textSecondary,
+    marginTop: spacing.lg, marginBottom: spacing.sm,
+    textTransform: 'uppercase', letterSpacing: 0.4,
   },
-  sectionHint: { fontSize: fontSize.sm, color: colors.textSecondary, marginBottom: spacing.sm },
+  sectionHint: { fontSize: fontSize.xs, color: colors.textSecondary, marginBottom: spacing.sm },
   questionCard: {
-    backgroundColor: colors.surface, borderRadius: radius.md, padding: spacing.md,
+    backgroundColor: colors.surface, borderRadius: radius.sm, padding: spacing.md,
     marginBottom: spacing.sm, borderWidth: 1, borderColor: colors.border,
   },
   questionCritical: { borderLeftWidth: 3, borderLeftColor: colors.danger },
-  questionHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: spacing.sm },
-  questionText: { flex: 1, fontSize: fontSize.sm, fontWeight: '600', color: colors.text },
+  questionHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: spacing.sm, gap: spacing.sm },
+  questionText: { flex: 1, fontSize: fontSize.sm, fontWeight: '600', color: colors.text, lineHeight: 18 },
   criticalBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 2,
-    backgroundColor: colors.dangerLight, paddingHorizontal: spacing.sm, paddingVertical: 2,
-    borderRadius: radius.full, marginLeft: spacing.xs,
+    backgroundColor: colors.dangerSurface, paddingHorizontal: spacing.sm, paddingVertical: 2,
+    borderRadius: radius.full,
   },
-  criticalText: { fontSize: 10, fontWeight: '700', color: colors.danger },
+  criticalText: { fontSize: 10, fontWeight: '700', color: colors.danger, letterSpacing: 0.3 },
   answerRow: { flexDirection: 'row', gap: spacing.sm },
   answerBtn: {
-    flex: 1, paddingVertical: spacing.sm, borderRadius: radius.sm,
+    flex: 1, paddingVertical: spacing.sm + 2, borderRadius: radius.sm,
     borderWidth: 1, borderColor: colors.border, alignItems: 'center',
+    backgroundColor: colors.surface,
   },
   answerYes: { backgroundColor: colors.success, borderColor: colors.success },
   answerNo: { backgroundColor: colors.danger, borderColor: colors.danger },
   answerText: { fontSize: fontSize.sm, fontWeight: '700', color: colors.textSecondary },
   answerTextActive: { color: colors.white },
 
-  // Seletor de maquina (checklist do dia)
+  // Seletor de máquina
   machineChoice: {
     flexDirection: 'row', alignItems: 'center', padding: spacing.md,
-    backgroundColor: colors.surface, borderRadius: radius.md,
+    backgroundColor: colors.surface, borderRadius: radius.sm,
     borderWidth: 1, borderColor: colors.border, marginBottom: spacing.sm,
   },
-  machineChoiceSel: { borderColor: colors.primary, backgroundColor: colors.primary + '10' },
-  machineChoiceName: { fontSize: fontSize.base, fontWeight: '700', color: colors.text },
+  machineChoiceSel: { borderColor: colors.primary, backgroundColor: colors.primarySurface },
+  machineChoiceName: { fontSize: fontSize.sm, fontWeight: '700', color: colors.text },
   machineChoiceTag: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2 },
 });

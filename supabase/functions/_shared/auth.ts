@@ -20,9 +20,18 @@ const BASE_CORS = {
 export function buildCorsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get("origin") ?? "";
   const allowed = getAllowedOrigins();
+
+  // Se nenhuma origem foi configurada via env, libera geral. A funcao
+  // ainda exige Authorization Bearer valido, entao CORS aqui nao protege
+  // recursos — apenas evita que browsers bloqueiem chamadas legitimas.
+  if (allowed.length === 0) {
+    return { ...BASE_CORS, "Access-Control-Allow-Origin": origin || "*" };
+  }
+
   if (origin && allowed.includes(origin)) {
     return { ...BASE_CORS, "Access-Control-Allow-Origin": origin };
   }
+
   // Origin nao permitida: nao devolvemos o header.
   // O browser bloqueia, e chamadas server-to-server sem origin (trigger SQL,
   // cron) ainda funcionam.

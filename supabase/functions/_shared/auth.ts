@@ -21,11 +21,11 @@ export function buildCorsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get("origin") ?? "";
   const allowed = getAllowedOrigins();
 
-  // Se nenhuma origem foi configurada via env, libera geral. A funcao
-  // ainda exige Authorization Bearer valido, entao CORS aqui nao protege
-  // recursos — apenas evita que browsers bloqueiem chamadas legitimas.
+  // Sem ALLOWED_ORIGINS configurado: nega por padrao (sem header Allow-Origin).
+  // Chamadas server-to-server (sem header Origin) continuam funcionando.
+  // Configure ALLOWED_ORIGINS no painel do Supabase para liberar origens.
   if (allowed.length === 0) {
-    return { ...BASE_CORS, "Access-Control-Allow-Origin": origin || "*" };
+    return { ...BASE_CORS };
   }
 
   if (origin && allowed.includes(origin)) {

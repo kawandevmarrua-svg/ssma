@@ -1,8 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import type L from 'leaflet';
 import { createClient } from '@/lib/supabase/client';
 import { MapPin, RefreshCw, Activity as ActivityIcon, ListChecks, CircleDot, WifiOff } from 'lucide-react';
 
@@ -118,26 +117,41 @@ export default function AcompanhamentoClient() {
     return () => clearInterval(i);
   }, []);
 
-  // Inicializa o mapa uma unica vez. Cleanup destroi pra suportar
-  // double-invoke do React 18 dev.
+  // Ref to hold the dynamically imported leaflet module
+  const leafletRef = useRef<typeof L | null>(null);
+
+  // Inicializa o mapa uma unica vez com dynamic import do Leaflet.
   useEffect(() => {
     if (!containerRef.current) return;
     if (mapRef.current) return;
 
-    const map = L.map(containerRef.current, {
-      center: [-15.78, -47.93],
-      zoom: 4,
-      scrollWheelZoom: true,
-    });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      maxZoom: 19,
-    }).addTo(map);
-    mapRef.current = map;
+    let cancelled = false;
+
+    (async () => {
+      const leaflet = (await import('leaflet')).default;
+      // @ts-expect-error -- CSS module has no type declaration
+      await import('leaflet/dist/leaflet.css');
+      if (cancelled) return;
+      leafletRef.current = leaflet;
+
+      const map = leaflet.map(containerRef.current!, {
+        center: [-15.78, -47.93],
+        zoom: 4,
+        scrollWheelZoom: true,
+      });
+      leaflet.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        maxZoom: 19,
+      }).addTo(map);
+      mapRef.current = map;
+    })();
 
     return () => {
-      map.remove();
-      mapRef.current = null;
+      cancelled = true;
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
       markersRef.current.clear();
       fittedRef.current = false;
     };
@@ -161,7 +175,7 @@ export default function AcompanhamentoClient() {
     const cutoff = new Date(Date.now() - RECENT_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
     const { data: locs, error } = await supabase
       .from('operator_locations')
-      .select('*')
+      .select('operator_id, latitude, longitude, accuracy, speed, current_status, current_activity_id, current_checklist_id, recorded_at, updated_at')
       .gte('updated_at', cutoff)
       .order('updated_at', { ascending: false });
 
@@ -231,7 +245,8 @@ export default function AcompanhamentoClient() {
   // Sincroniza markers com visibleRows
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    const Leaflet = leafletRef.current;
+    if (!map || !Leaflet) return;
 
     const visibleIds = new Set(visibleRows.map((r) => r.operator_id));
 
@@ -254,12 +269,12 @@ export default function AcompanhamentoClient() {
 
       if (existing) {
         existing.marker.setLatLng([r.latitude, r.longitude]);
-        existing.marker.setIcon(L.divIcon({ html, className: 'operator-marker', iconSize: [28, 28], iconAnchor: [14, 14] }));
+        existing.marker.setIcon(Leaflet.divIcon({ html, className: 'operator-marker', iconSize: [28, 28], iconAnchor: [14, 14] }));
         existing.marker.setPopupContent(popup);
 
         if (existing.circle) existing.circle.remove();
         if (r.accuracy && r.accuracy < 200 && !stale) {
-          const circle = L.circle([r.latitude, r.longitude], {
+          const circle = Leaflet.circle([r.latitude, r.longitude], {
             radius: r.accuracy,
             color: STATUS_COLOR[r.current_status] ?? '#6b7280',
             fillColor: STATUS_COLOR[r.current_status] ?? '#6b7280',
@@ -271,15 +286,15 @@ export default function AcompanhamentoClient() {
           existing.circle = null;
         }
       } else {
-        const marker = L.marker([r.latitude, r.longitude], {
-          icon: L.divIcon({ html, className: 'operator-marker', iconSize: [28, 28], iconAnchor: [14, 14] }),
+        const marker = Leaflet.marker([r.latitude, r.longitude], {
+          icon: Leaflet.divIcon({ html, className: 'operator-marker', iconSize: [28, 28], iconAnchor: [14, 14] }),
         }).addTo(map);
         marker.bindPopup(popup);
         marker.on('click', () => setSelected(r.operator_id));
 
         let circle: L.Circle | null = null;
         if (r.accuracy && r.accuracy < 200 && !stale) {
-          circle = L.circle([r.latitude, r.longitude], {
+          circle = Leaflet.circle([r.latitude, r.longitude], {
             radius: r.accuracy,
             color: STATUS_COLOR[r.current_status] ?? '#6b7280',
             fillColor: STATUS_COLOR[r.current_status] ?? '#6b7280',
@@ -293,7 +308,7 @@ export default function AcompanhamentoClient() {
 
     // Fit bounds na primeira vez que tiver dado
     if (!fittedRef.current && visibleRows.length > 0) {
-      const bounds = L.latLngBounds(visibleRows.map((r) => [r.latitude, r.longitude]));
+      const bounds = Leaflet.latLngBounds(visibleRows.map((r) => [r.latitude, r.longitude]));
       map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
       fittedRef.current = true;
     }

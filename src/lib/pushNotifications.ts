@@ -52,7 +52,6 @@ export async function registerPushTokenForUser(userId: string) {
 
   const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });
   const token = tokenResponse.data;
-  console.log('[Push] token obtido:', token);
 
   const { data: current } = await supabase
     .from('user_push_tokens')

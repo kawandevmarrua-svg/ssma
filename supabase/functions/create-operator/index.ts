@@ -1,7 +1,6 @@
 import { authenticate, buildCorsHeaders } from "../_shared/auth.ts";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const STRONG_PASSWORD = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{10,}$/;
 const ALLOWED_CARGOS = new Set([
   "Tecnico de seguranca",
   "Engenheiro de seguranca",
@@ -9,6 +8,32 @@ const ALLOWED_CARGOS = new Set([
   "Analista de SSMA",
   "Supervisor de operacoes",
 ]);
+
+/** Gera senha temporaria forte server-side (16 chars, inclui maiusc/minusc/digito/especial). */
+function generateTempPassword(): string {
+  const lower = "abcdefghijkmnopqrstuvwxyz";
+  const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const digits = "23456789";
+  const special = "!@#$%&*";
+  const all = lower + upper + digits + special;
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  // Garante ao menos 1 de cada categoria nos primeiros 4 chars
+  const pick = (set: string, byte: number) => set[byte % set.length];
+  const chars = [
+    pick(lower, bytes[0]),
+    pick(upper, bytes[1]),
+    pick(digits, bytes[2]),
+    pick(special, bytes[3]),
+  ];
+  for (let i = 4; i < 16; i++) chars.push(pick(all, bytes[i]));
+  // Embaralha com Fisher-Yates usando bytes extras de entropia
+  const shuffle = crypto.getRandomValues(new Uint8Array(16));
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = shuffle[i] % (i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join("");
+}
 
 // Rate limit: max N criacoes por janela de M minutos por caller.
 const RATE_LIMIT_MAX = 10;
@@ -82,15 +107,14 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const name = String(body.name ?? "").trim();
     const email = String(body.email ?? "").trim().toLowerCase();
-    const password = String(body.password ?? "");
     const cargo = String(body.cargo ?? "");
 
     if (name.length < 2) throw new Error("Nome invalido.");
     if (!EMAIL_REGEX.test(email)) throw new Error("E-mail invalido.");
-    if (!STRONG_PASSWORD.test(password)) {
-      throw new Error("Senha deve ter min. 10 chars com maiuscula, minuscula e numero.");
-    }
     if (!ALLOWED_CARGOS.has(cargo)) throw new Error("Cargo invalido.");
+
+    // Senha gerada server-side — nunca trafega no request body.
+    const password = generateTempPassword();
 
     const { data: created, error: createErr } = await supabase.auth.admin.createUser({
       email,
@@ -131,11 +155,16 @@ Deno.serve(async (req) => {
     });
 
     if (opErr) {
+      await supabase.from("profiles").delete().eq("id", newUserId);
       await supabase.auth.admin.deleteUser(newUserId);
       throw new Error(opErr.message);
     }
 
-    return new Response(JSON.stringify({ success: true, id: newUserId }), {
+    return new Response(JSON.stringify({
+      success: true,
+      id: newUserId,
+      tempPassword: password,
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {

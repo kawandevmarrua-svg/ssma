@@ -48,10 +48,8 @@ export default function UsersScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [selectedCargo, setSelectedCargo] = useState<Cargo | null>(null);
   const [saving, setSaving] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
 
   const loadUsers = useCallback(async () => {
     if (!user) return;
@@ -78,8 +76,8 @@ export default function UsersScreen() {
   useEffect(() => { loadUsers(); }, [loadUsers]);
 
   function resetForm() {
-    setName(''); setEmail(''); setPassword('');
-    setSelectedCargo(null); setShowPassword(false);
+    setName(''); setEmail('');
+    setSelectedCargo(null);
   }
 
   async function handleCreate() {
@@ -87,16 +85,12 @@ export default function UsersScreen() {
 
     if (!name.trim()) { Alert.alert('Atenção', 'Preencha o nome completo.'); return; }
     if (!email.trim()) { Alert.alert('Atenção', 'Preencha o email.'); return; }
-    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{10,}$/.test(password)) {
-      Alert.alert('Atenção', 'A senha deve ter no mínimo 10 caracteres, com letra maiúscula, minúscula e número.');
-      return;
-    }
     if (!selectedCargo) { Alert.alert('Atenção', 'Selecione um cargo.'); return; }
 
     setSaving(true);
     try {
       const { data, error } = await supabase.functions.invoke('create-operator', {
-        body: { name: name.trim(), email: email.trim().toLowerCase(), password, cargo: selectedCargo },
+        body: { name: name.trim(), email: email.trim().toLowerCase(), cargo: selectedCargo },
       });
       if (error || data?.success === false) {
         const msg = (data?.error as string | undefined) ?? error?.message ?? 'Falha ao criar usuário.';
@@ -104,7 +98,13 @@ export default function UsersScreen() {
         setSaving(false);
         return;
       }
-      Alert.alert('Sucesso', `Usuário ${name.trim()} criado com sucesso!`);
+      const tempPass = data?.tempPassword as string | undefined;
+      Alert.alert(
+        'Usuário criado',
+        tempPass
+          ? `Senha temporária para ${name.trim()}:\n\n${tempPass}\n\nO operador será obrigado a trocar no primeiro login. Anote e repasse com segurança.`
+          : `Usuário ${name.trim()} criado com sucesso!`,
+      );
       resetForm();
       setModalVisible(false);
       loadUsers();
@@ -258,31 +258,6 @@ export default function UsersScreen() {
               </View>
 
               <View style={commonStyles.inputGroup}>
-                <Text style={commonStyles.label}>Senha *</Text>
-                <View style={st.passwordRow}>
-                  <TextInput
-                    style={[commonStyles.input, { flex: 1 }]}
-                    placeholder="Mínimo 10 caracteres"
-                    placeholderTextColor={colors.textLight}
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry={!showPassword}
-                    autoCapitalize="none"
-                  />
-                  <TouchableOpacity
-                    style={st.eyeBtn}
-                    onPress={() => setShowPassword(!showPassword)}
-                  >
-                    <Ionicons
-                      name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                      size={20}
-                      color={colors.textSecondary}
-                    />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              <View style={commonStyles.inputGroup}>
                 <Text style={commonStyles.label}>Cargo *</Text>
                 {CARGOS.map((cargo) => {
                   const isSelected = selectedCargo === cargo;
@@ -382,8 +357,6 @@ const st = StyleSheet.create({
   },
 
   // Modal extras
-  passwordRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  eyeBtn: { padding: spacing.sm },
   cargoOption: {
     flexDirection: 'row',
     alignItems: 'center',

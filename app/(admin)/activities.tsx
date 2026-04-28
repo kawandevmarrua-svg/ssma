@@ -109,13 +109,10 @@ export default function AdminActivitiesScreen() {
 
   const findMyOperator = useCallback(async () => {
     if (!user) return;
+    // Apenas vincula se o admin tambem tem registro de operador
     const { data: selfOp } = await supabase
       .from('operators').select('id').eq('auth_user_id', user.id).single();
-    if (selfOp) { setMyOperatorId(selfOp.id); return; }
-    const { data: firstOp } = await supabase
-      .from('operators').select('id').eq('created_by', user.id).eq('active', true)
-      .order('created_at').limit(1).single();
-    if (firstOp) setMyOperatorId(firstOp.id);
+    if (selfOp) setMyOperatorId(selfOp.id);
   }, [user]);
 
   const loadActivities = useCallback(async () => {
@@ -148,7 +145,13 @@ export default function AdminActivitiesScreen() {
   }
 
   async function openCreateModal() {
-    if (!myOperatorId) return;
+    if (!myOperatorId) {
+      Alert.alert(
+        'Sem vinculo de operador',
+        'Seu usuario nao possui registro de operador. Para criar atividades, vincule seu usuario a um operador.',
+      );
+      return;
+    }
     const today = new Date().toISOString().split('T')[0];
     const { data } = await supabase
       .from('checklists')

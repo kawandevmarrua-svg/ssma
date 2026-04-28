@@ -2,20 +2,17 @@
 
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { formatDuration, formatTime } from '@/lib/formatters';
+import type { Operator } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from '@/components/ui/card';
 import {
   Users,
   Plus,
-  X,
   Search,
   Phone,
   Mail,
@@ -29,17 +26,7 @@ import {
   AlertTriangle,
   Calendar,
 } from 'lucide-react';
-
-interface Operator {
-  id: string;
-  name: string;
-  email: string | null;
-  phone: string | null;
-  role: string;
-  active: boolean;
-  created_at: string;
-  auth_user_id: string | null;
-}
+import { OperatorFormModal } from './operator-form-modal';
 
 interface ActivityEvent {
   id: string;
@@ -84,29 +71,30 @@ export default function OperadoresPage() {
   // Modal state
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Operator | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  // Form
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [phone, setPhone] = useState('');
-  const [role, setRole] = useState('');
-  const [active, setActive] = useState(true);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
-  const loadOperators = useCallback(async () => {
-    const { data } = await supabase
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const loadOperators = useCallback(async (term = '') => {
+    let query = supabase
       .from('operators')
-      .select('*')
+      .select('id, name, email, phone, role, active, created_at, auth_user_id')
       .order('created_at', { ascending: false });
+    if (term) {
+      query = query.or(`name.ilike.%${term}%,role.ilike.%${term}%,email.ilike.%${term}%`);
+    }
+    const { data } = await query;
     setOperators(data ?? []);
     setLoading(false);
   }, [supabase]);
 
   useEffect(() => {
-    loadOperators();
-  }, [loadOperators]);
+    loadOperators(debouncedSearch);
+  }, [loadOperators, debouncedSearch]);
 
   const loadOperatorDetail = useCallback(async (operatorId: string, p: Period) => {
     setDetailLoading(true);
@@ -152,117 +140,12 @@ export default function OperadoresPage() {
 
   function openCreate() {
     setEditing(null);
-    setName('');
-    setEmail('');
-    setPassword('');
-    setPhone('');
-    setRole('');
-    setActive(true);
-    setError(null);
     setShowModal(true);
   }
 
   function openEdit(op: Operator) {
     setEditing(op);
-    setName(op.name);
-    setEmail(op.email || '');
-    setPassword('');
-    setPhone(op.phone || '');
-    setRole(op.role);
-    setActive(op.active);
-    setError(null);
     setShowModal(true);
-  }
-
-  async function handleSave() {
-    if (!name.trim() || !role.trim()) {
-      setError('Nome e funcao sao obrigatorios.');
-      return;
-    }
-
-    setSaving(true);
-    setError(null);
-
-    if (editing) {
-      const { error: updateError } = await supabase
-        .from('operators')
-        .update({
-          name: name.trim(),
-          email: email.trim() || null,
-          phone: phone.trim() || null,
-          role: role.trim(),
-          active,
-        })
-        .eq('id', editing.id);
-
-      if (updateError) {
-        setError(updateError.message);
-        setSaving(false);
-        return;
-      }
-    } else {
-      if (!email.trim() || !password.trim()) {
-        setError('Email e senha sao obrigatorios para novo operador.');
-        setSaving(false);
-        return;
-      }
-
-      if (password.length < 8) {
-        setError('Senha deve ter no minimo 8 caracteres.');
-        setSaving(false);
-        return;
-      }
-
-      // Create a separate client to avoid logging out the current admin
-      const { createClient: rawCreateClient } = await import('@supabase/supabase-js');
-      const tempClient = rawCreateClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        { auth: { persistSession: false, autoRefreshToken: false } },
-      );
-
-      const { data: authData, error: authError } = await tempClient.auth.signUp({
-        email: email.trim(),
-        password,
-        options: { data: { full_name: name.trim(), role: 'operator' } },
-      });
-
-      if (authError) {
-        setError(authError.message);
-        setSaving(false);
-        return;
-      }
-
-      if (authData.user) {
-        // Profile role is set by the handle_new_user trigger via signup metadata
-
-        // Get current admin user
-        const { data: { user: currentUser } } = await supabase.auth.getUser();
-
-        // Create operator record
-        const { error: opError } = await supabase.from('operators').insert({
-          name: name.trim(),
-          email: email.trim(),
-          phone: phone.trim() || null,
-          role: role.trim(),
-          created_by: currentUser!.id,
-          auth_user_id: authData.user.id,
-          active: true,
-        });
-
-        if (opError) {
-          setError('Conta criada mas erro ao registrar operador: ' + opError.message);
-          setSaving(false);
-          await loadOperators();
-          setShowModal(false);
-          return;
-        }
-      }
-    }
-
-    setSaving(false);
-    setShowModal(false);
-    await loadOperators();
   }
 
   async function handleToggleActive(op: Operator) {
@@ -273,182 +156,13 @@ export default function OperadoresPage() {
     await loadOperators();
   }
 
-  function formatDuration(ms: number): string {
-    if (!ms || ms < 0) return '0min';
-    const totalMin = Math.round(ms / 60000);
-    if (totalMin < 60) return `${totalMin}min`;
-    const h = Math.floor(totalMin / 60);
-    const m = totalMin % 60;
-    if (h < 24) return `${h}h${m > 0 ? ` ${m}min` : ''}`;
-    const d = Math.floor(h / 24);
-    const remH = h % 24;
-    return `${d}d${remH > 0 ? ` ${remH}h` : ''}`;
-  }
-
-  function formatDateTime(input: string | number) {
+  function formatDateTimeShort(input: string | number) {
     return new Date(input).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   }
 
-  function formatTime(iso: string | null) {
-    if (!iso) return '--:--';
-    return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  }
+  const filtered = operators;
 
-  function renderEditModal() {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        <Card className="w-full max-w-md mx-4">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0">
-            <div>
-              <CardTitle className="text-lg">
-                {editing ? 'Editar Operador' : 'Novo Operador'}
-              </CardTitle>
-              <CardDescription>
-                {editing
-                  ? 'Atualize os dados do operador.'
-                  : 'Cadastre um operador com acesso ao app mobile.'}
-              </CardDescription>
-            </div>
-            <button
-              onClick={() => setShowModal(false)}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </CardHeader>
-          <CardContent>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleSave();
-              }}
-              className="space-y-4"
-            >
-              <div className="space-y-2">
-                <Label>Nome completo *</Label>
-                <Input
-                  placeholder="Nome do operador"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                />
-              </div>
-
-              {!editing && (
-                <>
-                  <div className="space-y-2">
-                    <Label>E-mail *</Label>
-                    <Input
-                      type="email"
-                      placeholder="email@exemplo.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Senha *</Label>
-                    <Input
-                      type="password"
-                      placeholder="Minimo 8 caracteres"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                    />
-                  </div>
-                </>
-              )}
-
-              <div className="space-y-2">
-                <Label>Telefone</Label>
-                <Input
-                  placeholder="(00) 00000-0000"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Funcao / Cargo *</Label>
-                <Input
-                  placeholder="Ex: Operador de Guindaste"
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  required
-                />
-              </div>
-
-              {editing && (
-                <div className="space-y-2">
-                  <Label>Status</Label>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      className={`rounded-full px-4 py-1.5 text-sm font-medium border transition-colors ${
-                        active
-                          ? 'bg-emerald-500 text-white border-emerald-500'
-                          : 'bg-background text-muted-foreground border-input hover:bg-accent'
-                      }`}
-                      onClick={() => setActive(true)}
-                    >
-                      Ativo
-                    </button>
-                    <button
-                      type="button"
-                      className={`rounded-full px-4 py-1.5 text-sm font-medium border transition-colors ${
-                        !active
-                          ? 'bg-red-500 text-white border-red-500'
-                          : 'bg-background text-muted-foreground border-input hover:bg-accent'
-                      }`}
-                      onClick={() => setActive(false)}
-                    >
-                      Inativo
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {error && (
-                <p className="text-sm text-destructive">{error}</p>
-              )}
-
-              <div className="flex gap-2 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => setShowModal(false)}
-                >
-                  Cancelar
-                </Button>
-                <Button type="submit" className="flex-1" disabled={saving}>
-                  {saving ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Salvando...
-                    </>
-                  ) : editing ? (
-                    'Atualizar'
-                  ) : (
-                    'Cadastrar'
-                  )}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  const filtered = operators.filter(
-    (op) =>
-      op.name.toLowerCase().includes(search.toLowerCase()) ||
-      op.role.toLowerCase().includes(search.toLowerCase()) ||
-      (op.email && op.email.toLowerCase().includes(search.toLowerCase()))
-  );
-
-  const activeCount = operators.filter((o) => o.active).length;
+  const activeCount = useMemo(() => operators.filter((o) => o.active).length, [operators]);
 
   // ─── Detail view (productivity dashboard for one operator) ───
   if (selected) {
@@ -641,7 +355,7 @@ export default function OperadoresPage() {
                                         : `Checklist · ${ev.ref.machine_name}`}
                                     </p>
                                     <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-muted-foreground">
-                                      <span>{formatDateTime(ev.ts)}</span>
+                                      <span>{formatDateTimeShort(ev.ts)}</span>
                                       {ev.kind === 'activity' && ev.ref.end_time && (
                                         <span>→ {formatTime(ev.ref.end_time)}</span>
                                       )}
@@ -683,8 +397,14 @@ export default function OperadoresPage() {
           </>
         )}
 
-        {/* Edit modal (reused) */}
-        {showModal && renderEditModal()}
+        {showModal && (
+          <OperatorFormModal
+            editing={editing}
+            supabase={supabase}
+            onClose={() => setShowModal(false)}
+            onSaved={async () => { setShowModal(false); await loadOperators(); }}
+          />
+        )}
       </div>
     );
   }
@@ -795,7 +515,14 @@ export default function OperadoresPage() {
         </div>
       )}
 
-      {showModal && renderEditModal()}
+      {showModal && (
+        <OperatorFormModal
+          editing={editing}
+          supabase={supabase}
+          onClose={() => setShowModal(false)}
+          onSaved={async () => { setShowModal(false); await loadOperators(); }}
+        />
+      )}
     </div>
   );
 }

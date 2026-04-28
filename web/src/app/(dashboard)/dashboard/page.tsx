@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Card,
   CardContent,
@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/card';
 import { Users, ListChecks, Bell, AlertTriangle, Activity, ClipboardCheck, Clock } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { formatDuration } from '@/lib/formatters';
 
 interface DashboardStats {
   activeOperators: number;
@@ -30,15 +31,6 @@ interface OperatorProductivity {
   idleMs: number;
   longestGapMs: number;
   hadInterference: boolean;
-}
-
-function formatDuration(ms: number): string {
-  if (!ms || ms < 0) return '0min';
-  const totalMin = Math.round(ms / 60000);
-  if (totalMin < 60) return `${totalMin}min`;
-  const h = Math.floor(totalMin / 60);
-  const m = totalMin % 60;
-  return `${h}h${m > 0 ? ` ${m}min` : ''}`;
 }
 
 function PieChart({
@@ -103,6 +95,7 @@ function PieChart({
 }
 
 export default function DashboardPage() {
+  const supabase = useMemo(() => createClient(), []);
   const [stats, setStats] = useState<DashboardStats>({
     activeOperators: 0,
     checklistsToday: 0,
@@ -119,11 +112,10 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const supabase = createClient();
     const today = new Date().toISOString().split('T')[0];
     const monthStart = new Date().toISOString().slice(0, 7) + '-01';
 
-    async function fetchStats() {
+    async function fetchAll() {
       const [
         operatorsRes,
         checklistsRes,
@@ -137,27 +129,27 @@ export default function DashboardPage() {
       ] = await Promise.all([
         supabase
           .from('operators')
-          .select('*', { count: 'exact', head: true })
+          .select('id', { count: 'exact', head: true })
           .eq('active', true),
         supabase
           .from('checklists')
-          .select('*', { count: 'exact', head: true })
+          .select('id', { count: 'exact', head: true })
           .eq('date', today),
         supabase
           .from('safety_alerts')
-          .select('*', { count: 'exact', head: true })
+          .select('id', { count: 'exact', head: true })
           .eq('read', false),
         supabase
           .from('behavioral_deviations')
-          .select('*', { count: 'exact', head: true })
+          .select('id', { count: 'exact', head: true })
           .eq('status', 'open'),
         supabase
           .from('activities')
-          .select('*', { count: 'exact', head: true })
+          .select('id', { count: 'exact', head: true })
           .eq('date', today),
         supabase
           .from('behavioral_inspections')
-          .select('*', { count: 'exact', head: true })
+          .select('id', { count: 'exact', head: true })
           .gte('date', monthStart),
         supabase
           .from('safety_alerts')
@@ -241,64 +233,32 @@ export default function DashboardPage() {
       setLoading(false);
     }
 
-    fetchStats();
+    fetchAll();
 
-    // Realtime: escutar mudancas em checklists, activities e safety_alerts
-    const checklistChannel = supabase
-      .channel('dashboard-checklists')
+    // Realtime: refaz todas as queries para manter dados consistentes
+    const channel = supabase
+      .channel('dashboard-realtime')
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'checklists' },
-        () => {
-          setStats((prev) => ({
-            ...prev,
-            checklistsToday: prev.checklistsToday + 1,
-          }));
-        }
+        { event: '*', schema: 'public', table: 'checklists' },
+        () => fetchAll()
       )
-      .subscribe();
-
-    const activityChannel = supabase
-      .channel('dashboard-activities')
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'activities' },
-        () => {
-          setStats((prev) => ({
-            ...prev,
-            activitiesToday: prev.activitiesToday + 1,
-          }));
-        }
+        { event: '*', schema: 'public', table: 'activities' },
+        () => fetchAll()
       )
-      .subscribe();
-
-    const alertChannel = supabase
-      .channel('dashboard-alerts')
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'safety_alerts' },
-        (payload) => {
-          setStats((prev) => ({
-            ...prev,
-            pendingAlerts: prev.pendingAlerts + 1,
-          }));
-          const newAlert = payload.new as {
-            id: string;
-            title: string;
-            severity: string;
-            created_at: string;
-          };
-          setRecentAlerts((prev) => [newAlert, ...prev].slice(0, 5));
-        }
+        { event: '*', schema: 'public', table: 'safety_alerts' },
+        () => fetchAll()
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(checklistChannel);
-      supabase.removeChannel(activityChannel);
-      supabase.removeChannel(alertChannel);
+      supabase.removeChannel(channel);
     };
-  }, []);
+  }, [supabase]);
 
   const statCards = [
     { label: 'Operadores ativos', value: stats.activeOperators, icon: Users },

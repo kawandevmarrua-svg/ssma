@@ -3,12 +3,15 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { formatDate, formatDateTime, resolveSignedUrl as resolveUrl } from '@/lib/formatters';
+import type { ChecklistRow, ChecklistResponseRow } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Card,
   CardContent,
 } from '@/components/ui/card';
+import Image from 'next/image';
 import {
   Loader2,
   ClipboardCheck,
@@ -25,59 +28,7 @@ import {
   X,
 } from 'lucide-react';
 
-interface Operator {
-  id: string;
-  name: string;
-}
-
-interface ChecklistRow {
-  id: string;
-  machine_name: string;
-  date: string;
-  status: string;
-  result: string | null;
-  brand: string | null;
-  model: string | null;
-  tag: string | null;
-  shift: string | null;
-  max_load_capacity: string | null;
-  inspector_name: string | null;
-  inspector_registration: string | null;
-  notes: string | null;
-  end_notes: string | null;
-  ended_at: string | null;
-  had_interference: boolean;
-  interference_notes: string | null;
-  created_at: string;
-  operator_id: string;
-  operators: { name: string } | null;
-  equipment_types: { name: string } | null;
-  equipment_photo_1_url: string | null;
-  equipment_photo_2_url: string | null;
-  equipment_photo_3_url: string | null;
-  equipment_photo_4_url: string | null;
-  environment_photo_url: string | null;
-}
-
-interface ResponseRow {
-  id: string;
-  status: string;
-  photo_url: string | null;
-  notes: string | null;
-  response_value: string | null;
-  checklist_template_items: {
-    description: string;
-    section: string | null;
-    is_blocking: boolean;
-    order_index: number;
-  } | null;
-  machine_checklist_items: {
-    description: string;
-    section: string | null;
-    is_blocking: boolean;
-    order_index: number;
-  } | null;
-}
+type ResponseRow = ChecklistResponseRow;
 
 const RESULT_CONFIG = {
   released: { label: 'Liberado', color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200', dot: 'bg-emerald-500', icon: CheckCircle2 },
@@ -96,10 +47,19 @@ export default function ChecklistsPage() {
   const searchParams = useSearchParams();
   const deepLinkId = searchParams.get('id');
 
+  const PAGE_SIZE = 50;
   const [checklists, setChecklists] = useState<ChecklistRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterResult, setFilterResult] = useState<string>('');
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   // Detail view
   const [selected, setSelected] = useState<ChecklistRow | null>(null);
@@ -109,19 +69,44 @@ export default function ChecklistsPage() {
   const [resolvedPhotos, setResolvedPhotos] = useState<Record<string, string>>({});
   const [deepLinked, setDeepLinked] = useState(false);
 
-  const loadChecklists = useCallback(async () => {
-    const { data } = await supabase
+  const CHECKLIST_SELECT = 'id, machine_name, date, status, result, brand, model, tag, shift, max_load_capacity, inspector_name, inspector_registration, notes, end_notes, ended_at, had_interference, interference_notes, created_at, operator_id, operators(name), equipment_types(name), equipment_photo_1_url, equipment_photo_2_url, equipment_photo_3_url, equipment_photo_4_url, environment_photo_url';
+
+  const loadChecklists = useCallback(async (term = '') => {
+    let query = supabase
       .from('checklists')
-      .select('id, machine_name, date, status, result, brand, model, tag, shift, max_load_capacity, inspector_name, inspector_registration, notes, end_notes, ended_at, had_interference, interference_notes, created_at, operator_id, operators(name), equipment_types(name), equipment_photo_1_url, equipment_photo_2_url, equipment_photo_3_url, equipment_photo_4_url, environment_photo_url')
+      .select(CHECKLIST_SELECT)
       .order('created_at', { ascending: false })
-      .limit(200);
-    setChecklists((data as ChecklistRow[] | null) ?? []);
+      .limit(PAGE_SIZE);
+    if (term) query = query.or(`machine_name.ilike.%${term}%,tag.ilike.%${term}%`);
+    const { data } = await query;
+    const rows = (data as ChecklistRow[] | null) ?? [];
+    setChecklists(rows);
+    setHasMore(rows.length === PAGE_SIZE);
     setLoading(false);
-    return (data as ChecklistRow[] | null) ?? [];
+    return rows;
   }, [supabase]);
 
+  async function loadMoreChecklists() {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    const lastItem = checklists[checklists.length - 1];
+    if (!lastItem) { setLoadingMore(false); return; }
+    let query = supabase
+      .from('checklists')
+      .select(CHECKLIST_SELECT)
+      .order('created_at', { ascending: false })
+      .lt('created_at', lastItem.created_at)
+      .limit(PAGE_SIZE);
+    if (debouncedSearch) query = query.or(`machine_name.ilike.%${debouncedSearch}%,tag.ilike.%${debouncedSearch}%`);
+    const { data } = await query;
+    const rows = (data as ChecklistRow[] | null) ?? [];
+    setChecklists((prev) => [...prev, ...rows]);
+    setHasMore(rows.length === PAGE_SIZE);
+    setLoadingMore(false);
+  }
+
   useEffect(() => {
-    loadChecklists().then((data) => {
+    loadChecklists(debouncedSearch).then((data) => {
       if (deepLinkId && !deepLinked && data.length > 0) {
         const match = data.find((c) => c.id === deepLinkId);
         if (match) {
@@ -130,24 +115,24 @@ export default function ChecklistsPage() {
         }
       }
     });
-  }, [loadChecklists, deepLinkId]);
+  }, [loadChecklists, deepLinkId, debouncedSearch]);
 
-  // Realtime
+  // Realtime: only full reload on INSERT (needs join), patch on UPDATE/DELETE
   useEffect(() => {
     const channel = supabase
       .channel('web-checklists')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'checklists' }, () => loadChecklists())
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'checklists' }, () => loadChecklists())
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'checklists' }, (payload) => {
+        const updated = payload.new as ChecklistRow;
+        setChecklists((prev) => prev.map((c) => c.id === updated.id ? { ...c, ...updated } : c));
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'checklists' }, (payload) => {
+        const oldId = (payload.old as { id?: string })?.id;
+        if (oldId) setChecklists((prev) => prev.filter((c) => c.id !== oldId));
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [supabase, loadChecklists]);
-
-  async function resolveSignedUrl(path: string | null): Promise<string | null> {
-    if (!path) return null;
-    if (path.startsWith('http')) return path;
-    const { data, error } = await supabase.storage.from('checklist-photos').createSignedUrl(path, 3600);
-    if (error || !data?.signedUrl) return null;
-    return data.signedUrl;
-  }
 
   async function openDetail(checklist: ChecklistRow) {
     setSelected(checklist);
@@ -174,7 +159,7 @@ export default function ChecklistsPage() {
     const urlMap: Record<string, string> = {};
     await Promise.all(
       allPaths.map(async ({ key, path }) => {
-        const url = await resolveSignedUrl(path);
+        const url = await resolveUrl(supabase, 'checklist-photos', path);
         if (url) urlMap[key] = url;
       }),
     );
@@ -185,14 +170,6 @@ export default function ChecklistsPage() {
   function getResultKey(c: ChecklistRow): keyof typeof RESULT_CONFIG {
     if (c.status === 'pending') return 'pending';
     return (c.result as 'released' | 'not_released') || 'pending';
-  }
-
-  function formatDate(iso: string) {
-    return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  }
-
-  function formatDateTime(iso: string) {
-    return new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
 
   function getItemData(resp: ResponseRow) {
@@ -215,23 +192,17 @@ export default function ChecklistsPage() {
     return groups;
   }
 
-  const filtered = checklists.filter((c) => {
-    const matchSearch = !search || [
-      c.machine_name,
-      c.operators?.name,
-      c.tag,
-      c.equipment_types?.name,
-    ].some((v) => v?.toLowerCase().includes(search.toLowerCase()));
+  const filtered = useMemo(() => checklists.filter((c) => {
     const matchResult = !filterResult || getResultKey(c) === filterResult;
-    return matchSearch && matchResult;
-  });
+    return matchResult;
+  }), [checklists, filterResult]);
 
-  const stats = {
+  const stats = useMemo(() => ({
     total: checklists.length,
     released: checklists.filter((c) => c.result === 'released').length,
     not_released: checklists.filter((c) => c.result === 'not_released').length,
     pending: checklists.filter((c) => c.status === 'pending').length,
-  };
+  }), [checklists]);
 
   // ── Detail view ──
   if (selected) {
@@ -376,7 +347,7 @@ export default function ChecklistsPage() {
                     onClick={() => setPhotoModal(p.url!)}
                     className="group relative aspect-square rounded-lg border overflow-hidden hover:ring-2 hover:ring-primary transition-all"
                   >
-                    <img src={p.url!} alt={p.label} className="h-full w-full object-cover" />
+                    <Image src={p.url!} alt={p.label} fill className="object-cover" sizes="(min-width: 640px) 20vw, 50vw" />
                     <div className="absolute inset-x-0 bottom-0 bg-black/60 px-2 py-1">
                       <p className="text-xs text-white font-medium truncate">{p.label}</p>
                     </div>
@@ -450,7 +421,7 @@ export default function ChecklistsPage() {
                             className="mt-2 ml-8 block rounded-lg overflow-hidden border hover:ring-2 hover:ring-primary transition-all"
                             title="Clique para ampliar"
                           >
-                            <img src={url} alt="Foto da resposta" className="h-20 w-28 object-cover" />
+                            <Image src={url} alt="Foto da resposta" width={112} height={80} className="object-cover" />
                           </button>
                         )}
                       </div>
@@ -607,6 +578,15 @@ export default function ChecklistsPage() {
               </Card>
             );
           })}
+          {hasMore && (
+            <button
+              onClick={loadMoreChecklists}
+              disabled={loadingMore}
+              className="w-full rounded-md border bg-card py-3 text-sm font-medium text-muted-foreground hover:bg-accent transition-colors disabled:opacity-50"
+            >
+              {loadingMore ? 'Carregando...' : 'Carregar mais'}
+            </button>
+          )}
         </div>
       )}
     </div>

@@ -3,11 +3,16 @@ import * as Network from 'expo-network';
 import { AppState, AppStateStatus } from 'react-native';
 import { supabase } from './supabase';
 import { uploadQueuedPhoto } from './imageUtils';
+import { signPayload, verifyPayload } from './queueIntegrity';
 
 const QUEUE_PREFIX = 'marrua.offline.queue.v1';
 const DEAD_LETTER_PREFIX = 'marrua.offline.deadletter.v1';
 const ANON_USER_KEY = '__anon__';
 const MAX_ATTEMPTS = 8;
+const ALLOWED_UPSERT_TABLES = new Set([
+  'pre_operation_checks',
+  'checklist_responses',
+]);
 
 export type JobKind =
   | 'updateChecklist'
@@ -46,6 +51,7 @@ export interface StoredJob {
   attempts: number;
   lastError: string | null;
   job: Job;
+  _sig?: string;
 }
 
 export interface PendingFinishState {
@@ -125,6 +131,11 @@ function derivePendingFinishes(jobs: StoredJob[]): PendingFinishState {
 }
 
 function genId(): string {
+  if (typeof globalThis.crypto?.getRandomValues === 'function') {
+    const bytes = new Uint8Array(12);
+    globalThis.crypto.getRandomValues(bytes);
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  }
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
@@ -137,15 +148,34 @@ async function readQueueFor(userId: string | null): Promise<StoredJob[]> {
     const raw = await AsyncStorage.getItem(queueKey(userId));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    // Verifica integridade de cada job; rejeita os que foram tamperados
+    const verified: StoredJob[] = [];
+    for (const stored of parsed as StoredJob[]) {
+      const { _sig, ...rest } = stored;
+      const valid = await verifyPayload(JSON.stringify(rest), _sig ?? '');
+      if (valid) {
+        verified.push(stored);
+      } else {
+        console.log('[OfflineQueue] job rejeitado por falha de integridade:', stored.id);
+      }
+    }
+    return verified;
   } catch {
     return [];
   }
 }
 
 async function writeQueue(jobs: StoredJob[]): Promise<void> {
-  await AsyncStorage.setItem(queueKey(), JSON.stringify(jobs));
-  subscribers.forEach((cb) => cb(jobs.length));
+  // Assina cada job antes de persistir
+  const signed: StoredJob[] = [];
+  for (const stored of jobs) {
+    const { _sig: _, ...rest } = stored;
+    const sig = await signPayload(JSON.stringify(rest));
+    signed.push({ ...rest, _sig: sig });
+  }
+  await AsyncStorage.setItem(queueKey(), JSON.stringify(signed));
+  subscribers.forEach((cb) => cb(signed.length));
   if (pendingFinishSubs.size > 0) {
     const state = derivePendingFinishes(jobs);
     pendingFinishSubs.forEach((cb) => cb(state));
@@ -284,6 +314,9 @@ async function executeJob(job: Job): Promise<{ ok: boolean; error?: string }> {
         return error ? { ok: false, error: error.message } : { ok: true };
       }
       case 'tableUpsert': {
+        if (!ALLOWED_UPSERT_TABLES.has(job.payload.table)) {
+          return { ok: false, error: `table '${job.payload.table}' not in whitelist` };
+        }
         const opts = job.payload.onConflict ? { onConflict: job.payload.onConflict } : undefined;
         const { error } = await supabase
           .from(job.payload.table as never)

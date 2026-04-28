@@ -18,13 +18,13 @@ if (Platform.OS !== 'web') {
   };
 } else {
   storage = {
-    getItem: (key: string) => Promise.resolve(localStorage.getItem(key)),
+    getItem: (key: string) => Promise.resolve(sessionStorage.getItem(key)),
     setItem: (key: string, value: string) => {
-      localStorage.setItem(key, value);
+      sessionStorage.setItem(key, value);
       return Promise.resolve();
     },
     removeItem: (key: string) => {
-      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
       return Promise.resolve();
     },
   };

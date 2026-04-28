@@ -2,19 +2,18 @@
 
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { formatDateTime } from '@/lib/formatters';
+import type { OperatorBasic, SafetyAlert } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Modal } from '@/components/modal';
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from '@/components/ui/card';
 import {
   Plus,
-  X,
   Loader2,
   Bell,
   CheckCircle2,
@@ -26,26 +25,6 @@ import {
   UserCircle2,
 } from 'lucide-react';
 
-interface Operator {
-  id: string;
-  name: string;
-  active: boolean;
-}
-
-interface SafetyAlert {
-  id: string;
-  title: string;
-  message: string;
-  severity: 'low' | 'medium' | 'high' | 'critical';
-  operator_id: string | null;
-  created_by: string | null;
-  read: boolean;
-  response: string | null;
-  responded_at: string | null;
-  created_at: string;
-  creator?: { id: string; full_name: string | null; email: string | null } | null;
-}
-
 const SEVERITY = {
   low: { label: 'Baixo', badge: 'bg-blue-100 text-blue-700', dot: 'bg-blue-500' },
   medium: { label: 'Médio', badge: 'bg-yellow-100 text-yellow-700', dot: 'bg-yellow-500' },
@@ -56,9 +35,12 @@ const SEVERITY = {
 export default function AlertasPage() {
   const supabase = useMemo(() => createClient(), []);
 
+  const PAGE_SIZE = 50;
   const [alerts, setAlerts] = useState<SafetyAlert[]>([]);
-  const [operators, setOperators] = useState<Operator[]>([]);
+  const [operators, setOperators] = useState<OperatorBasic[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
 
   const [showModal, setShowModal] = useState(false);
   const [title, setTitle] = useState('');
@@ -70,15 +52,36 @@ export default function AlertasPage() {
   const [resendingId, setResendingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
+  const ALERT_SELECT = '*, creator:profiles!safety_alerts_created_by_fkey(id, full_name, email)';
+
   const loadAlerts = useCallback(async () => {
     const { data } = await supabase
       .from('safety_alerts')
-      .select('*, creator:profiles!safety_alerts_created_by_fkey(id, full_name, email)')
+      .select(ALERT_SELECT)
       .order('created_at', { ascending: false })
-      .limit(100);
-    setAlerts((data as SafetyAlert[]) ?? []);
+      .limit(PAGE_SIZE);
+    const rows = (data as SafetyAlert[]) ?? [];
+    setAlerts(rows);
+    setHasMore(rows.length === PAGE_SIZE);
     setLoading(false);
   }, [supabase]);
+
+  async function loadMoreAlerts() {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    const lastItem = alerts[alerts.length - 1];
+    if (!lastItem) { setLoadingMore(false); return; }
+    const { data } = await supabase
+      .from('safety_alerts')
+      .select(ALERT_SELECT)
+      .order('created_at', { ascending: false })
+      .lt('created_at', lastItem.created_at)
+      .limit(PAGE_SIZE);
+    const rows = (data as SafetyAlert[]) ?? [];
+    setAlerts((prev) => [...prev, ...rows]);
+    setHasMore(rows.length === PAGE_SIZE);
+    setLoadingMore(false);
+  }
 
   const loadOperators = useCallback(async () => {
     const { data } = await supabase
@@ -94,14 +97,30 @@ export default function AlertasPage() {
     loadOperators();
   }, [loadAlerts, loadOperators]);
 
-  // Realtime: atualiza quando operadores leem ou respondem
+  // Realtime: atualiza estado local sem refetch total
   useEffect(() => {
     const channel = supabase
       .channel('web-alerts-list')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'safety_alerts' },
+        { event: 'INSERT', schema: 'public', table: 'safety_alerts' },
         () => loadAlerts()
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'safety_alerts' },
+        (payload) => {
+          const updated = payload.new as SafetyAlert;
+          setAlerts((prev) => prev.map((a) => a.id === updated.id ? { ...a, ...updated } : a));
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'safety_alerts' },
+        (payload) => {
+          const oldId = (payload.old as { id?: string })?.id;
+          if (oldId) setAlerts((prev) => prev.filter((a) => a.id !== oldId));
+        }
       )
       .subscribe();
     return () => {
@@ -222,17 +241,6 @@ export default function AlertasPage() {
     return operators.find((o) => o.id === id)?.name ?? 'Operador removido';
   }
 
-  function formatDate(iso: string) {
-    const d = new Date(iso);
-    return d.toLocaleString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  }
-
   const totalUnread = alerts.filter((a) => !a.read).length;
   const totalResponded = alerts.filter((a) => a.response).length;
 
@@ -337,7 +345,7 @@ export default function AlertasPage() {
                             'Usuario removido'}
                         </span>
                         <span className="text-muted-foreground">
-                          {formatDate(alert.created_at)}
+                          {formatDateTime(alert.created_at)}
                         </span>
                         {alert.read && (
                           <span className="inline-flex items-center gap-1 text-emerald-700">
@@ -354,7 +362,7 @@ export default function AlertasPage() {
                             Resposta do operador
                             {alert.responded_at && (
                               <span className="font-normal text-emerald-700/70">
-                                · {formatDate(alert.responded_at)}
+                                · {formatDateTime(alert.responded_at)}
                               </span>
                             )}
                           </div>
@@ -369,121 +377,115 @@ export default function AlertasPage() {
               </Card>
             );
           })}
+          {hasMore && (
+            <button
+              onClick={loadMoreAlerts}
+              disabled={loadingMore}
+              className="w-full rounded-md border bg-card py-3 text-sm font-medium text-muted-foreground hover:bg-accent transition-colors disabled:opacity-50"
+            >
+              {loadingMore ? 'Carregando...' : 'Carregar mais'}
+            </button>
+          )}
         </div>
       )}
 
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <Card className="w-full max-w-lg">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <div>
-                <CardTitle className="text-lg">Novo Alerta</CardTitle>
-                <CardDescription>
-                  Será enviado por push e em tempo real para o app
-                </CardDescription>
-              </div>
-              <button
-                onClick={() => setShowModal(false)}
-                className="text-muted-foreground hover:text-foreground"
+      <Modal
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        title="Novo Alerta"
+        description="Será enviado por push e em tempo real para o app"
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSend();
+          }}
+          className="space-y-4"
+        >
+          <div className="space-y-2">
+            <Label>Título *</Label>
+            <Input
+              placeholder="Ex: Atenção no uso de EPI"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Mensagem *</Label>
+            <textarea
+              className="flex min-h-[100px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              placeholder="Descreva o alerta..."
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Severidade</Label>
+              <select
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                value={severity}
+                onChange={(e) =>
+                  setSeverity(e.target.value as SafetyAlert['severity'])
+                }
               >
-                <X className="h-5 w-5" />
-              </button>
-            </CardHeader>
-            <CardContent>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleSend();
-                }}
-                className="space-y-4"
+                <option value="low">Baixo</option>
+                <option value="medium">Médio</option>
+                <option value="high">Alto</option>
+                <option value="critical">Crítico</option>
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Destinatário</Label>
+              <select
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                value={operatorId}
+                onChange={(e) => setOperatorId(e.target.value)}
               >
-                <div className="space-y-2">
-                  <Label>Título *</Label>
-                  <Input
-                    placeholder="Ex: Atenção no uso de EPI"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    required
-                  />
-                </div>
+                <option value="">Todos os operadores</option>
+                {operators.map((op) => (
+                  <option key={op.id} value={op.id}>
+                    {op.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
 
-                <div className="space-y-2">
-                  <Label>Mensagem *</Label>
-                  <textarea
-                    className="flex min-h-[100px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    placeholder="Descreva o alerta..."
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    required
-                  />
-                </div>
+          {formError && (
+            <p className="text-sm text-destructive">{formError}</p>
+          )}
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label>Severidade</Label>
-                    <select
-                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      value={severity}
-                      onChange={(e) =>
-                        setSeverity(e.target.value as SafetyAlert['severity'])
-                      }
-                    >
-                      <option value="low">Baixo</option>
-                      <option value="medium">Médio</option>
-                      <option value="high">Alto</option>
-                      <option value="critical">Crítico</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Destinatário</Label>
-                    <select
-                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      value={operatorId}
-                      onChange={(e) => setOperatorId(e.target.value)}
-                    >
-                      <option value="">Todos os operadores</option>
-                      {operators.map((op) => (
-                        <option key={op.id} value={op.id}>
-                          {op.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {formError && (
-                  <p className="text-sm text-destructive">{formError}</p>
-                )}
-
-                <div className="flex gap-2 pt-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => setShowModal(false)}
-                  >
-                    Cancelar
-                  </Button>
-                  <Button type="submit" className="flex-1" disabled={sending}>
-                    {sending ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Enviando...
-                      </>
-                    ) : (
-                      <>
-                        <Send className="mr-2 h-4 w-4" />
-                        Enviar
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+          <div className="flex gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={() => setShowModal(false)}
+            >
+              Cancelar
+            </Button>
+            <Button type="submit" className="flex-1" disabled={sending}>
+              {sending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Enviando...
+                </>
+              ) : (
+                <>
+                  <Send className="mr-2 h-4 w-4" />
+                  Enviar
+                </>
+              )}
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

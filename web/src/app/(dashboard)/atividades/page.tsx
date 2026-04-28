@@ -3,11 +3,14 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { formatDate, formatDateTime, formatTime, getDuration, resolveSignedUrl } from '@/lib/formatters';
+import type { ActivityRow } from '@/lib/types';
 import { Input } from '@/components/ui/input';
 import {
   Card,
   CardContent,
 } from '@/components/ui/card';
+import Image from 'next/image';
 import {
   Loader2,
   Activity,
@@ -24,28 +27,6 @@ import {
   X,
 } from 'lucide-react';
 
-interface ActivityRow {
-  id: string;
-  date: string;
-  location: string | null;
-  description: string | null;
-  start_time: string | null;
-  end_time: string | null;
-  equipment_tag: string | null;
-  had_interference: boolean;
-  interference_notes: string | null;
-  notes: string | null;
-  transit_start: string | null;
-  transit_end: string | null;
-  equipment_photo_url: string | null;
-  start_photo_url: string | null;
-  end_photo_url: string | null;
-  created_at: string;
-  operator_id: string;
-  checklist_id: string | null;
-  operators: { name: string } | null;
-}
-
 const STATUS_CONFIG = {
   in_progress: { label: 'Em Andamento', color: 'text-yellow-700', bg: 'bg-yellow-50 border-yellow-200', dot: 'bg-yellow-500', icon: Clock },
   completed: { label: 'Concluída', color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200', dot: 'bg-emerald-500', icon: CheckCircle2 },
@@ -56,11 +37,20 @@ export default function AtividadesPage() {
   const searchParams = useSearchParams();
   const deepLinkId = searchParams.get('id');
 
+  const PAGE_SIZE = 50;
   const [activities, setActivities] = useState<ActivityRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [filterOperator, setFilterOperator] = useState<string>('');
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   // Detail view
   const [selected, setSelected] = useState<ActivityRow | null>(null);
@@ -68,19 +58,44 @@ export default function AtividadesPage() {
   const [resolvedPhotos, setResolvedPhotos] = useState<Record<string, string>>({});
   const [deepLinked, setDeepLinked] = useState(false);
 
-  const loadActivities = useCallback(async () => {
-    const { data } = await supabase
+  const ACTIVITY_COLUMNS = 'id, date, location, description, start_time, end_time, equipment_tag, had_interference, interference_notes, notes, transit_start, transit_end, equipment_photo_url, start_photo_url, end_photo_url, created_at, operator_id, checklist_id, operators(name)';
+
+  const loadActivities = useCallback(async (term = '') => {
+    let query = supabase
       .from('activities')
-      .select('id, date, location, description, start_time, end_time, equipment_tag, had_interference, interference_notes, notes, transit_start, transit_end, equipment_photo_url, start_photo_url, end_photo_url, created_at, operator_id, checklist_id, operators(name)')
+      .select(ACTIVITY_COLUMNS)
       .order('created_at', { ascending: false })
-      .limit(200);
-    setActivities((data as ActivityRow[] | null) ?? []);
+      .limit(PAGE_SIZE);
+    if (term) query = query.or(`description.ilike.%${term}%,location.ilike.%${term}%,equipment_tag.ilike.%${term}%`);
+    const { data } = await query;
+    const rows = (data as ActivityRow[] | null) ?? [];
+    setActivities(rows);
+    setHasMore(rows.length === PAGE_SIZE);
     setLoading(false);
-    return (data as ActivityRow[] | null) ?? [];
+    return rows;
   }, [supabase]);
 
+  async function loadMore() {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    const lastItem = activities[activities.length - 1];
+    if (!lastItem) { setLoadingMore(false); return; }
+    let query = supabase
+      .from('activities')
+      .select(ACTIVITY_COLUMNS)
+      .order('created_at', { ascending: false })
+      .lt('created_at', lastItem.created_at)
+      .limit(PAGE_SIZE);
+    if (debouncedSearch) query = query.or(`description.ilike.%${debouncedSearch}%,location.ilike.%${debouncedSearch}%,equipment_tag.ilike.%${debouncedSearch}%`);
+    const { data } = await query;
+    const rows = (data as ActivityRow[] | null) ?? [];
+    setActivities((prev) => [...prev, ...rows]);
+    setHasMore(rows.length === PAGE_SIZE);
+    setLoadingMore(false);
+  }
+
   useEffect(() => {
-    loadActivities().then((data) => {
+    loadActivities(debouncedSearch).then((data) => {
       if (deepLinkId && !deepLinked && data.length > 0) {
         const match = data.find((a) => a.id === deepLinkId);
         if (match) {
@@ -89,51 +104,27 @@ export default function AtividadesPage() {
         }
       }
     });
-  }, [loadActivities, deepLinkId]);
+  }, [loadActivities, deepLinkId, debouncedSearch]);
 
-  // Realtime
+  // Realtime: only full reload on INSERT (new data needs join), patch on UPDATE/DELETE
   useEffect(() => {
     const channel = supabase
       .channel('web-activities')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'activities' }, () => loadActivities())
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'activities' }, () => loadActivities())
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'activities' }, (payload) => {
+        const updated = payload.new as ActivityRow;
+        setActivities((prev) => prev.map((a) => a.id === updated.id ? { ...a, ...updated } : a));
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'activities' }, (payload) => {
+        const oldId = (payload.old as { id?: string })?.id;
+        if (oldId) setActivities((prev) => prev.filter((a) => a.id !== oldId));
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [supabase, loadActivities]);
 
   function getStatusKey(a: ActivityRow): keyof typeof STATUS_CONFIG {
     return a.end_time ? 'completed' : 'in_progress';
-  }
-
-  function formatDate(iso: string) {
-    return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  }
-
-  function formatDateTime(iso: string) {
-    return new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  }
-
-  function formatTime(iso: string | null) {
-    if (!iso) return '--:--';
-    return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  }
-
-  function getDuration(start: string | null, end: string | null) {
-    if (!start) return null;
-    const s = new Date(start).getTime();
-    const e = end ? new Date(end).getTime() : Date.now();
-    const diffMin = Math.round((e - s) / 60000);
-    if (diffMin < 60) return `${diffMin}min`;
-    const h = Math.floor(diffMin / 60);
-    const m = diffMin % 60;
-    return `${h}h${m > 0 ? ` ${m}min` : ''}`;
-  }
-
-  async function resolveSignedUrl(bucket: string, path: string | null): Promise<string | null> {
-    if (!path) return null;
-    if (path.startsWith('http')) return path;
-    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 3600);
-    if (error || !data?.signedUrl) return null;
-    return data.signedUrl;
   }
 
   async function openDetail(activity: ActivityRow) {
@@ -147,7 +138,7 @@ export default function AtividadesPage() {
     const urlMap: Record<string, string> = {};
     await Promise.all(
       allPaths.map(async ({ key, path }) => {
-        const url = await resolveSignedUrl('activity-photos', path);
+        const url = await resolveSignedUrl(supabase, 'activity-photos', path);
         if (url) urlMap[key] = url;
       }),
     );
@@ -164,24 +155,18 @@ export default function AtividadesPage() {
     return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
   }, [activities]);
 
-  const filtered = activities.filter((a) => {
-    const matchSearch = !search || [
-      a.description,
-      a.operators?.name,
-      a.equipment_tag,
-      a.location,
-    ].some((v) => v?.toLowerCase().includes(search.toLowerCase()));
+  const filtered = useMemo(() => activities.filter((a) => {
     const matchStatus = !filterStatus || getStatusKey(a) === filterStatus;
     const matchOperator = !filterOperator || a.operator_id === filterOperator;
-    return matchSearch && matchStatus && matchOperator;
-  });
+    return matchStatus && matchOperator;
+  }), [activities, filterStatus, filterOperator]);
 
-  const stats = {
+  const stats = useMemo(() => ({
     total: activities.length,
     in_progress: activities.filter((a) => !a.end_time).length,
     completed: activities.filter((a) => !!a.end_time).length,
     interference: activities.filter((a) => a.had_interference).length,
-  };
+  }), [activities]);
 
   // -- Detail view --
   if (selected) {
@@ -319,7 +304,7 @@ export default function AtividadesPage() {
                   onClick={() => setPhotoModal(p.url!)}
                   className="group relative aspect-square rounded-lg border overflow-hidden hover:ring-2 hover:ring-primary transition-all"
                 >
-                  <img src={p.url!} alt={p.label} className="h-full w-full object-cover" />
+                  <Image src={p.url!} alt={p.label} fill className="object-cover" sizes="(min-width: 640px) 33vw, 50vw" />
                   <div className="absolute inset-x-0 bottom-0 bg-black/60 px-2 py-1">
                     <p className="text-xs text-white font-medium truncate">{p.label}</p>
                   </div>
@@ -504,6 +489,15 @@ export default function AtividadesPage() {
               </Card>
             );
           })}
+          {hasMore && (
+            <button
+              onClick={loadMore}
+              disabled={loadingMore}
+              className="w-full rounded-md border bg-card py-3 text-sm font-medium text-muted-foreground hover:bg-accent transition-colors disabled:opacity-50"
+            >
+              {loadingMore ? 'Carregando...' : 'Carregar mais'}
+            </button>
+          )}
         </div>
       )}
     </div>

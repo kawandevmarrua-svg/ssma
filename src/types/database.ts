@@ -6,7 +6,7 @@ export type Database = {
           id: string;
           email: string;
           full_name: string | null;
-          role: 'admin' | 'manager' | 'encarregado' | 'operator' | 'pending';
+          role: 'admin' | 'manager' | 'supervisor' | 'encarregado' | 'operator';
           phone: string | null;
           active: boolean;
           created_by: string | null;
@@ -16,14 +16,14 @@ export type Database = {
           id: string;
           email: string;
           full_name?: string | null;
-          role?: 'admin' | 'manager' | 'encarregado' | 'operator' | 'pending';
+          role?: 'admin' | 'manager' | 'supervisor' | 'encarregado' | 'operator';
           phone?: string | null;
           active?: boolean;
           created_by?: string | null;
         };
         Update: {
           full_name?: string | null;
-          role?: 'admin' | 'manager' | 'encarregado' | 'operator' | 'pending';
+          role?: 'admin' | 'manager' | 'supervisor' | 'encarregado' | 'operator';
           phone?: string | null;
           active?: boolean;
           created_by?: string | null;
@@ -818,6 +818,44 @@ export type Database = {
           active?: boolean;
         };
         Relationships: [];
+      };
+      location_history: {
+        Row: {
+          id: string;
+          operator_id: string;
+          activity_id: string | null;
+          latitude: number;
+          longitude: number;
+          accuracy: number | null;
+          speed: number | null;
+          heading: number | null;
+          recorded_at: string;
+        };
+        Insert: {
+          operator_id: string;
+          activity_id?: string | null;
+          latitude: number;
+          longitude: number;
+          accuracy?: number | null;
+          speed?: number | null;
+          heading?: number | null;
+          recorded_at?: string;
+        };
+        Update: {};
+        Relationships: [
+          {
+            foreignKeyName: 'location_history_operator_id_fkey';
+            columns: ['operator_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'location_history_activity_id_fkey';
+            columns: ['activity_id'];
+            referencedRelation: 'activities';
+            referencedColumns: ['id'];
+          },
+        ];
       };
       operator_locations: {
         Row: {

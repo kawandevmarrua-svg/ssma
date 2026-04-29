@@ -67,6 +67,22 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
     if (upsertError) {
       console.log('[LocationTask] upsert falhou:', upsertError.message);
     }
+
+    // Breadcrumb para historico de deslocamento (somente com atividade ativa)
+    if (derived.currentActivityId) {
+      await supabase.from('location_history').insert({
+        operator_id: operatorId,
+        activity_id: derived.currentActivityId,
+        latitude: loc.coords.latitude,
+        longitude: loc.coords.longitude,
+        accuracy: loc.coords.accuracy ?? null,
+        speed: loc.coords.speed ?? null,
+        heading: loc.coords.heading ?? null,
+        recorded_at: new Date(loc.timestamp || Date.now()).toISOString(),
+      }).then(({ error: histErr }) => {
+        if (histErr) console.log('[LocationTask] breadcrumb falhou:', histErr.message);
+      });
+    }
   } catch (e) {
     console.log('[LocationTask] excecao:', e);
   }

@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
   }
 
   // Aceita admins/managers/encarregados + chamadas internas (trigger SQL).
-  const auth = await authenticate(req, ["admin", "manager", "encarregado"]);
+  const auth = await authenticate(req, ["admin", "manager", "supervisor", "encarregado"]);
   if (!auth.ok) {
     return new Response(JSON.stringify({ error: auth.error }), {
       status: auth.status,
@@ -103,7 +103,7 @@ Deno.serve(async (req) => {
 
     switch (type) {
       case "blocking_nc": {
-        pushTokens = await tokensForRoles(supabase, ["admin", "manager", "encarregado"]);
+        pushTokens = await tokensForRoles(supabase, ["admin", "manager", "supervisor", "encarregado"]);
 
         if (alert_id) {
           const { data: alert } = await supabase
@@ -140,7 +140,7 @@ Deno.serve(async (req) => {
       }
 
       case "critical_deviation": {
-        pushTokens = await tokensForRoles(supabase, ["admin", "manager", "encarregado"]);
+        pushTokens = await tokensForRoles(supabase, ["admin", "manager", "supervisor", "encarregado"]);
         pushPayload = {
           title: "Desvio Critico Identificado",
           body: "Um desvio critico foi identificado em inspecao comportamental. Acao imediata necessaria.",

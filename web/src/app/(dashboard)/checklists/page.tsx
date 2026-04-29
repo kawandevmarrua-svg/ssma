@@ -26,7 +26,9 @@ import {
   Camera,
   AlertTriangle,
   X,
+  FileDown,
 } from 'lucide-react';
+import { exportChecklistPDF, exportChecklistListPDF } from '@/lib/pdf';
 
 type ResponseRow = ChecklistResponseRow;
 
@@ -234,10 +236,20 @@ export default function ChecklistsPage() {
               {selected.machine_name}{selected.tag ? ` · TAG: ${selected.tag}` : ''}
             </p>
           </div>
-          <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-semibold ${cfg.bg} ${cfg.color}`}>
-            <Icon className="h-4 w-4" />
-            {cfg.label}
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => exportChecklistPDF(selected, responses)}
+              className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              title="Exportar PDF"
+            >
+              <FileDown className="h-3.5 w-3.5" />
+              PDF
+            </button>
+            <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-semibold ${cfg.bg} ${cfg.color}`}>
+              <Icon className="h-4 w-4" />
+              {cfg.label}
+            </span>
+          </div>
         </div>
 
         {/* Info cards */}
@@ -454,11 +466,22 @@ export default function ChecklistsPage() {
   // ── List view ──
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Checklists Realizados</h1>
-        <p className="text-sm text-muted-foreground">
-          Acompanhe os checklists preenchidos pelos operadores
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Checklists Realizados</h1>
+          <p className="text-sm text-muted-foreground">
+            Acompanhe os checklists preenchidos pelos operadores
+          </p>
+        </div>
+        {filtered.length > 0 && (
+          <button
+            onClick={() => exportChecklistListPDF(filtered)}
+            className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
+          >
+            <FileDown className="h-3.5 w-3.5" />
+            Exportar PDF
+          </button>
+        )}
       </div>
 
       {/* Stats */}

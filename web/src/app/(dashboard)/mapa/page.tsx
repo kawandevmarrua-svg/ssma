@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic';
 import { Loader2 } from 'lucide-react';
 
-const IndicadoresClient = dynamic(() => import('./IndicadoresClient'), {
+const MapaClient = dynamic(() => import('./MapaClient'), {
   loading: () => (
     <div className="flex justify-center py-20">
       <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -12,6 +12,6 @@ const IndicadoresClient = dynamic(() => import('./IndicadoresClient'), {
   ssr: false,
 });
 
-export default function IndicadoresPage() {
-  return <IndicadoresClient />;
+export default function MapaPage() {
+  return <MapaClient />;
 }

@@ -16,7 +16,7 @@ const csp = [
   "default-src 'self'",
   scriptSrc,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://*.supabase.co https://*.tile.openstreetmap.org",
+  "img-src 'self' data: blob: https://*.supabase.co https://*.tile.openstreetmap.org https://unpkg.com",
   "font-src 'self' data:",
   `connect-src 'self' https://${supabaseHost} wss://${supabaseHost} https://*.supabase.co wss://*.supabase.co`,
   "frame-ancestors 'none'",

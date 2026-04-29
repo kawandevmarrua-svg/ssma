@@ -10,8 +10,9 @@ import { createUserAction } from './actions';
 
 const CARGO_OPTIONS = [
   { value: 'operator' as const, label: 'Operador' },
-  { value: 'manager' as const, label: 'Gestor' },
   { value: 'encarregado' as const, label: 'Encarregado' },
+  { value: 'supervisor' as const, label: 'Supervisor' },
+  { value: 'manager' as const, label: 'Gestor' },
   { value: 'admin' as const, label: 'Administrador' },
 ];
 
@@ -25,7 +26,7 @@ export function UserFormModal({ onSaved }: Props) {
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [confirmar, setConfirmar] = useState('');
-  const [role, setRole] = useState<'admin' | 'manager' | 'encarregado' | 'operator'>('operator');
+  const [role, setRole] = useState<'admin' | 'manager' | 'supervisor' | 'encarregado' | 'operator'>('operator');
   const [phone, setPhone] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

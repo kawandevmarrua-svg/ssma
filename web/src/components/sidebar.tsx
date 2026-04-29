@@ -9,7 +9,6 @@ import {
   ListChecks,
   Activity,
   Bell,
-  BarChart3,
   MapPin,
   ShieldCheck,
   UserCog,
@@ -18,6 +17,12 @@ import {
   HelpCircle,
   Tags,
   ChevronDown,
+  Map,
+  Route,
+  Network,
+  Wrench,
+  Gauge,
+  TrendingDown,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -32,7 +37,6 @@ type NavItem =
 
 const navItems: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/acompanhamento', label: 'Acompanhamento', icon: MapPin },
   { href: '/maquinas', label: 'Maquinas', icon: HardHat },
   { href: '/checklists', label: 'Checklists', icon: ListChecks },
   {
@@ -46,7 +50,18 @@ const navItems: NavItem[] = [
     ],
   },
   { href: '/alertas', label: 'Alertas', icon: Bell },
-  { href: '/indicadores', label: 'Indicadores', icon: BarChart3 },
+  { href: '/mapa', label: 'Mapa', icon: Map },
+  {
+    label: 'Analises',
+    icon: Activity,
+    children: [
+      { href: '/deslocamento', label: 'Deslocamento', icon: Route },
+      { href: '/analise-maquinas', label: 'Analise Maquinas', icon: Wrench },
+      { href: '/disponibilidade', label: 'DM & UF', icon: Gauge },
+      { href: '/improdutividade', label: 'Improdutividade', icon: TrendingDown },
+    ],
+  },
+  { href: '/organograma', label: 'Organograma', icon: Network },
   { href: '/usuarios', label: 'Usuários', icon: UserCog },
 ];
 

@@ -26,7 +26,9 @@ import {
   AlertTriangle,
   X,
   HardHat,
+  FileDown,
 } from 'lucide-react';
+import { exportActivityPDF, exportActivityListPDF } from '@/lib/pdf';
 
 const STATUS_CONFIG = {
   in_progress: { label: 'Em Andamento', color: 'text-yellow-700', bg: 'bg-yellow-50 border-yellow-200', dot: 'bg-yellow-500', icon: Clock },
@@ -222,10 +224,20 @@ export default function AtividadesPage() {
               {selected.profiles?.full_name || 'Operador'}{selected.equipment_tag ? ` · TAG: ${selected.equipment_tag}` : ''}
             </p>
           </div>
-          <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-semibold ${cfg.bg} ${cfg.color}`}>
-            <Icon className="h-4 w-4" />
-            {cfg.label}
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => exportActivityPDF(selected)}
+              className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              title="Exportar PDF"
+            >
+              <FileDown className="h-3.5 w-3.5" />
+              PDF
+            </button>
+            <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-semibold ${cfg.bg} ${cfg.color}`}>
+              <Icon className="h-4 w-4" />
+              {cfg.label}
+            </span>
+          </div>
         </div>
 
         {/* Info cards */}
@@ -373,11 +385,22 @@ export default function AtividadesPage() {
   // -- List view --
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Atividades dos Operadores</h1>
-        <p className="text-sm text-muted-foreground">
-          Acompanhe as atividades registradas pelos operadores
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Atividades dos Operadores</h1>
+          <p className="text-sm text-muted-foreground">
+            Acompanhe as atividades registradas pelos operadores
+          </p>
+        </div>
+        {filtered.length > 0 && (
+          <button
+            onClick={() => exportActivityListPDF(filtered)}
+            className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
+          >
+            <FileDown className="h-3.5 w-3.5" />
+            Exportar PDF
+          </button>
+        )}
       </div>
 
       {/* Stats */}

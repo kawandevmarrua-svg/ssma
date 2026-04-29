@@ -193,6 +193,27 @@ export default function OperatorLayout() {
           title: 'Pre-Operacao',
         }}
       />
+      <Tabs.Screen
+        name="parada"
+        options={{
+          href: null,
+          title: 'Nova parada',
+        }}
+      />
+      <Tabs.Screen
+        name="selecionar-atividade"
+        options={{
+          href: null,
+          title: 'Selecionar atividade',
+        }}
+      />
+      <Tabs.Screen
+        name="servico"
+        options={{
+          href: null,
+          title: 'Nova atividade',
+        }}
+      />
     </Tabs>
   );
 }

@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { Sidebar } from '@/components/sidebar';
 import { Topbar } from '@/components/topbar';
 
-const ALLOWED_ROLES = new Set(['admin', 'manager', 'encarregado']);
+const ALLOWED_ROLES = new Set(['admin', 'manager', 'supervisor', 'encarregado']);
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();

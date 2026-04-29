@@ -8,13 +8,13 @@ interface CreateUserInput {
   nome: string;
   email: string;
   senha: string;
-  role: 'admin' | 'manager' | 'encarregado' | 'operator';
+  role: 'admin' | 'manager' | 'supervisor' | 'encarregado' | 'operator';
   phone?: string;
 }
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const STRONG_PASSWORD = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
-const VALID_ROLES = new Set(['admin', 'manager', 'encarregado', 'operator']);
+const VALID_ROLES = new Set(['admin', 'manager', 'supervisor', 'encarregado', 'operator']);
 
 export async function createUserAction(input: CreateUserInput) {
   const supabaseAuth = await createServerClient();
@@ -29,7 +29,7 @@ export async function createUserAction(input: CreateUserInput) {
     .eq('id', user.id)
     .single();
 
-  if (profileErr || !callerProfile || !['admin', 'manager', 'encarregado'].includes(callerProfile.role)) {
+  if (profileErr || !callerProfile || !['admin', 'manager', 'supervisor', 'encarregado'].includes(callerProfile.role)) {
     return { error: 'Sem permissao para criar usuarios.' };
   }
 
@@ -93,6 +93,70 @@ export async function createUserAction(input: CreateUserInput) {
   if (upsertErr) {
     await admin.auth.admin.deleteUser(created.user.id);
     return { error: upsertErr.message };
+  }
+
+  revalidatePath('/usuarios');
+  return { success: true };
+}
+
+interface UpdateUserInput {
+  id: string;
+  full_name: string;
+  role: 'admin' | 'manager' | 'supervisor' | 'encarregado' | 'operator';
+  phone?: string;
+  active: boolean;
+}
+
+export async function updateUserAction(input: UpdateUserInput) {
+  const supabaseAuth = await createServerClient();
+  const {
+    data: { user },
+  } = await supabaseAuth.auth.getUser();
+  if (!user) return { error: 'Nao autenticado.' };
+
+  const { data: callerProfile, error: profileErr } = await supabaseAuth
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single();
+
+  if (profileErr || !callerProfile || !['admin', 'manager', 'supervisor', 'encarregado'].includes(callerProfile.role)) {
+    return { error: 'Sem permissao para editar usuarios.' };
+  }
+
+  if (callerProfile.role !== 'admin' && input.role === 'admin') {
+    return { error: 'Apenas administradores podem atribuir o cargo de administrador.' };
+  }
+
+  const name = input.full_name.trim();
+  if (!name || name.length < 2) return { error: 'Nome invalido.' };
+  if (!VALID_ROLES.has(input.role)) return { error: 'Cargo invalido.' };
+
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!serviceKey || !url) {
+    return {
+      error:
+        'SUPABASE_SERVICE_ROLE_KEY nao configurada no servidor.',
+    };
+  }
+
+  const admin = createClient(url, serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  const { error: updateErr } = await admin
+    .from('profiles')
+    .update({
+      full_name: name,
+      role: input.role,
+      phone: input.phone?.trim() || null,
+      active: input.active,
+    })
+    .eq('id', input.id);
+
+  if (updateErr) {
+    return { error: updateErr.message };
   }
 
   revalidatePath('/usuarios');

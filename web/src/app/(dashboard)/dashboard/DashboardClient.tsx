@@ -101,7 +101,7 @@ function fillDays(period: Period): string[] {
 
 // ── Page ──
 
-export default function IndicadoresPage() {
+export default function DashboardPage() {
   const supabase = useMemo(() => createClient(), []);
   const [period, setPeriod] = useState<Period>('30d');
   const [loading, setLoading] = useState(true);
@@ -302,7 +302,7 @@ export default function IndicadoresPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Indicadores SSMA</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Dashboard</h1>
           <p className="text-xs sm:text-sm text-muted-foreground">
             Analise de conformidade, nao conformidades e interferencias dos checklists.
           </p>

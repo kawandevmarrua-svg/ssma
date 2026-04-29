@@ -1,7 +1,7 @@
 import { authenticate, buildCorsHeaders } from "../_shared/auth.ts";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const VALID_ROLES = new Set(["operator", "encarregado", "manager", "admin"]);
+const VALID_ROLES = new Set(["operator", "encarregado", "supervisor", "manager", "admin"]);
 
 /** Gera senha temporaria forte server-side (16 chars, inclui maiusc/minusc/digito/especial). */
 function generateTempPassword(): string {
@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  const auth = await authenticate(req, ["admin", "manager", "encarregado"]);
+  const auth = await authenticate(req, ["admin", "manager", "supervisor", "encarregado"]);
   if (!auth.ok) {
     return new Response(JSON.stringify({ error: auth.error }), {
       status: auth.status,

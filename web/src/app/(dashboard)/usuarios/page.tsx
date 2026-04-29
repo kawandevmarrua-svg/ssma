@@ -64,22 +64,22 @@ type TimelineEvent =
   | { kind: 'checklist'; ts: number; endTs: number; ref: ChecklistEvent };
 
 type Period = '1' | '7' | '30' | 'all';
-type RoleFilter = 'all' | 'admin' | 'manager' | 'encarregado' | 'operator';
+type RoleFilter = 'all' | 'admin' | 'manager' | 'supervisor' | 'encarregado' | 'operator';
 
 const ROLE_LABELS: Record<string, string> = {
   admin: 'Admin',
   manager: 'Gestor',
+  supervisor: 'Supervisor',
   encarregado: 'Encarregado',
   operator: 'Operador',
-  pending: 'Pendente',
 };
 
 const ROLE_COLORS: Record<string, string> = {
   admin: 'bg-purple-100 text-purple-700 border-purple-200',
   manager: 'bg-blue-100 text-blue-700 border-blue-200',
+  supervisor: 'bg-cyan-100 text-cyan-700 border-cyan-200',
   encarregado: 'bg-amber-100 text-amber-700 border-amber-200',
   operator: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-  pending: 'bg-gray-100 text-gray-600 border-gray-200',
 };
 
 export default function UsuariosPage() {
@@ -110,7 +110,7 @@ export default function UsuariosPage() {
     let query = supabase
       .from('profiles')
       .select('id, full_name, email, phone, active, created_at, role, created_by')
-      .in('role', ['admin', 'manager', 'encarregado', 'operator'])
+      .in('role', ['admin', 'manager', 'supervisor', 'encarregado', 'operator'])
       .order('created_at', { ascending: false });
     if (term) {
       query = query.or(`full_name.ilike.%${term}%,email.ilike.%${term}%`);
@@ -186,11 +186,12 @@ export default function UsuariosPage() {
   }, [users, roleFilter]);
 
   const counts = useMemo(() => {
-    const c = { total: users.length, active: 0, admin: 0, manager: 0, encarregado: 0, operator: 0 };
+    const c = { total: users.length, active: 0, admin: 0, manager: 0, supervisor: 0, encarregado: 0, operator: 0 };
     for (const u of users) {
       if (u.active) c.active++;
       if (u.role === 'admin') c.admin++;
       else if (u.role === 'manager') c.manager++;
+      else if (u.role === 'supervisor') c.supervisor++;
       else if (u.role === 'encarregado') c.encarregado++;
       else if (u.role === 'operator') c.operator++;
     }
@@ -473,12 +474,10 @@ export default function UsuariosPage() {
         {editing && (
           <EditUserModal
             user={editing}
-            supabase={supabase}
             onClose={() => setEditing(null)}
             onSaved={async () => {
               setEditing(null);
               await loadUsers();
-              // Refresh selected if same user
               if (selected?.id === editing.id) {
                 const { data } = await supabase
                   .from('profiles')
@@ -501,7 +500,7 @@ export default function UsuariosPage() {
         <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Usuarios</h1>
           <p className="text-xs sm:text-sm text-muted-foreground">
-            {counts.total} usuarios · {counts.active} ativos · {counts.operator} operadores · {counts.encarregado} encarregados · {counts.manager} gestores · {counts.admin} admins
+            {counts.total} usuarios · {counts.active} ativos · {counts.operator} operadores · {counts.encarregado} encarregados · {counts.supervisor} supervisores · {counts.manager} gestores · {counts.admin} admins
           </p>
         </div>
         <UserFormModal onSaved={() => loadUsers()} />
@@ -522,6 +521,7 @@ export default function UsuariosPage() {
             { v: 'all' as RoleFilter, label: 'Todos' },
             { v: 'operator' as RoleFilter, label: 'Operadores' },
             { v: 'encarregado' as RoleFilter, label: 'Encarregados' },
+            { v: 'supervisor' as RoleFilter, label: 'Supervisores' },
             { v: 'manager' as RoleFilter, label: 'Gestores' },
             { v: 'admin' as RoleFilter, label: 'Admins' },
           ]).map(({ v, label }) => (
@@ -631,7 +631,6 @@ export default function UsuariosPage() {
       {editing && (
         <EditUserModal
           user={editing}
-          supabase={supabase}
           onClose={() => setEditing(null)}
           onSaved={async () => { setEditing(null); await loadUsers(); }}
         />

@@ -19,47 +19,18 @@ import { useAuth } from '../../src/contexts/AuthContext';
 import { usePendingFinishes } from '../../src/hooks/usePendingFinishes';
 import { supabase } from '../../src/lib/supabase';
 import { pickPhoto, uploadPhoto } from '../../src/lib/imageUtils';
-import { Activity } from '../../src/types/database';
+import { Activity, PreOpQuestion, Location, ActivityType } from '../../src/types/database';
 import { colors, elevation, spacing, radius, fontSize } from '../../src/theme/colors';
 import { commonStyles } from '../../src/theme/commonStyles';
 import { Badge, Button, Text } from '../../src/components/ui';
 import { FinishActivityModal } from '../../src/components/FinishActivityModal';
+import { LocationPicker } from '../../src/components/LocationPicker';
+import { ActivityTypePicker } from '../../src/components/ActivityTypePicker';
 
-const PRE_OP_QUESTIONS = [
-  { key: 'checklist_fisico', label: 'Checklist realizado fisico preenchido? (a Vale exige o preenchimento do formulario fisico)', critical: false },
-  { key: 'prontos_preenchido', label: 'Prontos realizado?', critical: false },
-  { key: 'apto_operar', label: 'Voce esta apto para operar?', critical: true },
-  { key: 'conhece_limites', label: 'Conhece os limites do equipamento?', critical: false },
-  { key: 'art_disponivel', label: 'ART e de seu conhecimento e encontra-se disponivel na frente de servico?', critical: false },
-  { key: 'liberacao_acesso', label: 'E necessario Liberacao de Acesso?', critical: false },
-  { key: 'pts_preenchida', label: 'Para esta atividade se aplica a PTS? A PTS esta preenchida?', critical: false },
-  { key: 'local_adequado', label: 'O local da atividade esta adequado para realizacao da tarefa?', critical: false },
-  { key: 'local_sinalizado', label: 'O local encontra-se sinalizado ou dentro de area controlada?', critical: false },
-  { key: 'manutencao_valida', label: 'A manutencao do equipamento encontra-se valida?', critical: true },
-  { key: 'radio_comunicacao', label: 'O equipamento disponibiliza de radio de comunicacao?', critical: false },
-  { key: 'epi_adequado', label: "Voce esta com os EPI's adequados para a atividade?", critical: true },
-] as const;
-
-type PreOpKey = typeof PRE_OP_QUESTIONS[number]['key'];
-type PreOpAnswers = Record<PreOpKey, boolean | null>;
-
-const INITIAL_PREOP: PreOpAnswers = {
-  checklist_fisico: null,
-  prontos_preenchido: null,
-  apto_operar: null,
-  conhece_limites: null,
-  art_disponivel: null,
-  liberacao_acesso: null,
-  pts_preenchida: null,
-  local_adequado: null,
-  local_sinalizado: null,
-  manutencao_valida: null,
-  radio_comunicacao: null,
-  epi_adequado: null,
-};
+type PreOpAnswers = Record<string, boolean | null>;
 
 export default function AtividadeScreen() {
-  const { user, operatorData } = useAuth();
+  const { user, profile } = useAuth();
   useKeepAwake();
   const pendingFinishes = usePendingFinishes();
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -70,36 +41,40 @@ export default function AtividadeScreen() {
   const [saving, setSaving] = useState(false);
 
   // Create form
-  const [location, setLocation] = useState('');
+  const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
+  const [locationPickerVisible, setLocationPickerVisible] = useState(false);
+  const [activityType, setActivityType] = useState<ActivityType | null>(null);
+  const [typePickerVisible, setTypePickerVisible] = useState(false);
   const [description, setDescription] = useState('');
   const [equipmentPhotoUri, setEquipmentPhotoUri] = useState<string | null>(null);
   const [startPhotoUri, setStartPhotoUri] = useState<string | null>(null);
-  const [preopAnswers, setPreopAnswers] = useState<PreOpAnswers>({ ...INITIAL_PREOP });
-  const [availableChecklists, setAvailableChecklists] = useState<{ id: string; machine_name: string; tag: string | null }[]>([]);
+  const [questions, setQuestions] = useState<PreOpQuestion[]>([]);
+  const [preopAnswers, setPreopAnswers] = useState<PreOpAnswers>({});
+  const [availableChecklists, setAvailableChecklists] = useState<{ id: string; machine_name: string; tag: string | null; machine_id: string | null }[]>([]);
   const [selectedChecklistId, setSelectedChecklistId] = useState<string | null>(null);
 
-  function setPreopAnswer(key: PreOpKey, value: boolean) {
-    setPreopAnswers((prev) => ({ ...prev, [key]: value }));
+  function setPreopAnswer(questionId: string, value: boolean) {
+    setPreopAnswers((prev) => ({ ...prev, [questionId]: value }));
   }
 
   function allPreopAnswered() {
-    return PRE_OP_QUESTIONS.every((q) => preopAnswers[q.key] !== null);
+    return questions.length > 0 && questions.every((q) => preopAnswers[q.id] === true || preopAnswers[q.id] === false);
   }
 
   const today = new Date().toISOString().split('T')[0];
 
   const loadActivities = useCallback(async () => {
-    if (!operatorData) return;
+    if (!user) return;
     const { data, error } = await supabase
       .from('activities')
       .select('*')
-      .eq('operator_id', operatorData.id)
+      .eq('operator_id', user.id)
       .eq('date', today)
       .order('created_at', { ascending: false });
     if (error) Alert.alert('Erro', 'Falha ao carregar atividades.');
     setActivities(data ?? []);
     setLoading(false);
-  }, [operatorData, today]);
+  }, [user, today]);
 
   useEffect(() => { loadActivities(); }, [loadActivities]);
 
@@ -109,26 +84,34 @@ export default function AtividadeScreen() {
     setRefreshing(false);
   }
 
-  function resetCreateForm() {
-    setLocation('');
+  function resetCreateForm(initialAnswers: PreOpAnswers = {}) {
+    setSelectedLocation(null);
+    setActivityType(null);
     setDescription('');
     setEquipmentPhotoUri(null);
     setStartPhotoUri(null);
-    setPreopAnswers({ ...INITIAL_PREOP });
+    setPreopAnswers(initialAnswers);
     setSelectedChecklistId(null);
   }
 
   async function openCreateModal() {
-    if (!operatorData) return;
-    const { data } = await supabase
-      .from('checklists')
-      .select('id, machine_name, tag')
-      .eq('operator_id', operatorData.id)
-      .eq('date', today)
-      .eq('result', 'released')
-      .eq('status', 'pending')
-      .order('created_at', { ascending: false });
-    const list = data ?? [];
+    if (!user) return;
+    const [{ data: cls }, { data: qs }] = await Promise.all([
+      supabase
+        .from('checklists')
+        .select('id, machine_name, tag, machine_id')
+        .eq('operator_id', user.id)
+        .eq('date', today)
+        .eq('result', 'released')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('pre_op_questions')
+        .select('*')
+        .eq('active', true)
+        .order('order_index', { ascending: true }),
+    ]);
+    const list = cls ?? [];
     if (list.length === 0) {
       Alert.alert(
         'Checklist necessario',
@@ -136,24 +119,36 @@ export default function AtividadeScreen() {
       );
       return;
     }
-    resetCreateForm();
+    const qList = (qs ?? []) as PreOpQuestion[];
+    setQuestions(qList);
+    const initial: PreOpAnswers = {};
+    for (const q of qList) initial[q.id] = null;
+    resetCreateForm(initial);
     setAvailableChecklists(list);
     setCreateModal(true);
   }
 
   async function handleCreate() {
     if (saving) return;
-    if (!operatorData || !user) return;
+    if (!user) return;
     if (!selectedChecklistId) {
       Alert.alert('Atencao', 'Selecione a maquina (checklist do dia) antes de iniciar.');
       return;
     }
-    if (!location.trim() || !description.trim()) {
-      Alert.alert('Atencao', 'Preencha local e descricao da atividade.');
+    if (!selectedLocation) {
+      Alert.alert('Atencao', 'Selecione o local da atividade.');
+      return;
+    }
+    if (!activityType) {
+      Alert.alert('Atencao', 'Selecione o tipo de atividade.');
+      return;
+    }
+    if (activityType.allow_custom && !description.trim()) {
+      Alert.alert('Atencao', 'Descreva a atividade.');
       return;
     }
     if (!allPreopAnswered()) {
-      Alert.alert('Atencao', 'Responda todas as 12 perguntas da pre-operacao antes de iniciar.');
+      Alert.alert('Atencao', `Responda todas as ${questions.length} perguntas da pre-operacao antes de iniciar.`);
       return;
     }
     const selectedChecklist = availableChecklists.find((c) => c.id === selectedChecklistId);
@@ -164,22 +159,7 @@ export default function AtividadeScreen() {
     // 1) Cria a pre-operacao desta atividade
     const { data: preop, error: preopErr } = await supabase
       .from('pre_operation_checks')
-      .insert({
-        operator_id: operatorData.id,
-        date: today,
-        checklist_fisico: preopAnswers.checklist_fisico!,
-        prontos_preenchido: preopAnswers.prontos_preenchido!,
-        apto_operar: preopAnswers.apto_operar!,
-        conhece_limites: preopAnswers.conhece_limites!,
-        art_disponivel: preopAnswers.art_disponivel!,
-        liberacao_acesso: preopAnswers.liberacao_acesso,
-        pts_preenchida: preopAnswers.pts_preenchida,
-        local_adequado: preopAnswers.local_adequado!,
-        local_sinalizado: preopAnswers.local_sinalizado!,
-        manutencao_valida: preopAnswers.manutencao_valida!,
-        radio_comunicacao: preopAnswers.radio_comunicacao!,
-        epi_adequado: preopAnswers.epi_adequado!,
-      })
+      .insert({ operator_id: user.id, date: today })
       .select()
       .single();
 
@@ -189,17 +169,35 @@ export default function AtividadeScreen() {
       return;
     }
 
+    const answerRows = questions.map((q) => ({
+      check_id: preop.id,
+      question_id: q.id,
+      value: preopAnswers[q.id]!,
+    }));
+    const { error: ansErr } = await supabase.from('pre_op_answers').insert(answerRows);
+    if (ansErr) {
+      Alert.alert('Erro', ansErr.message);
+      setSaving(false);
+      return;
+    }
+
+    const finalDescription = activityType.allow_custom
+      ? `${activityType.code} - ${description.trim()}`
+      : activityType.description;
+
     // 2) Cria a atividade vinculada a essa pre-operacao
     const { data: activity, error } = await supabase
       .from('activities')
       .insert({
-        operator_id: operatorData.id,
+        operator_id: user.id,
         pre_operation_id: preop.id,
         checklist_id: selectedChecklistId,
+        machine_id: selectedChecklist?.machine_id ?? null,
+        activity_type_id: activityType.id,
         date: today,
         equipment_tag: selectedChecklist?.tag ?? null,
-        location,
-        description,
+        location: selectedLocation.name,
+        description: finalDescription,
         start_time: now,
       })
       .select()
@@ -339,9 +337,9 @@ export default function AtividadeScreen() {
               </View>
 
               <Text style={st.sectionTitle}>Pre-Operacao (formulario Vale)</Text>
-              <Text style={st.sectionHint}>Responda as 12 perguntas antes de iniciar a atividade.</Text>
-              {PRE_OP_QUESTIONS.map((q) => (
-                <View key={q.key} style={[st.questionCard, q.critical && st.questionCritical]}>
+              <Text style={st.sectionHint}>Responda as {questions.length} perguntas antes de iniciar a atividade.</Text>
+              {questions.map((q) => (
+                <View key={q.id} style={[st.questionCard, q.critical && st.questionCritical]}>
                   <View style={st.questionHeaderRow}>
                     <Text style={st.questionText}>{q.label}</Text>
                     {q.critical && (
@@ -353,16 +351,16 @@ export default function AtividadeScreen() {
                   </View>
                   <View style={st.answerRow}>
                     <TouchableOpacity
-                      style={[st.answerBtn, preopAnswers[q.key] === true && st.answerYes]}
-                      onPress={() => setPreopAnswer(q.key, true)}
+                      style={[st.answerBtn, preopAnswers[q.id] === true && st.answerYes]}
+                      onPress={() => setPreopAnswer(q.id, true)}
                     >
-                      <Text style={preopAnswers[q.key] === true ? [st.answerText, st.answerTextActive] : st.answerText}>Sim</Text>
+                      <Text style={preopAnswers[q.id] === true ? [st.answerText, st.answerTextActive] : st.answerText}>Sim</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[st.answerBtn, preopAnswers[q.key] === false && st.answerNo]}
-                      onPress={() => setPreopAnswer(q.key, false)}
+                      style={[st.answerBtn, preopAnswers[q.id] === false && st.answerNo]}
+                      onPress={() => setPreopAnswer(q.id, false)}
                     >
-                      <Text style={preopAnswers[q.key] === false ? [st.answerText, st.answerTextActive] : st.answerText}>Não</Text>
+                      <Text style={preopAnswers[q.id] === false ? [st.answerText, st.answerTextActive] : st.answerText}>Não</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -391,14 +389,59 @@ export default function AtividadeScreen() {
               })}
 
               <Text style={st.sectionTitle}>Detalhes da Atividade</Text>
+
               <View style={commonStyles.inputGroup}>
                 <Text style={commonStyles.label}>Local *</Text>
-                <TextInput style={commonStyles.input} placeholder="Local da atividade" placeholderTextColor={colors.textLight} value={location} onChangeText={setLocation} />
+                <TouchableOpacity
+                  style={st.typePickerBtn}
+                  onPress={() => setLocationPickerVisible(true)}
+                >
+                  {selectedLocation ? (
+                    <View style={{ flex: 1 }}>
+                      <Text style={st.machineChoiceName}>{selectedLocation.name}</Text>
+                      {selectedLocation.code && (
+                        <Text style={st.machineChoiceTag}>{selectedLocation.code}</Text>
+                      )}
+                    </View>
+                  ) : (
+                    <Text style={st.typePickerPlaceholder}>Toque para selecionar a localidade</Text>
+                  )}
+                  <Ionicons name="location-outline" size={18} color={colors.textLight} />
+                </TouchableOpacity>
               </View>
+
               <View style={commonStyles.inputGroup}>
-                <Text style={commonStyles.label}>Descricao *</Text>
-                <TextInput style={[commonStyles.input, commonStyles.textArea]} placeholder="Descricao da atividade" placeholderTextColor={colors.textLight} value={description} onChangeText={setDescription} multiline numberOfLines={3} />
+                <Text style={commonStyles.label}>Tipo de atividade *</Text>
+                <TouchableOpacity
+                  style={st.typePickerBtn}
+                  onPress={() => setTypePickerVisible(true)}
+                >
+                  {activityType ? (
+                    <View style={{ flex: 1 }}>
+                      <Text style={st.typePickerCode}>{activityType.code}</Text>
+                      <Text style={st.typePickerDesc}>{activityType.description}</Text>
+                    </View>
+                  ) : (
+                    <Text style={st.typePickerPlaceholder}>Toque para escolher (codigo ou descricao)</Text>
+                  )}
+                  <Ionicons name="search" size={18} color={colors.textLight} />
+                </TouchableOpacity>
               </View>
+
+              {activityType?.allow_custom && (
+                <View style={commonStyles.inputGroup}>
+                  <Text style={commonStyles.label}>Informe a atividade *</Text>
+                  <TextInput
+                    style={[commonStyles.input, commonStyles.textArea]}
+                    placeholder="Descreva a atividade"
+                    placeholderTextColor={colors.textLight}
+                    value={description}
+                    onChangeText={setDescription}
+                    multiline
+                    numberOfLines={3}
+                  />
+                </View>
+              )}
 
               <View style={st.photoRow}>
                 <TouchableOpacity style={st.photoPicker} onPress={async () => { const uri = await pickPhoto(); if (uri) setEquipmentPhotoUri(uri); }}>
@@ -429,6 +472,21 @@ export default function AtividadeScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <LocationPicker
+        visible={locationPickerVisible}
+        onClose={() => setLocationPickerVisible(false)}
+        onSelect={(loc) => setSelectedLocation(loc)}
+      />
+
+      <ActivityTypePicker
+        visible={typePickerVisible}
+        onClose={() => setTypePickerVisible(false)}
+        onSelect={(t) => {
+          setActivityType(t);
+          if (!t.allow_custom) setDescription('');
+        }}
+      />
 
       <FinishActivityModal
         activity={activityToFinish}
@@ -530,4 +588,20 @@ const st = StyleSheet.create({
   machineChoiceSel: { borderColor: colors.primary, backgroundColor: colors.primarySurface },
   machineChoiceName: { fontSize: fontSize.sm, fontWeight: '700', color: colors.text },
   machineChoiceTag: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2 },
+
+  // Picker de localidade
+  typePickerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    padding: spacing.md,
+    minHeight: 52,
+  },
+  typePickerPlaceholder: { flex: 1, fontSize: fontSize.sm, color: colors.textLight },
+  typePickerCode: { fontSize: fontSize.xs, fontWeight: '700', color: colors.primary, letterSpacing: 0.5 },
+  typePickerDesc: { fontSize: fontSize.sm, color: colors.text, marginTop: 2 },
 });

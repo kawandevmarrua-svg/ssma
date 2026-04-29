@@ -1,23 +1,23 @@
-import { useState } from 'react';
+import { useState } from "react";
 import {
-  View,
-  StyleSheet,
+  Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
-  Image,
-} from 'react-native';
-import { useAuth } from '../../src/contexts/AuthContext';
-import { loginSchema } from '../../src/schemas';
-import { useFormValidation } from '../../src/hooks/useFormValidation';
-import { colors, spacing } from '../../src/theme/colors';
-import { Text, Input, PasswordInput, Button } from '../../src/components/ui';
+  StyleSheet,
+  View,
+} from "react-native";
+import { Button, Input, PasswordInput, Text } from "../../src/components/ui";
+import { useAuth } from "../../src/contexts/AuthContext";
+import { useFormValidation } from "../../src/hooks/useFormValidation";
+import { loginSchema } from "../../src/schemas";
+import { colors, spacing } from "../../src/theme/colors";
 
 export default function LoginScreen() {
   const { signIn } = useAuth();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const { errors, validate } = useFormValidation(loginSchema);
 
@@ -30,14 +30,17 @@ export default function LoginScreen() {
     setLoading(false);
 
     if (error) {
-      Alert.alert('Não foi possível entrar', 'Verifique seu e-mail e senha e tente novamente.');
+      Alert.alert(
+        "Não foi possível entrar",
+        "Verifique seu e-mail e senha e tente novamente.",
+      );
     }
   }
 
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <ScrollView
         contentContainerStyle={styles.scroll}
@@ -46,15 +49,21 @@ export default function LoginScreen() {
       >
         <View style={styles.hero}>
           <Image
-            source={require('../../logo.jpeg')}
+            source={require("../../logo.jpeg")}
             style={styles.logo}
             resizeMode="contain"
           />
           <Text variant="h1" align="center" style={styles.title}>
             Bem-vindo
           </Text>
-          <Text variant="callout" tone="muted" align="center" style={styles.subtitle}>
-            Entre com suas credenciais para continuar acompanhando suas atividades.
+          <Text
+            variant="callout"
+            tone="muted"
+            align="center"
+            style={styles.subtitle}
+          >
+            Entre com suas credenciais para continuar acompanhando suas
+            atividades.
           </Text>
         </View>
 
@@ -85,7 +94,7 @@ export default function LoginScreen() {
           />
 
           <Button
-            label={loading ? 'Entrando...' : 'Entrar'}
+            label={loading ? "Entrando..." : "Entrar"}
             onPress={handleLogin}
             loading={loading}
             disabled={loading}
@@ -112,13 +121,13 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flexGrow: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing['2xl'],
+    paddingVertical: spacing["2xl"],
   },
   hero: {
-    alignItems: 'center',
-    marginBottom: spacing['2xl'],
+    alignItems: "center",
+    marginBottom: spacing["2xl"],
   },
   logo: {
     width: 144,
@@ -128,9 +137,9 @@ const styles = StyleSheet.create({
   },
   title: { marginBottom: spacing.sm },
   subtitle: { maxWidth: 320 },
-  form: { width: '100%' },
+  form: { width: "100%" },
   footer: {
-    marginTop: spacing['2xl'],
-    alignItems: 'center',
+    marginTop: spacing["2xl"],
+    alignItems: "center",
   },
 });

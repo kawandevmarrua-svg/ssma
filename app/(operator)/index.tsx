@@ -1,9 +1,10 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   StyleSheet,
   ScrollView,
   RefreshControl,
+  Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,7 +16,6 @@ import {
   Text,
   Avatar,
   StatCard,
-  ListItem,
 } from '../../src/components/ui';
 import { useOfflineQueueSize, useDeadLetterCount } from '../../src/hooks/useOfflineQueueSize';
 
@@ -37,13 +37,16 @@ export default function OperatorHomeScreen() {
     activitiesToday: 0,
     unreadAlerts: 0,
   });
+  const [safetyMessages, setSafetyMessages] = useState<{ title: string; message: string }[]>([]);
+  const [currentMsgIndex, setCurrentMsgIndex] = useState(0);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
 
   const today = new Date().toISOString().split('T')[0];
 
   const loadData = useCallback(async () => {
     if (!user) return;
 
-    const [checklistsRes, activitiesRes, alertsRes] = await Promise.all([
+    const [checklistsRes, activitiesRes, alertsRes, messagesRes] = await Promise.all([
       supabase
         .from('checklists')
         .select('id', { count: 'exact', head: true })
@@ -59,6 +62,12 @@ export default function OperatorHomeScreen() {
         .select('id', { count: 'exact', head: true })
         .or(`operator_id.eq.${user.id},operator_id.is.null`)
         .eq('read', false),
+      supabase
+        .from('safety_alerts')
+        .select('title, message')
+        .or(`operator_id.eq.${user.id},operator_id.is.null`)
+        .order('created_at', { ascending: false })
+        .limit(10),
     ]);
 
     setStats({
@@ -66,6 +75,10 @@ export default function OperatorHomeScreen() {
       activitiesToday: activitiesRes.count ?? 0,
       unreadAlerts: alertsRes.count ?? 0,
     });
+
+    if (messagesRes.data && messagesRes.data.length > 0) {
+      setSafetyMessages(messagesRes.data);
+    }
   }, [user, today]);
 
   useEffect(() => {
@@ -80,6 +93,18 @@ export default function OperatorHomeScreen() {
 
   const name = profile?.full_name || 'Operador';
   const firstName = name.split(' ')[0];
+  // Auto-rotate safety messages every 6s
+  useEffect(() => {
+    if (safetyMessages.length <= 1) return;
+    const interval = setInterval(() => {
+      Animated.timing(fadeAnim, { toValue: 0, duration: 300, useNativeDriver: true }).start(() => {
+        setCurrentMsgIndex((prev) => (prev + 1) % safetyMessages.length);
+        Animated.timing(fadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+      });
+    }, 6000);
+    return () => clearInterval(interval);
+  }, [safetyMessages.length, fadeAnim]);
+
   const pendingOffline = useOfflineQueueSize();
   const deadLetterCount = useDeadLetterCount();
 
@@ -154,41 +179,30 @@ export default function OperatorHomeScreen() {
         />
       </View>
 
-      {/* Ações */}
-      <View style={styles.sectionHeader}>
-        <View style={styles.sectionLeft}>
-          <Ionicons name="flash-outline" size={14} color={colors.textSecondary} />
-          <Text variant="captionStrong" tone="muted">AÇÕES RÁPIDAS</Text>
+      {/* Card de mensagens de segurança */}
+      {safetyMessages.length > 0 && (
+        <View style={styles.safetyCard} onTouchEnd={() => router.push('/(operator)/alerts')}>
+          <View style={styles.safetyHeader}>
+            <Ionicons name="shield-checkmark" size={20} color="#fff" />
+            <Text variant="captionStrong" style={styles.safetyHeaderText}>
+              SEGURANÇA
+            </Text>
+            {safetyMessages.length > 1 && (
+              <Text variant="caption" style={styles.safetyCounter}>
+                {currentMsgIndex + 1}/{safetyMessages.length}
+              </Text>
+            )}
+          </View>
+          <Animated.View style={{ opacity: fadeAnim }}>
+            <Text variant="bodyStrong" style={styles.safetyTitle}>
+              {safetyMessages[currentMsgIndex]?.title}
+            </Text>
+            <Text variant="caption" style={styles.safetyMessage} numberOfLines={3}>
+              {safetyMessages[currentMsgIndex]?.message}
+            </Text>
+          </Animated.View>
         </View>
-      </View>
-
-      <View style={styles.actions}>
-        <ListItem
-          icon="clipboard-outline"
-          iconTone="primary"
-          title="Novo checklist pré-uso"
-          subtitle="Inspecione o equipamento antes de operar"
-          onPress={() => router.push('/(operator)/checklist')}
-        />
-        <ListItem
-          icon="add-circle-outline"
-          iconTone="neutral"
-          title="Registrar atividade"
-          subtitle="Inicie uma nova atividade do turno"
-          onPress={() => router.push('/(operator)/atividade')}
-        />
-        <ListItem
-          icon="warning-outline"
-          iconTone="neutral"
-          title="Alertas de segurança"
-          subtitle={
-            stats.unreadAlerts > 0
-              ? `${stats.unreadAlerts} alerta(s) sem leitura`
-              : 'Nenhum alerta pendente'
-          }
-          onPress={() => router.push('/(operator)/alerts')}
-        />
-      </View>
+      )}
     </ScrollView>
   );
 }
@@ -220,20 +234,31 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginBottom: spacing.sm,
   },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  safetyCard: {
+    backgroundColor: '#F97316',
+    borderRadius: radius.md,
+    padding: spacing.md,
     marginTop: spacing.lg,
-    marginBottom: spacing.sm,
-    paddingHorizontal: spacing['2xs'],
   },
-  sectionLeft: {
+  safetyHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
   },
-  actions: {
-    gap: spacing.sm,
+  safetyHeaderText: {
+    color: '#fff',
+    flex: 1,
+  },
+  safetyCounter: {
+    color: 'rgba(255,255,255,0.7)',
+  },
+  safetyTitle: {
+    color: '#fff',
+    marginBottom: 4,
+  },
+  safetyMessage: {
+    color: 'rgba(255,255,255,0.9)',
   },
   offlineBanner: {
     flexDirection: 'row',

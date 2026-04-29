@@ -6,7 +6,7 @@ export type Database = {
           id: string;
           email: string;
           full_name: string | null;
-          role: 'admin' | 'manager' | 'operator' | 'pending';
+          role: 'admin' | 'manager' | 'encarregado' | 'operator' | 'pending';
           phone: string | null;
           active: boolean;
           created_by: string | null;
@@ -16,14 +16,14 @@ export type Database = {
           id: string;
           email: string;
           full_name?: string | null;
-          role?: 'admin' | 'manager' | 'operator' | 'pending';
+          role?: 'admin' | 'manager' | 'encarregado' | 'operator' | 'pending';
           phone?: string | null;
           active?: boolean;
           created_by?: string | null;
         };
         Update: {
           full_name?: string | null;
-          role?: 'admin' | 'manager' | 'operator' | 'pending';
+          role?: 'admin' | 'manager' | 'encarregado' | 'operator' | 'pending';
           phone?: string | null;
           active?: boolean;
           created_by?: string | null;

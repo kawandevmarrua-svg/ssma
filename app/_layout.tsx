@@ -50,11 +50,7 @@ function RootLayoutNav() {
     if (!session && !inAuth) {
       router.replace('/(auth)/splash');
     } else if (session && inAuth && profile && !mustResetPassword) {
-      if (profile.role === 'operator') {
-        router.replace('/(operator)');
-      } else {
-        router.replace('/(admin)');
-      }
+      router.replace('/(operator)');
     }
   }, [session, profile, loading, segments, mustResetPassword]);
 

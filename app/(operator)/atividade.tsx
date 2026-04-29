@@ -326,7 +326,7 @@ export default function AtividadeScreen() {
 
       {/* Create Modal */}
       <Modal visible={createModal} animationType="slide" transparent>
-        <KeyboardAvoidingView style={commonStyles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={commonStyles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={commonStyles.modalContent}>
             <ScrollView showsVerticalScrollIndicator={false}>
               <View style={commonStyles.modalHeader}>
@@ -391,7 +391,7 @@ export default function AtividadeScreen() {
               <Text style={st.sectionTitle}>Detalhes da Atividade</Text>
 
               <View style={commonStyles.inputGroup}>
-                <Text style={commonStyles.label}>Local *</Text>
+                <Text style={[commonStyles.label, { color: '#FF8C00' }]}>Local *</Text>
                 <TouchableOpacity
                   style={st.typePickerBtn}
                   onPress={() => setLocationPickerVisible(true)}

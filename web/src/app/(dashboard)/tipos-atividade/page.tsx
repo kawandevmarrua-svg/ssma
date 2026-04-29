@@ -338,7 +338,7 @@ function ActivityTypeForm({ item, onClose, onSaved }: FormProps) {
             onChange={(e) => setAllowCustom(e.target.checked)}
           />
           <label htmlFor="allow_custom" className="text-sm">
-            Pedir descricao livre ao operador (use para "Outros (informar)")
+            Pedir descricao livre ao operador (use para &ldquo;Outros (informar)&rdquo;)
           </label>
         </div>
         {error && <p className="text-sm text-destructive">{error}</p>}

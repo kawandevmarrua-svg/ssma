@@ -18,6 +18,13 @@ import {
   ChevronLeft,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { AppDownloadSection } from '@/components/ui/app-download-section';
+import {
+  Wifi,
+  MapPin,
+  Shield,
+  Smartphone,
+} from 'lucide-react';
 
 /* ── Scroll-reveal ─────────────────────────────────────────── */
 function Reveal({
@@ -689,56 +696,27 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* ── App Mobile ────────────────────────────────────── */}
-        <section id="app" className="py-24 md:py-32">
-          <div className="container grid items-center gap-16 lg:grid-cols-[280px_1fr] lg:gap-24">
-            <Reveal className="mx-auto lg:mx-0">
-              <FieldPhone />
-            </Reveal>
-
-            <div>
-              <Reveal>
-                <span className="inline-flex items-center gap-2 rounded-full border border-primary/10 bg-primary/5 px-4 py-1.5 text-xs font-medium tracking-wide text-primary">
-                  App mobile
-                </span>
-                <h2 className="mt-5 text-3xl font-bold tracking-tight sm:text-4xl">
-                  Feito para o campo.
-                </h2>
-                <p className="mt-4 max-w-lg text-base leading-relaxed text-muted-foreground">
-                  O operador escaneia, preenche e envia — tudo no mesmo fluxo. A
-                  gestao recebe dados prontos para agir.
-                </p>
-              </Reveal>
-
-              <div className="mt-10 grid gap-4 sm:grid-cols-2">
-                {[
-                  'Checklist com QR Code',
-                  'Registro de evidencias',
-                  'Alertas em tempo real',
-                  'Historico rastreavel',
-                ].map((item, i) => (
-                  <Reveal key={item} delay={i * 80}>
-                    <div className="flex items-center gap-3 rounded-xl border border-border/50 bg-white p-4 text-sm transition-colors hover:border-primary/20">
-                      <CheckCircle2 className="h-4 w-4 flex-none text-primary" />
-                      {item}
-                    </div>
-                  </Reveal>
-                ))}
-              </div>
-
-              <Reveal delay={350}>
-                <div className="mt-8">
-                  <Link href="/login">
-                    <Button size="lg" className="rounded-full px-8">
-                      Acessar plataforma
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </Link>
-                </div>
-              </Reveal>
-            </div>
-          </div>
-        </section>
+        {/* ── Baixar App ────────────────────────────────────── */}
+        <AppDownloadSection
+          id="app"
+          title="Baixe o app Seguranca em 360"
+          subtitle="Leve a seguranca para o campo — inspecoes, checklists e alertas na palma da mao"
+          features={[
+            { icon: <QrCode size={24} />, title: 'Leitura QR Code' },
+            { icon: <ClipboardCheck size={24} />, title: 'Checklists digitais' },
+            { icon: <Wifi size={24} />, title: 'Funciona offline' },
+            { icon: <MapPin size={24} />, title: 'Geolocalizacao' },
+          ]}
+          benefits={[
+            { icon: <Smartphone size={20} />, title: 'Android e iOS' },
+            { icon: <Shield size={20} />, title: 'Dados protegidos' },
+            { icon: <ShieldCheck size={20} />, title: 'Uso simplificado' },
+          ]}
+          appLink="https://github.com/kawandevmarrua-svg/ssma/releases/tag/v1.0.3"
+          appLinkLabel="Acessar o app"
+          phoneContent={<FieldPhone />}
+          className="py-24 md:py-32"
+        />
 
         {/* ── CTA ───────────────────────────────────────────── */}
         <section id="cta" className="border-t border-border/40">

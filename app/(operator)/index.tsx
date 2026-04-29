@@ -28,7 +28,7 @@ function formatToday() {
 }
 
 export default function OperatorHomeScreen() {
-  const { profile, operatorData } = useAuth();
+  const { user, profile } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
@@ -41,23 +41,23 @@ export default function OperatorHomeScreen() {
   const today = new Date().toISOString().split('T')[0];
 
   const loadData = useCallback(async () => {
-    if (!operatorData) return;
+    if (!user) return;
 
     const [checklistsRes, activitiesRes, alertsRes] = await Promise.all([
       supabase
         .from('checklists')
         .select('id', { count: 'exact', head: true })
-        .eq('operator_id', operatorData.id)
+        .eq('operator_id', user.id)
         .eq('date', today),
       supabase
         .from('activities')
         .select('id', { count: 'exact', head: true })
-        .eq('operator_id', operatorData.id)
+        .eq('operator_id', user.id)
         .eq('date', today),
       supabase
         .from('safety_alerts')
         .select('id', { count: 'exact', head: true })
-        .or(`operator_id.eq.${operatorData.id},operator_id.is.null`)
+        .or(`operator_id.eq.${user.id},operator_id.is.null`)
         .eq('read', false),
     ]);
 
@@ -66,7 +66,7 @@ export default function OperatorHomeScreen() {
       activitiesToday: activitiesRes.count ?? 0,
       unreadAlerts: alertsRes.count ?? 0,
     });
-  }, [operatorData, today]);
+  }, [user, today]);
 
   useEffect(() => {
     loadData();
@@ -78,7 +78,7 @@ export default function OperatorHomeScreen() {
     setRefreshing(false);
   }
 
-  const name = profile?.full_name || operatorData?.name || 'Operador';
+  const name = profile?.full_name || 'Operador';
   const firstName = name.split(' ')[0];
   const pendingOffline = useOfflineQueueSize();
   const deadLetterCount = useDeadLetterCount();
@@ -101,11 +101,7 @@ export default function OperatorHomeScreen() {
         <View style={styles.headerText}>
           <Text variant="display">{firstName}</Text>
           <View style={styles.metaRow}>
-            <Text variant="caption" tone="muted">Operador ·</Text>
-            <Text variant="caption" tone="primary" style={styles.metaLink}>
-              {operatorData?.role || 'Sem função'}
-            </Text>
-            <Text variant="caption" tone="muted">· {formatToday()}</Text>
+            <Text variant="caption" tone="muted">Operador · {formatToday()}</Text>
           </View>
         </View>
         <Avatar name={name} size="md" />

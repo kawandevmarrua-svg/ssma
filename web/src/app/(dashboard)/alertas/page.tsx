@@ -85,10 +85,11 @@ export default function AlertasPage() {
 
   const loadOperators = useCallback(async () => {
     const { data } = await supabase
-      .from('operators')
-      .select('id, name, active')
+      .from('profiles')
+      .select('id, full_name, active')
+      .eq('role', 'operator')
       .eq('active', true)
-      .order('name');
+      .order('full_name');
     setOperators(data ?? []);
   }, [supabase]);
 
@@ -238,7 +239,7 @@ export default function AlertasPage() {
 
   function operatorName(id: string | null) {
     if (!id) return 'Todos os operadores';
-    return operators.find((o) => o.id === id)?.name ?? 'Operador removido';
+    return operators.find((o) => o.id === id)?.full_name ?? 'Operador removido';
   }
 
   const totalUnread = alerts.filter((a) => !a.read).length;
@@ -450,7 +451,7 @@ export default function AlertasPage() {
                 <option value="">Todos os operadores</option>
                 {operators.map((op) => (
                   <option key={op.id} value={op.id}>
-                    {op.name}
+                    {op.full_name}
                   </option>
                 ))}
               </select>

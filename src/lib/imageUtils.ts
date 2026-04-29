@@ -18,7 +18,7 @@ export async function pickPhoto(): Promise<string | null> {
   const result = await ImagePicker.launchCameraAsync({
     mediaTypes: ['images'],
     quality: COMPRESSED_QUALITY,
-    allowsEditing: true,
+    allowsEditing: false,
   });
 
   if (result.canceled || !result.assets[0]) return null;

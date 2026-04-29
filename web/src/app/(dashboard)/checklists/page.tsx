@@ -69,7 +69,7 @@ export default function ChecklistsPage() {
   const [resolvedPhotos, setResolvedPhotos] = useState<Record<string, string>>({});
   const [deepLinked, setDeepLinked] = useState(false);
 
-  const CHECKLIST_SELECT = 'id, machine_name, date, status, result, brand, model, tag, shift, max_load_capacity, inspector_name, inspector_registration, notes, end_notes, ended_at, had_interference, interference_notes, created_at, operator_id, operators(name), equipment_types(name), equipment_photo_1_url, equipment_photo_2_url, equipment_photo_3_url, equipment_photo_4_url, environment_photo_url';
+  const CHECKLIST_SELECT = 'id, machine_name, date, status, result, brand, model, tag, shift, max_load_capacity, inspector_name, inspector_registration, notes, end_notes, ended_at, had_interference, interference_notes, created_at, operator_id, profiles(full_name), equipment_types(name), equipment_photo_1_url, equipment_photo_2_url, equipment_photo_3_url, equipment_photo_4_url, environment_photo_url';
 
   const loadChecklists = useCallback(async (term = '') => {
     let query = supabase
@@ -248,7 +248,7 @@ export default function ChecklistsPage() {
                 <User className="h-3.5 w-3.5" />
                 Operador
               </div>
-              <p className="font-semibold">{selected.operators?.name || '—'}</p>
+              <p className="font-semibold">{selected.profiles?.full_name || '—'}</p>
             </CardContent>
           </Card>
           <Card>
@@ -559,7 +559,7 @@ export default function ChecklistsPage() {
                           <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
                             <span className="inline-flex items-center gap-1">
                               <User className="h-3 w-3" />
-                              {checklist.operators?.name || 'Operador'}
+                              {checklist.profiles?.full_name || 'Operador'}
                             </span>
                             <span>{formatDate(checklist.date)}</span>
                             {checklist.tag && (

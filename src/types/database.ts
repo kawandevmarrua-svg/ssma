@@ -7,6 +7,9 @@ export type Database = {
           email: string;
           full_name: string | null;
           role: 'admin' | 'manager' | 'operator' | 'pending';
+          phone: string | null;
+          active: boolean;
+          created_by: string | null;
           created_at: string;
         };
         Insert: {
@@ -14,10 +17,16 @@ export type Database = {
           email: string;
           full_name?: string | null;
           role?: 'admin' | 'manager' | 'operator' | 'pending';
+          phone?: string | null;
+          active?: boolean;
+          created_by?: string | null;
         };
         Update: {
           full_name?: string | null;
           role?: 'admin' | 'manager' | 'operator' | 'pending';
+          phone?: string | null;
+          active?: boolean;
+          created_by?: string | null;
         };
         Relationships: [];
       };
@@ -42,45 +51,6 @@ export type Database = {
             columns: ['user_id'];
             isOneToOne: true;
             referencedRelation: 'users';
-            referencedColumns: ['id'];
-          },
-        ];
-      };
-      operators: {
-        Row: {
-          id: string;
-          name: string;
-          email: string | null;
-          phone: string | null;
-          role: string;
-          created_by: string;
-          auth_user_id: string | null;
-          active: boolean;
-          created_at: string;
-        };
-        Insert: {
-          name: string;
-          email?: string | null;
-          phone?: string | null;
-          role: string;
-          created_by: string;
-          auth_user_id?: string | null;
-          active?: boolean;
-        };
-        Update: {
-          name?: string;
-          email?: string | null;
-          phone?: string | null;
-          role?: string;
-          auth_user_id?: string | null;
-          active?: boolean;
-        };
-        Relationships: [
-          {
-            foreignKeyName: 'operators_created_by_fkey';
-            columns: ['created_by'];
-            isOneToOne: false;
-            referencedRelation: 'profiles';
             referencedColumns: ['id'];
           },
         ];
@@ -146,56 +116,111 @@ export type Database = {
           id: string;
           operator_id: string;
           date: string;
-          checklist_fisico: boolean;
-          prontos_preenchido: boolean;
-          apto_operar: boolean;
-          conhece_limites: boolean;
-          art_disponivel: boolean;
-          liberacao_acesso: boolean | null;
-          pts_preenchida: boolean | null;
-          local_adequado: boolean;
-          local_sinalizado: boolean;
-          manutencao_valida: boolean;
-          radio_comunicacao: boolean;
-          epi_adequado: boolean;
           created_at: string;
         };
         Insert: {
           operator_id: string;
           date?: string;
-          checklist_fisico?: boolean;
-          prontos_preenchido?: boolean;
-          apto_operar?: boolean;
-          conhece_limites?: boolean;
-          art_disponivel?: boolean;
-          liberacao_acesso?: boolean | null;
-          pts_preenchida?: boolean | null;
-          local_adequado?: boolean;
-          local_sinalizado?: boolean;
-          manutencao_valida?: boolean;
-          radio_comunicacao?: boolean;
-          epi_adequado?: boolean;
         };
         Update: {
-          checklist_fisico?: boolean;
-          prontos_preenchido?: boolean;
-          apto_operar?: boolean;
-          conhece_limites?: boolean;
-          art_disponivel?: boolean;
-          liberacao_acesso?: boolean | null;
-          pts_preenchida?: boolean | null;
-          local_adequado?: boolean;
-          local_sinalizado?: boolean;
-          manutencao_valida?: boolean;
-          radio_comunicacao?: boolean;
-          epi_adequado?: boolean;
+          date?: string;
         };
         Relationships: [
           {
             foreignKeyName: 'pre_operation_checks_operator_id_fkey';
             columns: ['operator_id'];
             isOneToOne: false;
-            referencedRelation: 'operators';
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      activity_types: {
+        Row: {
+          id: string;
+          code: string;
+          description: string;
+          category: 'parada' | 'servico' | 'outro';
+          allow_custom: boolean;
+          active: boolean;
+          order_index: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          code: string;
+          description: string;
+          category: 'parada' | 'servico' | 'outro';
+          allow_custom?: boolean;
+          active?: boolean;
+          order_index?: number;
+        };
+        Update: {
+          code?: string;
+          description?: string;
+          category?: 'parada' | 'servico' | 'outro';
+          allow_custom?: boolean;
+          active?: boolean;
+          order_index?: number;
+        };
+        Relationships: [];
+      };
+      pre_op_questions: {
+        Row: {
+          id: string;
+          key: string | null;
+          label: string;
+          critical: boolean;
+          order_index: number;
+          active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          key?: string | null;
+          label: string;
+          critical?: boolean;
+          order_index?: number;
+          active?: boolean;
+        };
+        Update: {
+          key?: string | null;
+          label?: string;
+          critical?: boolean;
+          order_index?: number;
+          active?: boolean;
+        };
+        Relationships: [];
+      };
+      pre_op_answers: {
+        Row: {
+          id: string;
+          check_id: string;
+          question_id: string;
+          value: boolean | null;
+          created_at: string;
+        };
+        Insert: {
+          check_id: string;
+          question_id: string;
+          value: boolean | null;
+        };
+        Update: {
+          value?: boolean | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'pre_op_answers_check_id_fkey';
+            columns: ['check_id'];
+            isOneToOne: false;
+            referencedRelation: 'pre_operation_checks';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'pre_op_answers_question_id_fkey';
+            columns: ['question_id'];
+            isOneToOne: false;
+            referencedRelation: 'pre_op_questions';
             referencedColumns: ['id'];
           },
         ];
@@ -353,7 +378,7 @@ export type Database = {
             foreignKeyName: 'checklists_operator_id_fkey';
             columns: ['operator_id'];
             isOneToOne: false;
-            referencedRelation: 'operators';
+            referencedRelation: 'profiles';
             referencedColumns: ['id'];
           },
           {
@@ -458,6 +483,8 @@ export type Database = {
           operator_id: string;
           checklist_id: string | null;
           pre_operation_id: string | null;
+          machine_id: string | null;
+          activity_type_id: string | null;
           date: string;
           equipment_tag: string | null;
           location: string | null;
@@ -478,6 +505,8 @@ export type Database = {
           operator_id: string;
           checklist_id?: string | null;
           pre_operation_id?: string | null;
+          machine_id?: string | null;
+          activity_type_id?: string | null;
           date?: string;
           equipment_tag?: string | null;
           location?: string | null;
@@ -509,7 +538,7 @@ export type Database = {
             foreignKeyName: 'activities_operator_id_fkey';
             columns: ['operator_id'];
             isOneToOne: false;
-            referencedRelation: 'operators';
+            referencedRelation: 'profiles';
             referencedColumns: ['id'];
           },
         ];
@@ -550,7 +579,7 @@ export type Database = {
             foreignKeyName: 'safety_alerts_operator_id_fkey';
             columns: ['operator_id'];
             isOneToOne: false;
-            referencedRelation: 'operators';
+            referencedRelation: 'profiles';
             referencedColumns: ['id'];
           },
           {
@@ -610,7 +639,7 @@ export type Database = {
             foreignKeyName: 'behavioral_inspections_operator_id_fkey';
             columns: ['operator_id'];
             isOneToOne: false;
-            referencedRelation: 'operators';
+            referencedRelation: 'profiles';
             referencedColumns: ['id'];
           },
         ];
@@ -733,7 +762,7 @@ export type Database = {
             foreignKeyName: 'operator_scores_operator_id_fkey';
             columns: ['operator_id'];
             isOneToOne: false;
-            referencedRelation: 'operators';
+            referencedRelation: 'profiles';
             referencedColumns: ['id'];
           },
         ];
@@ -757,6 +786,36 @@ export type Database = {
         };
         Update: {
           content?: string;
+        };
+        Relationships: [];
+      };
+      locations: {
+        Row: {
+          id: string;
+          code: string | null;
+          name: string;
+          description: string | null;
+          latitude: number | null;
+          longitude: number | null;
+          active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          code?: string | null;
+          name: string;
+          description?: string | null;
+          latitude?: number | null;
+          longitude?: number | null;
+          active?: boolean;
+        };
+        Update: {
+          code?: string | null;
+          name?: string;
+          description?: string | null;
+          latitude?: number | null;
+          longitude?: number | null;
+          active?: boolean;
         };
         Relationships: [];
       };
@@ -806,7 +865,7 @@ export type Database = {
           {
             foreignKeyName: 'operator_locations_operator_id_fkey';
             columns: ['operator_id'];
-            referencedRelation: 'operators';
+            referencedRelation: 'profiles';
             referencedColumns: ['id'];
           },
         ];
@@ -818,12 +877,14 @@ export type Database = {
 };
 
 export type Profile = Database['public']['Tables']['profiles']['Row'];
-export type Operator = Database['public']['Tables']['operators']['Row'];
 export type EquipmentType = Database['public']['Tables']['equipment_types']['Row'];
 export type ChecklistTemplateItem = Database['public']['Tables']['checklist_template_items']['Row'];
 export type Machine = Database['public']['Tables']['machines']['Row'];
 export type MachineChecklistItem = Database['public']['Tables']['machine_checklist_items']['Row'];
 export type PreOperationCheck = Database['public']['Tables']['pre_operation_checks']['Row'];
+export type PreOpQuestion = Database['public']['Tables']['pre_op_questions']['Row'];
+export type PreOpAnswer = Database['public']['Tables']['pre_op_answers']['Row'];
+export type ActivityType = Database['public']['Tables']['activity_types']['Row'];
 export type Checklist = Database['public']['Tables']['checklists']['Row'];
 export type ChecklistItem = Database['public']['Tables']['checklist_items']['Row'];
 export type ChecklistResponse = Database['public']['Tables']['checklist_responses']['Row'];
@@ -835,3 +896,4 @@ export type BehavioralDeviation = Database['public']['Tables']['behavioral_devia
 export type OperatorScore = Database['public']['Tables']['operator_scores']['Row'];
 export type ReviewComment = Database['public']['Tables']['review_comments']['Row'];
 export type OperatorLocation = Database['public']['Tables']['operator_locations']['Row'];
+export type Location = Database['public']['Tables']['locations']['Row'];

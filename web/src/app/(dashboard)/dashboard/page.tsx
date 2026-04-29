@@ -128,8 +128,9 @@ export default function DashboardPage() {
         todayChecklistsRes,
       ] = await Promise.all([
         supabase
-          .from('operators')
+          .from('profiles')
           .select('id', { count: 'exact', head: true })
+          .eq('role', 'operator')
           .eq('active', true),
         supabase
           .from('checklists')
@@ -158,11 +159,11 @@ export default function DashboardPage() {
           .limit(5),
         supabase
           .from('activities')
-          .select('id, operator_id, start_time, end_time, had_interference, created_at, operators(name)')
+          .select('id, operator_id, start_time, end_time, had_interference, created_at, profiles!operator_id(full_name)')
           .eq('date', today),
         supabase
           .from('checklists')
-          .select('id, operator_id, created_at, operators(name)')
+          .select('id, operator_id, created_at, profiles!operator_id(full_name)')
           .eq('date', today),
       ]);
 
@@ -177,8 +178,8 @@ export default function DashboardPage() {
 
       setRecentAlerts(recentAlertsRes.data || []);
 
-      type RawActivity = { id: string; operator_id: string; start_time: string | null; end_time: string | null; had_interference: boolean; created_at: string; operators: { name: string } | null };
-      type RawChecklist = { id: string; operator_id: string; created_at: string; operators: { name: string } | null };
+      type RawActivity = { id: string; operator_id: string; start_time: string | null; end_time: string | null; had_interference: boolean; created_at: string; profiles: { full_name: string } | null };
+      type RawChecklist = { id: string; operator_id: string; created_at: string; profiles: { full_name: string } | null };
       const acts = (todayActivitiesRes.data as RawActivity[] | null) ?? [];
       const chks = (todayChecklistsRes.data as RawChecklist[] | null) ?? [];
 
@@ -187,8 +188,8 @@ export default function DashboardPage() {
       for (const a of acts) {
         const startTs = a.start_time ? new Date(a.start_time).getTime() : new Date(a.created_at).getTime();
         const endTs = a.end_time ? new Date(a.end_time).getTime() : startTs;
-        const entry = byOperator.get(a.operator_id) ?? { name: a.operators?.name || '—', events: [], activities: 0, activitiesCompleted: 0, checklists: 0, workedMs: 0, hadInterference: false };
-        entry.name = a.operators?.name || entry.name;
+        const entry = byOperator.get(a.operator_id) ?? { name: a.profiles?.full_name || '—', events: [], activities: 0, activitiesCompleted: 0, checklists: 0, workedMs: 0, hadInterference: false };
+        entry.name = a.profiles?.full_name || entry.name;
         entry.events.push({ ts: startTs, endTs });
         entry.activities += 1;
         if (a.end_time) entry.activitiesCompleted += 1;
@@ -198,8 +199,8 @@ export default function DashboardPage() {
       }
       for (const c of chks) {
         const ts = new Date(c.created_at).getTime();
-        const entry = byOperator.get(c.operator_id) ?? { name: c.operators?.name || '—', events: [], activities: 0, activitiesCompleted: 0, checklists: 0, workedMs: 0, hadInterference: false };
-        entry.name = c.operators?.name || entry.name;
+        const entry = byOperator.get(c.operator_id) ?? { name: c.profiles?.full_name || '—', events: [], activities: 0, activitiesCompleted: 0, checklists: 0, workedMs: 0, hadInterference: false };
+        entry.name = c.profiles?.full_name || entry.name;
         entry.events.push({ ts, endTs: ts });
         entry.checklists += 1;
         byOperator.set(c.operator_id, entry);

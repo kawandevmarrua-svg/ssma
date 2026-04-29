@@ -1,24 +1,32 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Modal } from '@/components/modal';
-import { UserPlus, Eye, EyeOff } from 'lucide-react';
-import { CARGOS } from './cargos';
+import { UserPlus, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { createUserAction } from './actions';
 
-export function UserForm() {
-  const router = useRouter();
+const CARGO_OPTIONS = [
+  { value: 'operator' as const, label: 'Operador' },
+  { value: 'manager' as const, label: 'Gestor' },
+  { value: 'encarregado' as const, label: 'Encarregado' },
+  { value: 'admin' as const, label: 'Administrador' },
+];
+
+interface Props {
+  onSaved: () => void;
+}
+
+export function UserFormModal({ onSaved }: Props) {
   const [open, setOpen] = useState(false);
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [confirmar, setConfirmar] = useState('');
-  const [cargo, setCargo] = useState<string>(CARGOS[0]);
-  const [ativo, setAtivo] = useState(true);
+  const [role, setRole] = useState<'admin' | 'manager' | 'encarregado' | 'operator'>('operator');
+  const [phone, setPhone] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSenha, setShowSenha] = useState(false);
@@ -29,8 +37,8 @@ export function UserForm() {
     setEmail('');
     setSenha('');
     setConfirmar('');
-    setCargo(CARGOS[0]);
-    setAtivo(true);
+    setRole('operator');
+    setPhone('');
     setError(null);
   }
 
@@ -44,16 +52,22 @@ export function UserForm() {
     setError(null);
 
     if (senha !== confirmar) {
-      setError('As senhas não coincidem.');
+      setError('As senhas nao coincidem.');
       return;
     }
-    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{10,}$/.test(senha)) {
-      setError('A senha deve ter no mínimo 10 caracteres, com letra maiúscula, minúscula e número.');
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(senha)) {
+      setError('A senha deve ter no minimo 8 caracteres, com letra maiuscula, minuscula e numero.');
       return;
     }
 
     setSaving(true);
-    const result = await createUserAction({ nome, email, senha, cargo, ativo });
+    const result = await createUserAction({
+      nome,
+      email,
+      senha,
+      role,
+      phone: phone || undefined,
+    });
     setSaving(false);
 
     if (result?.error) {
@@ -61,67 +75,63 @@ export function UserForm() {
       return;
     }
 
-    reset();
-    setOpen(false);
-    router.refresh();
+    close();
+    onSaved();
   }
 
   return (
     <>
-      <Button onClick={() => setOpen(true)}>
-        <UserPlus className="mr-2 h-4 w-4" />
-        Cadastrar
+      <Button onClick={() => setOpen(true)} className="shrink-0">
+        <UserPlus className="h-4 w-4 sm:mr-2" />
+        <span className="hidden sm:inline">Novo Usuario</span>
+        <span className="sm:hidden">Novo</span>
       </Button>
 
       <Modal
         open={open}
         onClose={close}
-        title="Cadastrar usuário"
-        description="O usuário poderá acessar o sistema com este e-mail e senha."
+        title="Cadastrar usuario"
+        description="Crie um novo usuario com acesso ao sistema."
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="nome">Nome</Label>
+            <Label>Nome completo *</Label>
             <Input
-              id="nome"
+              placeholder="Nome do usuario"
               value={nome}
               onChange={(e) => setNome(e.target.value)}
               required
-              placeholder="Nome completo"
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="email">E-mail</Label>
+            <Label>E-mail *</Label>
             <Input
-              id="email"
               type="email"
+              placeholder="usuario@empresa.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              placeholder="usuario@empresa.com"
             />
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="senha">Senha</Label>
+              <Label>Senha *</Label>
               <div className="relative">
                 <Input
-                  id="senha"
                   type={showSenha ? 'text' : 'password'}
+                  placeholder="Minimo 8 caracteres"
                   value={senha}
                   onChange={(e) => setSenha(e.target.value)}
                   required
-                  minLength={10}
-                  placeholder="Mínimo 10 caracteres"
+                  minLength={8}
                   className="pr-10"
                 />
                 <button
                   type="button"
                   onClick={() => setShowSenha((v) => !v)}
                   className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
-                  aria-label={showSenha ? 'Ocultar senha' : 'Mostrar senha'}
                   tabIndex={-1}
                 >
                   {showSenha ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -129,23 +139,21 @@ export function UserForm() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="confirmar">Confirmar senha</Label>
+              <Label>Confirmar senha *</Label>
               <div className="relative">
                 <Input
-                  id="confirmar"
                   type={showConfirmar ? 'text' : 'password'}
+                  placeholder="Repita a senha"
                   value={confirmar}
                   onChange={(e) => setConfirmar(e.target.value)}
                   required
-                  minLength={10}
-                  placeholder="Repita a senha"
+                  minLength={8}
                   className="pr-10"
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmar((v) => !v)}
                   className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
-                  aria-label={showConfirmar ? 'Ocultar senha' : 'Mostrar senha'}
                   tabIndex={-1}
                 >
                   {showConfirmar ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -155,30 +163,26 @@ export function UserForm() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="cargo">Cargo</Label>
+            <Label>Cargo *</Label>
             <select
-              id="cargo"
-              value={cargo}
-              onChange={(e) => setCargo(e.target.value)}
+              value={role}
+              onChange={(e) => setRole(e.target.value as typeof role)}
+              required
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
-              {CARGOS.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
+              {CARGO_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
           </div>
 
-          <div className="flex items-center gap-2">
-            <input
-              id="ativo"
-              type="checkbox"
-              checked={ativo}
-              onChange={(e) => setAtivo(e.target.checked)}
-              className="h-4 w-4 rounded border-input"
+          <div className="space-y-2">
+            <Label>Telefone</Label>
+            <Input
+              placeholder="(00) 00000-0000"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
             />
-            <Label htmlFor="ativo">Usuário ativo</Label>
           </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
@@ -188,7 +192,14 @@ export function UserForm() {
               Cancelar
             </Button>
             <Button type="submit" disabled={saving}>
-              {saving ? 'Salvando...' : 'Cadastrar usuário'}
+              {saving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Salvando...
+                </>
+              ) : (
+                'Cadastrar'
+              )}
             </Button>
           </div>
         </form>

@@ -64,8 +64,9 @@ export default function AdminDashboard() {
     if (!user) return;
 
     const { data: myOperators } = await supabase
-      .from("operators")
+      .from("profiles")
       .select("id")
+      .eq("role", "operator")
       .eq("created_by", user.id);
 
     const opIds = (myOperators ?? []).map((o) => o.id);

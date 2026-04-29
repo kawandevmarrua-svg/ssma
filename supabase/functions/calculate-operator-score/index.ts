@@ -14,7 +14,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  const auth = await authenticate(req, ["admin", "manager"]);
+  const auth = await authenticate(req, ["admin", "manager", "encarregado"]);
   if (!auth.ok) {
     return new Response(JSON.stringify({ error: auth.error }), {
       status: auth.status,
@@ -34,11 +34,12 @@ Deno.serve(async (req) => {
     if (operator_id) {
       operatorIds = [operator_id];
     } else {
-      const { data: operators } = await supabase
-        .from("operators")
+      const { data: profiles } = await supabase
+        .from("profiles")
         .select("id")
+        .eq("role", "operator")
         .eq("active", true);
-      operatorIds = (operators || []).map((o: { id: string }) => o.id);
+      operatorIds = (profiles || []).map((p: { id: string }) => p.id);
     }
 
     const results = [];

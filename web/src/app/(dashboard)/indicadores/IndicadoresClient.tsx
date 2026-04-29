@@ -36,7 +36,7 @@ interface ChecklistRow {
   had_interference: boolean;
   interference_notes: string | null;
   operator_id: string;
-  operators: { name: string } | null;
+  profiles: { full_name: string } | null;
 }
 
 interface ResponseRow {
@@ -65,7 +65,7 @@ interface ActivityRow {
   had_interference: boolean;
   interference_notes: string | null;
   operator_id: string;
-  operators: { name: string } | null;
+  profiles: { full_name: string } | null;
 }
 
 type Period = '7d' | '30d' | '90d';
@@ -117,13 +117,13 @@ export default function IndicadoresPage() {
     const [clRes, actRes] = await Promise.all([
       supabase
         .from('checklists')
-        .select('id, machine_name, date, status, result, had_interference, interference_notes, operator_id, operators(name)')
+        .select('id, machine_name, date, status, result, had_interference, interference_notes, operator_id, profiles(full_name)')
         .gte('date', dateFrom)
         .order('date', { ascending: false })
         .limit(2000),
       supabase
         .from('activities')
-        .select('id, date, description, equipment_tag, location, had_interference, interference_notes, operator_id, operators(name)')
+        .select('id, date, description, equipment_tag, location, had_interference, interference_notes, operator_id, profiles(full_name)')
         .gte('date', dateFrom)
         .order('date', { ascending: false })
         .limit(2000),
@@ -136,7 +136,7 @@ export default function IndicadoresPage() {
     // Map checklist_id -> checklist info
     const clMap = new Map<string, { operator_name: string; operator_id: string; machine_name: string; date: string }>();
     cls.forEach((c) => clMap.set(c.id, {
-      operator_name: c.operators?.name || 'Desconhecido',
+      operator_name: c.profiles?.full_name || 'Desconhecido',
       operator_id: c.operator_id,
       machine_name: c.machine_name,
       date: c.date,
@@ -259,7 +259,7 @@ export default function IndicadoresPage() {
   const notReleasedByOperator = useMemo(() => {
     const map = new Map<string, { name: string; count: number }>();
     checklists.filter((c) => c.result === 'not_released').forEach((c) => {
-      const entry = map.get(c.operator_id) ?? { name: c.operators?.name || 'Desconhecido', count: 0 };
+      const entry = map.get(c.operator_id) ?? { name: c.profiles?.full_name || 'Desconhecido', count: 0 };
       entry.count += 1;
       map.set(c.operator_id, entry);
     });
@@ -270,12 +270,12 @@ export default function IndicadoresPage() {
   const interferenceByOperator = useMemo(() => {
     const map = new Map<string, { name: string; count: number }>();
     checklists.filter((c) => c.had_interference).forEach((c) => {
-      const entry = map.get(c.operator_id) ?? { name: c.operators?.name || 'Desconhecido', count: 0 };
+      const entry = map.get(c.operator_id) ?? { name: c.profiles?.full_name || 'Desconhecido', count: 0 };
       entry.count += 1;
       map.set(c.operator_id, entry);
     });
     activities.filter((a) => a.had_interference).forEach((a) => {
-      const entry = map.get(a.operator_id) ?? { name: a.operators?.name || 'Desconhecido', count: 0 };
+      const entry = map.get(a.operator_id) ?? { name: a.profiles?.full_name || 'Desconhecido', count: 0 };
       entry.count += 1;
       map.set(a.operator_id, entry);
     });
@@ -527,7 +527,7 @@ export default function IndicadoresPage() {
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-sm font-medium group-hover:underline">{c.machine_name}</span>
                               <span className="text-xs text-muted-foreground">
-                                {c.operators?.name || 'Operador'} · {new Date(c.date).toLocaleDateString('pt-BR')}
+                                {c.profiles?.full_name || 'Operador'} · {new Date(c.date).toLocaleDateString('pt-BR')}
                               </span>
                             </div>
                           </div>
@@ -654,7 +654,7 @@ export default function IndicadoresPage() {
                     id: c.id,
                     type: 'checklist',
                     label: c.machine_name,
-                    operator: c.operators?.name || 'Operador',
+                    operator: c.profiles?.full_name || 'Operador',
                     date: c.date,
                     notes: c.interference_notes,
                     badge: c.result === 'released' ? 'Liberado' : c.result === 'not_released' ? 'Nao Liberado' : 'Pendente',
@@ -667,7 +667,7 @@ export default function IndicadoresPage() {
                     id: a.id,
                     type: 'atividade',
                     label: a.description || a.equipment_tag || 'Atividade',
-                    operator: a.operators?.name || 'Operador',
+                    operator: a.profiles?.full_name || 'Operador',
                     date: a.date,
                     notes: a.interference_notes,
                   });
@@ -770,7 +770,7 @@ export default function IndicadoresPage() {
                   rows.push({
                     id: `act-${a.id}`,
                     type: 'atividade',
-                    operator: a.operators?.name || 'Operador',
+                    operator: a.profiles?.full_name || 'Operador',
                     equipment: a.equipment_tag || a.location || '—',
                     issue: 'Interferencia registrada',
                     section: a.description || '—',

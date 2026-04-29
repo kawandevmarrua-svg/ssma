@@ -8,22 +8,22 @@ import { colors, elevation, radius, spacing } from '../../src/theme/colors';
 import { Avatar, Button, Card, Text } from '../../src/components/ui';
 
 export default function OperatorProfileScreen() {
-  const { profile, operatorData, signOut } = useAuth();
+  const { user, profile, signOut } = useAuth();
   const [score, setScore] = useState<OperatorScore | null>(null);
 
   useEffect(() => {
-    if (!operatorData) return;
+    if (!user) return;
     const period = new Date().toISOString().slice(0, 7);
     supabase
       .from('operator_scores')
       .select('*')
-      .eq('operator_id', operatorData.id)
+      .eq('operator_id', user.id)
       .eq('period', period)
       .single()
       .then(({ data }) => setScore(data));
-  }, [operatorData]);
+  }, [user]);
 
-  const name = profile?.full_name || operatorData?.name || 'Operador';
+  const name = profile?.full_name || 'Operador';
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -34,15 +34,12 @@ export default function OperatorProfileScreen() {
           <View style={styles.identity}>
             <Text variant="h2" numberOfLines={1}>{name}</Text>
             <View style={styles.metaRow}>
-              <Text variant="caption" tone="muted">Operador ·</Text>
-              <Text variant="caption" tone="primary" style={styles.metaLink}>
-                {operatorData?.role || 'Sem função'}
-              </Text>
+              <Text variant="caption" tone="muted">Operador</Text>
             </View>
           </View>
         </View>
 
-        {(profile?.email || operatorData?.phone) && (
+        {(profile?.email || profile?.phone) && (
           <View style={styles.infoSection}>
             {profile?.email && (
               <View style={styles.infoRow}>
@@ -50,10 +47,10 @@ export default function OperatorProfileScreen() {
                 <Text variant="bodyMedium">{profile.email}</Text>
               </View>
             )}
-            {operatorData?.phone && (
+            {profile?.phone && (
               <View style={styles.infoRow}>
                 <Ionicons name="call-outline" size={16} color={colors.textSecondary} />
-                <Text variant="bodyMedium">{operatorData.phone}</Text>
+                <Text variant="bodyMedium">{profile.phone}</Text>
               </View>
             )}
           </View>

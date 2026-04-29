@@ -5,13 +5,12 @@ import { supabase } from '../lib/supabase';
 import { registerPushTokenForUser } from '../lib/pushNotifications';
 import { bindOfflineQueueToUser } from '../lib/offlineQueue';
 import { markOperatorOffline } from '../lib/operatorPresence';
-import { Profile, Operator } from '../types/database';
+import { Profile } from '../types/database';
 
 type AuthContextType = {
   session: Session | null;
   user: User | null;
   profile: Profile | null;
-  operatorData: Operator | null;
   isOperator: boolean;
   loading: boolean;
   mustResetPassword: boolean;
@@ -25,15 +24,14 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [operatorData, setOperatorData] = useState<Operator | null>(null);
   const [loading, setLoading] = useState(true);
   const [mustResetPassword, setMustResetPassword] = useState(false);
   const mountedRef = useRef(true);
   // Memoria fora do React para o handler de onAuthStateChange ler o
-  // operator id corrente sem re-criar listeners. Necessario para chamar
+  // user id corrente sem re-criar listeners. Necessario para chamar
   // markOperatorOffline em casos de expiracao de sessao (session=null
   // sem o usuario ter chamado signOut explicito).
-  const lastOperatorIdRef = useRef<string | null>(null);
+  const lastUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -55,10 +53,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // havia um operador ativo, marca offline antes do JWT desaparecer
       // de vez. Sem isso, o dashboard mostra o operador como online
       // eternamente quando a sessao expira em background.
-      if (!session?.user && lastOperatorIdRef.current) {
-        const opId = lastOperatorIdRef.current;
-        lastOperatorIdRef.current = null;
-        void markOperatorOffline(opId);
+      if (!session?.user && lastUserIdRef.current) {
+        const uid = lastUserIdRef.current;
+        lastUserIdRef.current = null;
+        void markOperatorOffline(uid);
       }
       setSession(session);
       setMustResetPassword(session?.user?.user_metadata?.must_reset_password === true);
@@ -68,7 +66,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (session?.user) void fetchProfile(session.user.id);
       else {
         setProfile(null);
-        setOperatorData(null);
         setMustResetPassword(false);
         setLoading(false);
       }
@@ -82,10 +79,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!mountedRef.current) return;
         // Mesmo tratamento que onAuthStateChange: se a sessao caiu enquanto
         // o app estava em background, marca offline antes do JWT sumir.
-        if (!s?.user && lastOperatorIdRef.current) {
-          const opId = lastOperatorIdRef.current;
-          lastOperatorIdRef.current = null;
-          void markOperatorOffline(opId);
+        if (!s?.user && lastUserIdRef.current) {
+          const uid = lastUserIdRef.current;
+          lastUserIdRef.current = null;
+          void markOperatorOffline(uid);
         }
         setSession(s);
         setMustResetPassword(s?.user?.user_metadata?.must_reset_password === true);
@@ -105,8 +102,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Mantem o ref atualizado para que o handler de session=null (que nao
   // re-cria com cada render) consiga marcar o operador offline.
   useEffect(() => {
-    lastOperatorIdRef.current = operatorData?.id ?? null;
-  }, [operatorData]);
+    if (profile?.role === 'operator') {
+      lastUserIdRef.current = profile.id;
+    } else {
+      lastUserIdRef.current = null;
+    }
+  }, [profile]);
 
   async function fetchProfile(userId: string) {
     try {
@@ -123,7 +124,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await supabase.auth.signOut();
         setSession(null);
         setProfile(null);
-        setOperatorData(null);
         return;
       }
 
@@ -136,18 +136,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       registerPushTokenForUser(userId).catch((err) => {
         console.error('[Push] registerPushTokenForUser falhou:', err);
       });
-
-      if (data.role === 'operator') {
-        const { data: opData, error: opError } = await supabase
-          .from('operators')
-          .select('*')
-          .eq('auth_user_id', userId)
-          .maybeSingle();
-        if (!mountedRef.current) return;
-        if (!opError && opData) setOperatorData(opData);
-      } else {
-        setOperatorData(null);
-      }
     } catch (e) {
       console.log('[Auth] fetchProfile excecao:', e);
     } finally {
@@ -168,17 +156,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Marca operador como offline ANTES do signOut: depois o JWT vai embora
     // e o RLS bloqueia o update, deixando o status como "online" eterno
     // no dashboard ate o proximo login.
-    if (operatorData?.id) {
-      await markOperatorOffline(operatorData.id);
+    if (profile?.role === 'operator' && profile.id) {
+      await markOperatorOffline(profile.id);
       // Limpa o ref para o handler de onAuthStateChange (que vai disparar
       // logo a seguir com session=null) nao re-chamar markOperatorOffline.
-      lastOperatorIdRef.current = null;
+      lastUserIdRef.current = null;
     }
     await supabase.auth.signOut();
     bindOfflineQueueToUser(null);
     setSession(null);
     setProfile(null);
-    setOperatorData(null);
     setMustResetPassword(false);
   }
 
@@ -188,7 +175,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         session,
         user: session?.user ?? null,
         profile,
-        operatorData,
         isOperator: profile?.role === 'operator',
         loading,
         mustResetPassword,

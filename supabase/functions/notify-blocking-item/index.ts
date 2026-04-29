@@ -53,18 +53,11 @@ async function tokenForOperator(
   serviceClient: ReturnType<typeof import("https://esm.sh/@supabase/supabase-js@2").createClient>,
   operatorId: string,
 ): Promise<string[]> {
-  const { data: operator } = await serviceClient
-    .from("operators")
-    .select("auth_user_id")
-    .eq("id", operatorId)
-    .single();
-
-  if (!operator?.auth_user_id) return [];
-
+  // operator_id agora e o proprio auth user id (profiles.id = auth.users.id)
   const { data: tok } = await serviceClient
     .from("user_push_tokens")
     .select("push_token")
-    .eq("user_id", operator.auth_user_id)
+    .eq("user_id", operatorId)
     .maybeSingle();
 
   return tok?.push_token ? [tok.push_token] : [];
@@ -84,8 +77,8 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Aceita admins/managers + chamadas internas (trigger SQL).
-  const auth = await authenticate(req, ["admin", "manager"]);
+  // Aceita admins/managers/encarregados + chamadas internas (trigger SQL).
+  const auth = await authenticate(req, ["admin", "manager", "encarregado"]);
   if (!auth.ok) {
     return new Response(JSON.stringify({ error: auth.error }), {
       status: auth.status,
@@ -110,7 +103,7 @@ Deno.serve(async (req) => {
 
     switch (type) {
       case "blocking_nc": {
-        pushTokens = await tokensForRoles(supabase, ["admin", "manager"]);
+        pushTokens = await tokensForRoles(supabase, ["admin", "manager", "encarregado"]);
 
         if (alert_id) {
           const { data: alert } = await supabase
@@ -147,7 +140,7 @@ Deno.serve(async (req) => {
       }
 
       case "critical_deviation": {
-        pushTokens = await tokensForRoles(supabase, ["admin", "manager"]);
+        pushTokens = await tokensForRoles(supabase, ["admin", "manager", "encarregado"]);
         pushPayload = {
           title: "Desvio Critico Identificado",
           body: "Um desvio critico foi identificado em inspecao comportamental. Acao imediata necessaria.",

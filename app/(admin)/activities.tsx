@@ -17,44 +17,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { supabase } from '../../src/lib/supabase';
 import { pickPhoto, uploadPhoto } from '../../src/lib/imageUtils';
-import { Activity } from '../../src/types/database';
+import { Activity, PreOpQuestion } from '../../src/types/database';
 import { colors, elevation, spacing, radius, fontSize } from '../../src/theme/colors';
 import { commonStyles } from '../../src/theme/commonStyles';
 import { Badge, Button, Text } from '../../src/components/ui';
 import { FinishActivityModal } from '../../src/components/FinishActivityModal';
 
-const PRE_OP_QUESTIONS = [
-  { key: 'checklist_fisico', label: 'Checklist realizado fisico preenchido? (a Vale exige o preenchimento do formulario fisico)', critical: false },
-  { key: 'prontos_preenchido', label: 'Prontos realizado?', critical: false },
-  { key: 'apto_operar', label: 'Voce esta apto para operar?', critical: true },
-  { key: 'conhece_limites', label: 'Conhece os limites do equipamento?', critical: false },
-  { key: 'art_disponivel', label: 'ART e de seu conhecimento e encontra-se disponivel na frente de servico?', critical: false },
-  { key: 'liberacao_acesso', label: 'E necessario Liberacao de Acesso?', critical: false },
-  { key: 'pts_preenchida', label: 'Para esta atividade se aplica a PTS? A PTS esta preenchida?', critical: false },
-  { key: 'local_adequado', label: 'O local da atividade esta adequado para realizacao da tarefa?', critical: false },
-  { key: 'local_sinalizado', label: 'O local encontra-se sinalizado ou dentro de area controlada?', critical: false },
-  { key: 'manutencao_valida', label: 'A manutencao do equipamento encontra-se valida?', critical: true },
-  { key: 'radio_comunicacao', label: 'O equipamento disponibiliza de radio de comunicacao?', critical: false },
-  { key: 'epi_adequado', label: "Voce esta com os EPI's adequados para a atividade?", critical: true },
-] as const;
-
-type PreOpKey = typeof PRE_OP_QUESTIONS[number]['key'];
-type PreOpAnswers = Record<PreOpKey, boolean | null>;
-
-const INITIAL_PREOP: PreOpAnswers = {
-  checklist_fisico: null,
-  prontos_preenchido: null,
-  apto_operar: null,
-  conhece_limites: null,
-  art_disponivel: null,
-  liberacao_acesso: null,
-  pts_preenchida: null,
-  local_adequado: null,
-  local_sinalizado: null,
-  manutencao_valida: null,
-  radio_comunicacao: null,
-  epi_adequado: null,
-};
+type PreOpAnswers = Record<string, boolean | null>;
 
 interface ActivityRow {
   id: string;
@@ -75,15 +44,14 @@ interface ActivityRow {
   created_at: string;
   operator_id: string;
   checklist_id: string | null;
-  operators: { name: string } | null;
+  profiles: { full_name: string | null } | null;
 }
 
 export default function AdminActivitiesScreen() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [activities, setActivities] = useState<ActivityRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [myOperatorId, setMyOperatorId] = useState<string | null>(null);
 
   // Create modal
   const [createModal, setCreateModal] = useState(false);
@@ -91,77 +59,76 @@ export default function AdminActivitiesScreen() {
   const [description, setDescription] = useState('');
   const [equipmentPhotoUri, setEquipmentPhotoUri] = useState<string | null>(null);
   const [startPhotoUri, setStartPhotoUri] = useState<string | null>(null);
-  const [preopAnswers, setPreopAnswers] = useState<PreOpAnswers>({ ...INITIAL_PREOP });
-  const [availableChecklists, setAvailableChecklists] = useState<{ id: string; machine_name: string; tag: string | null }[]>([]);
+  const [questions, setQuestions] = useState<PreOpQuestion[]>([]);
+  const [preopAnswers, setPreopAnswers] = useState<PreOpAnswers>({});
+  const [availableChecklists, setAvailableChecklists] = useState<{ id: string; machine_name: string; tag: string | null; machine_id: string | null }[]>([]);
   const [selectedChecklistId, setSelectedChecklistId] = useState<string | null>(null);
 
-  function setPreopAnswer(key: PreOpKey, value: boolean) {
-    setPreopAnswers((prev) => ({ ...prev, [key]: value }));
+  function setPreopAnswer(questionId: string, value: boolean) {
+    setPreopAnswers((prev) => ({ ...prev, [questionId]: value }));
   }
 
   function allPreopAnswered() {
-    return PRE_OP_QUESTIONS.every((q) => preopAnswers[q.key] !== null);
+    return questions.length > 0 && questions.every((q) => preopAnswers[q.id] === true || preopAnswers[q.id] === false);
   }
 
   // Finish modal
   const [activityToFinish, setActivityToFinish] = useState<Activity | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const findMyOperator = useCallback(async () => {
-    if (!user) return;
-    // Apenas vincula se o admin tambem tem registro de operador
-    const { data: selfOp } = await supabase
-      .from('operators').select('id').eq('auth_user_id', user.id).single();
-    if (selfOp) setMyOperatorId(selfOp.id);
-  }, [user]);
-
   const loadActivities = useCallback(async () => {
     if (!user) return;
-    const { data: myOps } = await supabase.from('operators').select('id').eq('created_by', user.id);
-    const opIds = (myOps ?? []).map((o) => o.id);
-    const { data: selfOp } = await supabase.from('operators').select('id').eq('auth_user_id', user.id).single();
-    if (selfOp && !opIds.includes(selfOp.id)) opIds.push(selfOp.id);
+    // Busca operadores criados por este admin
+    const { data: myProfiles } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('created_by', user.id)
+      .eq('role', 'operator');
+    const opIds = (myProfiles ?? []).map((p) => p.id);
+    // Inclui o proprio admin se ele tambem for operador
+    if (!opIds.includes(user.id)) opIds.push(user.id);
     if (opIds.length === 0) { setActivities([]); setLoading(false); return; }
     const { data } = await supabase
       .from('activities')
-      .select('*, operators(name)')
+      .select('*, profiles!activities_operator_id_fkey(full_name)')
       .in('operator_id', opIds).order('created_at', { ascending: false }).limit(50);
     setActivities((data as ActivityRow[] | null) ?? []);
     setLoading(false);
   }, [user]);
 
-  useEffect(() => { loadActivities(); findMyOperator(); }, [loadActivities, findMyOperator]);
+  useEffect(() => { loadActivities(); }, [loadActivities]);
 
   function formatTime(t: string | null) {
     if (!t) return '--:--';
     return new Date(t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   }
 
-  function resetCreateForm() {
+  function resetCreateForm(initialAnswers: PreOpAnswers = {}) {
     setLocation(''); setDescription('');
     setEquipmentPhotoUri(null); setStartPhotoUri(null);
-    setPreopAnswers({ ...INITIAL_PREOP });
+    setPreopAnswers(initialAnswers);
     setSelectedChecklistId(null);
   }
 
   async function openCreateModal() {
-    if (!myOperatorId) {
-      Alert.alert(
-        'Sem vinculo de operador',
-        'Seu usuario nao possui registro de operador. Para criar atividades, vincule seu usuario a um operador.',
-      );
-      return;
-    }
+    if (!user) return;
     const today = new Date().toISOString().split('T')[0];
-    const { data } = await supabase
-      .from('checklists')
-      .select('id, machine_name, tag')
-      .eq('operator_id', myOperatorId)
-      .eq('date', today)
-      .eq('result', 'released')
-      .eq('status', 'pending')
-      .order('created_at', { ascending: false });
-    const list = data ?? [];
+    const [{ data: cls }, { data: qs }] = await Promise.all([
+      supabase
+        .from('checklists')
+        .select('id, machine_name, tag, machine_id')
+        .eq('operator_id', user.id)
+        .eq('date', today)
+        .eq('result', 'released')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('pre_op_questions')
+        .select('*')
+        .eq('active', true)
+        .order('order_index', { ascending: true }),
+    ]);
+    const list = cls ?? [];
     if (list.length === 0) {
       Alert.alert(
         'Checklist necessario',
@@ -169,13 +136,17 @@ export default function AdminActivitiesScreen() {
       );
       return;
     }
-    resetCreateForm();
+    const qList = (qs ?? []) as PreOpQuestion[];
+    setQuestions(qList);
+    const initial: PreOpAnswers = {};
+    for (const q of qList) initial[q.id] = null;
+    resetCreateForm(initial);
     setAvailableChecklists(list);
     setCreateModal(true);
   }
 
   async function handleCreate() {
-    if (!myOperatorId || !user) return;
+    if (!user) return;
     if (!selectedChecklistId) {
       Alert.alert('Atencao', 'Selecione a maquina (checklist do dia) antes de iniciar.');
       return;
@@ -185,7 +156,7 @@ export default function AdminActivitiesScreen() {
       return;
     }
     if (!allPreopAnswered()) {
-      Alert.alert('Atencao', 'Responda todas as 12 perguntas da pre-operacao antes de iniciar.');
+      Alert.alert('Atencao', `Responda todas as ${questions.length} perguntas da pre-operacao antes de iniciar.`);
       return;
     }
     const selectedChecklist = availableChecklists.find((c) => c.id === selectedChecklistId);
@@ -193,25 +164,9 @@ export default function AdminActivitiesScreen() {
     const now = new Date().toISOString();
     const today = new Date().toISOString().split('T')[0];
 
-    // 1) Cria a pre-operacao desta atividade
     const { data: preop, error: preopErr } = await supabase
       .from('pre_operation_checks')
-      .insert({
-        operator_id: myOperatorId,
-        date: today,
-        checklist_fisico: preopAnswers.checklist_fisico!,
-        prontos_preenchido: preopAnswers.prontos_preenchido!,
-        apto_operar: preopAnswers.apto_operar!,
-        conhece_limites: preopAnswers.conhece_limites!,
-        art_disponivel: preopAnswers.art_disponivel!,
-        liberacao_acesso: preopAnswers.liberacao_acesso,
-        pts_preenchida: preopAnswers.pts_preenchida,
-        local_adequado: preopAnswers.local_adequado!,
-        local_sinalizado: preopAnswers.local_sinalizado!,
-        manutencao_valida: preopAnswers.manutencao_valida!,
-        radio_comunicacao: preopAnswers.radio_comunicacao!,
-        epi_adequado: preopAnswers.epi_adequado!,
-      })
+      .insert({ operator_id: user.id, date: today })
       .select()
       .single();
 
@@ -221,12 +176,25 @@ export default function AdminActivitiesScreen() {
       return;
     }
 
+    const answerRows = questions.map((q) => ({
+      check_id: preop.id,
+      question_id: q.id,
+      value: preopAnswers[q.id]!,
+    }));
+    const { error: ansErr } = await supabase.from('pre_op_answers').insert(answerRows);
+    if (ansErr) {
+      Alert.alert('Erro', ansErr.message);
+      setSaving(false);
+      return;
+    }
+
     const { data: activity, error } = await supabase
       .from('activities')
       .insert({
-        operator_id: myOperatorId,
+        operator_id: user.id,
         pre_operation_id: preop.id,
         checklist_id: selectedChecklistId,
+        machine_id: selectedChecklist?.machine_id ?? null,
         date: today,
         equipment_tag: selectedChecklist?.tag ?? null,
         location,
@@ -291,8 +259,8 @@ export default function AdminActivitiesScreen() {
             {item.description}
           </Text>
         )}
-        {item.operators?.name && (
-          <Text variant="caption" tone="muted">{item.operators.name}</Text>
+        {item.profiles?.full_name && (
+          <Text variant="caption" tone="muted">{item.profiles.full_name}</Text>
         )}
 
         <View style={st.meta}>
@@ -331,7 +299,6 @@ export default function AdminActivitiesScreen() {
         contentContainerStyle={commonStyles.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await loadActivities(); setRefreshing(false); }} tintColor={colors.primary} />}
       >
-        {/* Atividade em andamento */}
         {hasOngoing && (
           <View style={st.sectionWrap}>
             <View style={st.sectionHeader}>
@@ -345,7 +312,6 @@ export default function AdminActivitiesScreen() {
           </View>
         )}
 
-        {/* Historico */}
         <View style={st.sectionWrap}>
           <View style={st.sectionHeader}>
             <View style={st.sectionLeft}>
@@ -377,7 +343,6 @@ export default function AdminActivitiesScreen() {
         </View>
       </ScrollView>
 
-      {/* FAB Create */}
       <TouchableOpacity
         style={[commonStyles.fab, { backgroundColor: colors.primary }]}
         onPress={() => {
@@ -391,7 +356,6 @@ export default function AdminActivitiesScreen() {
         <Ionicons name="add" size={28} color={colors.white} />
       </TouchableOpacity>
 
-      {/* Create Modal */}
       <Modal visible={createModal} animationType="slide" transparent>
         <KeyboardAvoidingView style={commonStyles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={commonStyles.modalContent}>
@@ -404,9 +368,9 @@ export default function AdminActivitiesScreen() {
               </View>
 
               <Text style={st.preopSectionTitle}>Pre-Operacao (formulario Vale)</Text>
-              <Text style={st.preopSectionHint}>Responda as 12 perguntas antes de iniciar a atividade.</Text>
-              {PRE_OP_QUESTIONS.map((q) => (
-                <View key={q.key} style={[st.preopCard, q.critical && st.preopCardCritical]}>
+              <Text style={st.preopSectionHint}>Responda as {questions.length} perguntas antes de iniciar a atividade.</Text>
+              {questions.map((q) => (
+                <View key={q.id} style={[st.preopCard, q.critical && st.preopCardCritical]}>
                   <View style={st.preopHeaderRow}>
                     <Text style={st.preopText}>{q.label}</Text>
                     {q.critical && (
@@ -418,16 +382,16 @@ export default function AdminActivitiesScreen() {
                   </View>
                   <View style={st.preopAnswerRow}>
                     <TouchableOpacity
-                      style={[st.preopAnswerBtn, preopAnswers[q.key] === true && st.preopAnswerYes]}
-                      onPress={() => setPreopAnswer(q.key, true)}
+                      style={[st.preopAnswerBtn, preopAnswers[q.id] === true && st.preopAnswerYes]}
+                      onPress={() => setPreopAnswer(q.id, true)}
                     >
-                      <Text style={preopAnswers[q.key] === true ? [st.preopAnswerText, st.preopAnswerTextActive] : st.preopAnswerText}>Sim</Text>
+                      <Text style={preopAnswers[q.id] === true ? [st.preopAnswerText, st.preopAnswerTextActive] : st.preopAnswerText}>Sim</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[st.preopAnswerBtn, preopAnswers[q.key] === false && st.preopAnswerNo]}
-                      onPress={() => setPreopAnswer(q.key, false)}
+                      style={[st.preopAnswerBtn, preopAnswers[q.id] === false && st.preopAnswerNo]}
+                      onPress={() => setPreopAnswer(q.id, false)}
                     >
-                      <Text style={preopAnswers[q.key] === false ? [st.preopAnswerText, st.preopAnswerTextActive] : st.preopAnswerText}>Não</Text>
+                      <Text style={preopAnswers[q.id] === false ? [st.preopAnswerText, st.preopAnswerTextActive] : st.preopAnswerText}>Não</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -508,7 +472,6 @@ export default function AdminActivitiesScreen() {
 const st = StyleSheet.create({
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
 
-  // Card
   card: {
     backgroundColor: colors.surface,
     borderRadius: radius.md,
@@ -530,7 +493,6 @@ const st = StyleSheet.create({
   meta: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginTop: spacing.sm },
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
 
-  // Sections
   sectionWrap: { marginBottom: spacing.lg },
   sectionHeader: {
     flexDirection: 'row',
@@ -542,7 +504,6 @@ const st = StyleSheet.create({
   sectionLeft: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   emptySection: { alignItems: 'center', paddingVertical: spacing.xl },
 
-  // Create modal photos
   photoRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
   photoPicker: {
     flex: 1, height: 100, backgroundColor: colors.background, borderWidth: 1,
@@ -552,7 +513,6 @@ const st = StyleSheet.create({
   photoPreview: { width: '100%', height: '100%', borderRadius: radius.sm },
   photoLabel: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: spacing.xs, fontWeight: '500' },
 
-  // Pre-op questions
   preopSectionTitle: {
     fontSize: fontSize.xs, fontWeight: '700', color: colors.textSecondary,
     marginTop: spacing.lg, marginBottom: spacing.sm,
@@ -583,7 +543,6 @@ const st = StyleSheet.create({
   preopAnswerText: { fontSize: fontSize.sm, fontWeight: '700', color: colors.textSecondary },
   preopAnswerTextActive: { color: colors.white },
 
-  // Seletor de maquina
   machineChoice: {
     flexDirection: 'row', alignItems: 'center', padding: spacing.md,
     backgroundColor: colors.surface, borderRadius: radius.sm,

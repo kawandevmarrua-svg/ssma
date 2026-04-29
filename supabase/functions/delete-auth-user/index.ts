@@ -14,7 +14,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  const auth = await authenticate(req, ["admin", "manager"]);
+  const auth = await authenticate(req, ["admin", "manager", "encarregado"]);
   if (!auth.ok) {
     return new Response(JSON.stringify({ error: auth.error }), {
       status: auth.status,

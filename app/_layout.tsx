@@ -48,7 +48,7 @@ function RootLayoutNav() {
     }
 
     if (!session && !inAuth) {
-      router.replace('/(auth)/login');
+      router.replace('/(auth)/splash');
     } else if (session && inAuth && profile && !mustResetPassword) {
       if (profile.role === 'operator') {
         router.replace('/(operator)');

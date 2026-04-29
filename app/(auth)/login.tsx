@@ -51,7 +51,7 @@ export default function LoginScreen() {
             resizeMode="contain"
           />
           <Text variant="h1" align="center" style={styles.title}>
-            Bem-vindo de volta
+            Bem-vindo
           </Text>
           <Text variant="callout" tone="muted" align="center" style={styles.subtitle}>
             Entre com suas credenciais para continuar acompanhando suas atividades.
@@ -121,10 +121,10 @@ const styles = StyleSheet.create({
     marginBottom: spacing['2xl'],
   },
   logo: {
-    width: 96,
-    height: 96,
+    width: 144,
+    height: 144,
     marginBottom: spacing.lg,
-    borderRadius: 24,
+    borderRadius: 28,
   },
   title: { marginBottom: spacing.sm },
   subtitle: { maxWidth: 320 },

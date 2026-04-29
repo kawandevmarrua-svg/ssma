@@ -1,13 +1,7 @@
 import { authenticate, buildCorsHeaders } from "../_shared/auth.ts";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const ALLOWED_CARGOS = new Set([
-  "Tecnico de seguranca",
-  "Engenheiro de seguranca",
-  "Coordenador de seguranca",
-  "Analista de SSMA",
-  "Supervisor de operacoes",
-]);
+const VALID_ROLES = new Set(["operator", "encarregado", "manager", "admin"]);
 
 /** Gera senha temporaria forte server-side (16 chars, inclui maiusc/minusc/digito/especial). */
 function generateTempPassword(): string {
@@ -53,7 +47,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  const auth = await authenticate(req, ["admin", "manager"]);
+  const auth = await authenticate(req, ["admin", "manager", "encarregado"]);
   if (!auth.ok) {
     return new Response(JSON.stringify({ error: auth.error }), {
       status: auth.status,
@@ -71,10 +65,10 @@ Deno.serve(async (req) => {
   const supabase = auth.data.serviceClient;
   const callerId = auth.data.user.id;
 
-  // Rate limit por caller (conta operators criados por ele na janela).
+  // Rate limit por caller (conta profiles criados por ele na janela).
   const since = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString();
   const { count: recentCount, error: rateErr } = await supabase
-    .from("operators")
+    .from("profiles")
     .select("id", { count: "exact", head: true })
     .eq("created_by", callerId)
     .gte("created_at", since);
@@ -107,11 +101,11 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const name = String(body.name ?? "").trim();
     const email = String(body.email ?? "").trim().toLowerCase();
-    const cargo = String(body.cargo ?? "");
+    const role = String(body.role ?? "operator");
 
     if (name.length < 2) throw new Error("Nome invalido.");
     if (!EMAIL_REGEX.test(email)) throw new Error("E-mail invalido.");
-    if (!ALLOWED_CARGOS.has(cargo)) throw new Error("Cargo invalido.");
+    if (!VALID_ROLES.has(role)) throw new Error("Cargo invalido.");
 
     // Senha gerada server-side — nunca trafega no request body.
     const password = generateTempPassword();
@@ -122,6 +116,7 @@ Deno.serve(async (req) => {
       email_confirm: true,
       user_metadata: {
         full_name: name,
+        role,
         must_reset_password: true,
         password_set_by_admin: true,
       },
@@ -137,27 +132,15 @@ Deno.serve(async (req) => {
       id: newUserId,
       email,
       full_name: name,
-      role: "operator",
+      role,
+      phone: null,
+      active: true,
+      created_by: callerId,
     });
 
     if (profileErr) {
       await supabase.auth.admin.deleteUser(newUserId);
       throw new Error(profileErr.message);
-    }
-
-    const { error: opErr } = await supabase.from("operators").insert({
-      name,
-      email,
-      role: cargo,
-      created_by: callerId,
-      auth_user_id: newUserId,
-      active: true,
-    });
-
-    if (opErr) {
-      await supabase.from("profiles").delete().eq("id", newUserId);
-      await supabase.auth.admin.deleteUser(newUserId);
-      throw new Error(opErr.message);
     }
 
     return new Response(JSON.stringify({

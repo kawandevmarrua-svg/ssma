@@ -30,16 +30,16 @@ if (Notifications) {
 
 export default function OperatorLayout() {
   const insets = useSafeAreaInsets();
-  const { operatorData } = useAuth();
+  const { user, profile } = useAuth();
 
-  useLocationTracking({ operatorId: operatorData?.id ?? null });
+  useLocationTracking({ operatorId: user?.id ?? null });
 
   useEffect(() => {
     setupNotificationChannel();
   }, []);
 
   useEffect(() => {
-    if (!operatorData) return;
+    if (!user) return;
 
     const channel = supabase
       .channel('operator-alerts-realtime')
@@ -49,7 +49,7 @@ export default function OperatorLayout() {
         table: 'safety_alerts',
       }, (payload) => {
         const alert = payload.new as SafetyAlert;
-        if (alert.operator_id !== operatorData.id && alert.operator_id !== null) return;
+        if (alert.operator_id !== user.id && alert.operator_id !== null) return;
         showLocalNotification(alert.title, alert.message, alert.severity);
       })
       .on('postgres_changes', {
@@ -58,7 +58,7 @@ export default function OperatorLayout() {
         table: 'safety_alerts',
       }, (payload) => {
         const alert = payload.new as SafetyAlert;
-        if (alert.operator_id !== operatorData.id && alert.operator_id !== null) return;
+        if (alert.operator_id !== user.id && alert.operator_id !== null) return;
         if (!alert.read) {
           showLocalNotification(alert.title, alert.message, alert.severity);
         }
@@ -68,7 +68,7 @@ export default function OperatorLayout() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [operatorData]);
+  }, [user]);
 
   async function setupNotificationChannel() {
     if (!Notifications || !Device.isDevice) return;

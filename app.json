@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Checklist Operacional",
+    "name": "Marrua",
     "slug": "checklist-app",
     "version": "1.0.2",
     "orientation": "portrait",
@@ -16,7 +16,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.checklist.app",
       "infoPlist": {
-        "UIBackgroundModes": ["location"]
+        "UIBackgroundModes": [
+          "location"
+        ]
       }
     },
     "android": {

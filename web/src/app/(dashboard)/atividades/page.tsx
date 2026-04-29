@@ -25,6 +25,7 @@ import {
   Camera,
   AlertTriangle,
   X,
+  HardHat,
 } from 'lucide-react';
 
 const STATUS_CONFIG = {
@@ -46,6 +47,10 @@ export default function AtividadesPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [filterOperator, setFilterOperator] = useState<string>('');
+  const [filterMachine, setFilterMachine] = useState<string>('');
+  const [machines, setMachines] = useState<{ id: string; name: string; tag: string | null }[]>([]);
+  const [filterActivityType, setFilterActivityType] = useState<string>('');
+  const [activityTypes, setActivityTypes] = useState<{ id: string; code: string; description: string; category: string }[]>([]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
@@ -58,7 +63,7 @@ export default function AtividadesPage() {
   const [resolvedPhotos, setResolvedPhotos] = useState<Record<string, string>>({});
   const [deepLinked, setDeepLinked] = useState(false);
 
-  const ACTIVITY_COLUMNS = 'id, date, location, description, start_time, end_time, equipment_tag, had_interference, interference_notes, notes, transit_start, transit_end, equipment_photo_url, start_photo_url, end_photo_url, created_at, operator_id, checklist_id, operators(name)';
+  const ACTIVITY_COLUMNS = 'id, date, location, description, start_time, end_time, equipment_tag, had_interference, interference_notes, notes, transit_start, transit_end, equipment_photo_url, start_photo_url, end_photo_url, created_at, operator_id, checklist_id, machine_id, activity_type_id, profiles(full_name), machines(id, name, tag), activity_types(id, code, description, allow_custom)';
 
   const loadActivities = useCallback(async (term = '') => {
     let query = supabase
@@ -106,6 +111,22 @@ export default function AtividadesPage() {
     });
   }, [loadActivities, deepLinkId, debouncedSearch]);
 
+  useEffect(() => {
+    supabase
+      .from('machines')
+      .select('id, name, tag')
+      .eq('active', true)
+      .order('name', { ascending: true })
+      .then(({ data }) => setMachines(data ?? []));
+    supabase
+      .from('activity_types')
+      .select('id, code, description, category')
+      .eq('active', true)
+      .order('category', { ascending: true })
+      .order('order_index', { ascending: true })
+      .then(({ data }) => setActivityTypes(data ?? []));
+  }, [supabase]);
+
   // Realtime: only full reload on INSERT (new data needs join), patch on UPDATE/DELETE
   useEffect(() => {
     const channel = supabase
@@ -148,8 +169,8 @@ export default function AtividadesPage() {
   const operators = useMemo(() => {
     const map = new Map<string, string>();
     for (const a of activities) {
-      if (a.operator_id && a.operators?.name) {
-        map.set(a.operator_id, a.operators.name);
+      if (a.operator_id && a.profiles?.full_name) {
+        map.set(a.operator_id, a.profiles.full_name);
       }
     }
     return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
@@ -158,8 +179,10 @@ export default function AtividadesPage() {
   const filtered = useMemo(() => activities.filter((a) => {
     const matchStatus = !filterStatus || getStatusKey(a) === filterStatus;
     const matchOperator = !filterOperator || a.operator_id === filterOperator;
-    return matchStatus && matchOperator;
-  }), [activities, filterStatus, filterOperator]);
+    const matchMachine = !filterMachine || a.machine_id === filterMachine;
+    const matchType = !filterActivityType || a.activity_type_id === filterActivityType;
+    return matchStatus && matchOperator && matchMachine && matchType;
+  }), [activities, filterStatus, filterOperator, filterMachine, filterActivityType]);
 
   const stats = useMemo(() => ({
     total: activities.length,
@@ -196,7 +219,7 @@ export default function AtividadesPage() {
               {selected.description || 'Atividade'}
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              {selected.operators?.name || 'Operador'}{selected.equipment_tag ? ` · TAG: ${selected.equipment_tag}` : ''}
+              {selected.profiles?.full_name || 'Operador'}{selected.equipment_tag ? ` · TAG: ${selected.equipment_tag}` : ''}
             </p>
           </div>
           <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-semibold ${cfg.bg} ${cfg.color}`}>
@@ -213,7 +236,7 @@ export default function AtividadesPage() {
                 <User className="h-3.5 w-3.5" />
                 Operador
               </div>
-              <p className="font-semibold">{selected.operators?.name || '—'}</p>
+              <p className="font-semibold">{selected.profiles?.full_name || '—'}</p>
             </CardContent>
           </Card>
           <Card>
@@ -255,6 +278,21 @@ export default function AtividadesPage() {
             </CardContent>
           </Card>
         </div>
+
+        {selected.machines?.name && (
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                <HardHat className="h-3.5 w-3.5" />
+                Máquina
+              </div>
+              <p className="font-semibold text-sm">{selected.machines.name}</p>
+              {selected.machines.tag && (
+                <p className="text-xs text-muted-foreground">TAG: {selected.machines.tag}</p>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Transit info */}
         {(selected.transit_start || selected.transit_end) && (
@@ -371,8 +409,8 @@ export default function AtividadesPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
+        <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Buscar por descrição, local, TAG..."
@@ -389,6 +427,30 @@ export default function AtividadesPage() {
           <option value="">Todos os operadores</option>
           {operators.map((op) => (
             <option key={op.id} value={op.id}>{op.name}</option>
+          ))}
+        </select>
+        <select
+          value={filterMachine}
+          onChange={(e) => setFilterMachine(e.target.value)}
+          className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+        >
+          <option value="">Todas as máquinas</option>
+          {machines.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name}{m.tag ? ` · ${m.tag}` : ''}
+            </option>
+          ))}
+        </select>
+        <select
+          value={filterActivityType}
+          onChange={(e) => setFilterActivityType(e.target.value)}
+          className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+        >
+          <option value="">Todos os tipos</option>
+          {activityTypes.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.code} — {t.description}
+            </option>
           ))}
         </select>
         <div className="flex gap-2 flex-wrap">
@@ -444,20 +506,31 @@ export default function AtividadesPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="font-medium truncate">
-                            {activity.description || 'Atividade'}
+                          <p className="font-medium truncate flex items-center gap-2">
+                            {activity.activity_types?.code && (
+                              <span className="inline-flex shrink-0 items-center rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-mono font-bold text-primary">
+                                {activity.activity_types.code}
+                              </span>
+                            )}
+                            <span className="truncate">{activity.description || 'Atividade'}</span>
                           </p>
                           <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
                             <span className="inline-flex items-center gap-1">
                               <User className="h-3 w-3" />
-                              {activity.operators?.name || 'Operador'}
+                              {activity.profiles?.full_name || 'Operador'}
                             </span>
                             <span>{formatDate(activity.date)}</span>
                             <span className="text-xs">
                               {formatTime(activity.start_time)} — {formatTime(activity.end_time)}
                             </span>
                           </div>
-                          <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
+                          <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground flex-wrap">
+                            {activity.machines?.name && (
+                              <span className="inline-flex items-center gap-1">
+                                <HardHat className="h-3 w-3" />
+                                {activity.machines.name}
+                              </span>
+                            )}
                             {activity.location && (
                               <span className="inline-flex items-center gap-1">
                                 <MapPin className="h-3 w-3" />

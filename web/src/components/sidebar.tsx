@@ -5,7 +5,6 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
   LayoutDashboard,
-  Users,
   HardHat,
   ListChecks,
   Activity,
@@ -16,24 +15,69 @@ import {
   UserCog,
   Menu,
   X,
+  HelpCircle,
+  Tags,
+  ChevronDown,
+  type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const navItems = [
+type NavItem =
+  | { href: string; label: string; icon: LucideIcon }
+  | {
+      label: string;
+      icon: LucideIcon;
+      children: { href: string; label: string; icon: LucideIcon }[];
+    };
+
+const navItems: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/acompanhamento', label: 'Acompanhamento', icon: MapPin },
-  { href: '/operadores', label: 'Operadores', icon: Users },
   { href: '/maquinas', label: 'Maquinas', icon: HardHat },
   { href: '/checklists', label: 'Checklists', icon: ListChecks },
-  { href: '/atividades', label: 'Atividades', icon: Activity },
+  {
+    label: 'Gestão de Atividades',
+    icon: Activity,
+    children: [
+      { href: '/atividades', label: 'Atividades', icon: Activity },
+      { href: '/tipos-atividade', label: 'Tipos Atividade', icon: Tags },
+      { href: '/perguntas-pre-operacao', label: 'Pre-Operacao', icon: HelpCircle },
+      { href: '/localidades', label: 'Localidades', icon: MapPin },
+    ],
+  },
   { href: '/alertas', label: 'Alertas', icon: Bell },
   { href: '/indicadores', label: 'Indicadores', icon: BarChart3 },
   { href: '/usuarios', label: 'Usuários', icon: UserCog },
 ];
 
+function isActive(pathname: string, href: string) {
+  return pathname === href || pathname.startsWith(href + '/');
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {};
+    navItems.forEach((item) => {
+      if ('children' in item && item.children.some((c) => isActive(pathname, c.href))) {
+        initial[item.label] = true;
+      }
+    });
+    return initial;
+  });
+
+  useEffect(() => {
+    setExpanded((prev) => {
+      const next = { ...prev };
+      navItems.forEach((item) => {
+        if ('children' in item && item.children.some((c) => isActive(pathname, c.href))) {
+          next[item.label] = true;
+        }
+      });
+      return next;
+    });
+  }, [pathname]);
 
   // Close drawer on route change
   useEffect(() => {
@@ -65,12 +109,67 @@ export function Sidebar() {
         </button>
       </div>
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-        {navItems.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || pathname.startsWith(href + '/');
+        {navItems.map((item) => {
+          const Icon = item.icon;
+
+          if ('children' in item) {
+            const anyChildActive = item.children.some((c) => isActive(pathname, c.href));
+            const isExpanded = expanded[item.label] ?? false;
+            return (
+              <div key={item.label}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setExpanded((prev) => ({ ...prev, [item.label]: !isExpanded }))
+                  }
+                  aria-expanded={isExpanded}
+                  className={cn(
+                    'flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                    anyChildActive && !isExpanded
+                      ? 'bg-primary/10 text-foreground'
+                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span className="flex-1 text-left">{item.label}</span>
+                  <ChevronDown
+                    className={cn(
+                      'h-4 w-4 transition-transform',
+                      isExpanded ? 'rotate-180' : ''
+                    )}
+                  />
+                </button>
+                {isExpanded && (
+                  <div className="mt-1 ml-7 space-y-1 border-l border-border/60 pl-4">
+                    {item.children.map(({ href, label, icon: ChildIcon }) => {
+                      const active = isActive(pathname, href);
+                      return (
+                        <Link
+                          key={href}
+                          href={href}
+                          className={cn(
+                            'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                            active
+                              ? 'bg-primary text-primary-foreground'
+                              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                          )}
+                        >
+                          <ChildIcon className="h-4 w-4" />
+                          {label}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          }
+
+          const active = isActive(pathname, item.href);
           return (
             <Link
-              key={href}
-              href={href}
+              key={item.href}
+              href={item.href}
               className={cn(
                 'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
                 active
@@ -79,7 +178,7 @@ export function Sidebar() {
               )}
             >
               <Icon className="h-4 w-4" />
-              {label}
+              {item.label}
             </Link>
           );
         })}

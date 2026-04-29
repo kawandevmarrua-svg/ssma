@@ -1,17 +1,17 @@
 export interface Operator {
   id: string;
-  name: string;
-  email: string | null;
+  full_name: string | null;
+  email: string;
   phone: string | null;
-  role: string;
   active: boolean;
   created_at: string;
-  auth_user_id: string | null;
+  role: string;
+  created_by: string | null;
 }
 
 export interface OperatorBasic {
   id: string;
-  name: string;
+  full_name: string | null;
   active: boolean;
 }
 
@@ -48,7 +48,11 @@ export interface ActivityRow {
   created_at: string;
   operator_id: string;
   checklist_id: string | null;
-  operators: { name: string } | null;
+  machine_id: string | null;
+  activity_type_id: string | null;
+  profiles: { full_name: string | null } | null;
+  machines: { id: string; name: string; tag: string | null } | null;
+  activity_types: { id: string; code: string; description: string; allow_custom: boolean } | null;
 }
 
 export interface ChecklistRow {
@@ -71,7 +75,7 @@ export interface ChecklistRow {
   interference_notes: string | null;
   created_at: string;
   operator_id: string;
-  operators: { name: string } | null;
+  profiles: { full_name: string | null } | null;
   equipment_types: { name: string } | null;
   equipment_photo_1_url: string | null;
   equipment_photo_2_url: string | null;

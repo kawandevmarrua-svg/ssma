@@ -29,7 +29,7 @@ const SEVERITY_CONFIG = {
 };
 
 export default function OperatorAlertsScreen() {
-  const { operatorData } = useAuth();
+  const { user } = useAuth();
   const [alerts, setAlerts] = useState<SafetyAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -39,7 +39,7 @@ export default function OperatorAlertsScreen() {
   const { errors, validate, clearErrors } = useFormValidation(alertResponseSchema);
 
   const loadAlerts = useCallback(async () => {
-    if (!operatorData) {
+    if (!user) {
       setLoading(false);
       return;
     }
@@ -47,7 +47,7 @@ export default function OperatorAlertsScreen() {
     const { data, error } = await supabase
       .from('safety_alerts')
       .select('*')
-      .or(`operator_id.eq.${operatorData.id},operator_id.is.null`)
+      .or(`operator_id.eq.${user.id},operator_id.is.null`)
       .order('created_at', { ascending: false })
       .limit(50);
 
@@ -56,14 +56,14 @@ export default function OperatorAlertsScreen() {
     }
     setAlerts(data ?? []);
     setLoading(false);
-  }, [operatorData]);
+  }, [user]);
 
   useEffect(() => {
     loadAlerts();
   }, [loadAlerts]);
 
   useEffect(() => {
-    if (!operatorData) return;
+    if (!user) return;
 
     const channel = supabase
       .channel('operator-alerts-refresh')
@@ -75,7 +75,7 @@ export default function OperatorAlertsScreen() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [operatorData, loadAlerts]);
+  }, [user, loadAlerts]);
 
   async function onRefresh() {
     setRefreshing(true);

@@ -20,8 +20,7 @@ interface OperatorLocation {
 
 interface OperatorInfo {
   id: string;
-  name: string | null;
-  role: string | null;
+  full_name: string | null;
 }
 
 type Row = OperatorLocation & { operator: OperatorInfo | null };
@@ -62,15 +61,13 @@ function statusIconHtml(status: string, stale: boolean): string {
 }
 
 function popupHtml(r: Row, stale: boolean, agoLabel: string): string {
-  const name = r.operator?.name ?? 'Operador';
-  const role = r.operator?.role ?? '';
+  const name = r.operator?.full_name ?? 'Operador';
   const statusLabel = stale ? 'Offline / sem sinal' : (STATUS_LABEL[r.current_status] ?? r.current_status);
   const color = stale ? '#9ca3af' : (STATUS_COLOR[r.current_status] ?? '#6b7280');
   const acc = r.accuracy ? ` ± ${Math.round(r.accuracy)}m` : '';
   return `
     <div style="font-size:13px; line-height:1.4">
       <div style="font-weight:600">${escapeHtml(name)}</div>
-      ${role ? `<div style="color:#6b7280;font-size:12px">${escapeHtml(role)}</div>` : ''}
       <div style="margin-top:4px">
         <span style="display:inline-block;border-radius:9999px;background:${color};color:white;padding:1px 8px;font-size:11px;font-weight:500">
           ${escapeHtml(statusLabel)}
@@ -163,8 +160,9 @@ export default function AcompanhamentoClient() {
       return ids.map((id) => operatorsCacheRef.current.get(id)!).filter(Boolean);
     }
     const { data } = await supabase
-      .from('operators')
-      .select('id, name, role')
+      .from('profiles')
+      .select('id, full_name')
+      .eq('role', 'operator')
       .in('id', missing);
     (data ?? []).forEach((op: OperatorInfo) => operatorsCacheRef.current.set(op.id, op));
     return ids.map((id) => operatorsCacheRef.current.get(id)!).filter(Boolean);
@@ -419,7 +417,7 @@ export default function AcompanhamentoClient() {
                     />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium truncate">
-                        {r.operator?.name ?? 'Operador'}
+                        {r.operator?.full_name ?? 'Operador'}
                       </div>
                       <div className="text-xs text-muted-foreground truncate">
                         {stale ? 'Offline' : (STATUS_LABEL[r.current_status] ?? r.current_status)} · {minutesAgoLabel(now, r.updated_at)}

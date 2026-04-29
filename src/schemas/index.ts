@@ -17,7 +17,6 @@ export const operatorSchema = z.object({
   email: z.string().email('Email invalido'),
   password: passwordSchema,
   phone: z.string().optional().or(z.literal('')),
-  role: z.string().min(2, 'Funcao deve ter no minimo 2 caracteres'),
 });
 
 export const checklistSchema = z.object({
@@ -44,16 +43,7 @@ export const alertResponseSchema = z.object({
 });
 
 export const preOperationSchema = z.object({
-  checklist_fisico: z.boolean({ required_error: 'Responda esta pergunta' }),
-  prontos_preenchido: z.boolean({ required_error: 'Responda esta pergunta' }),
-  apto_operar: z.boolean({ required_error: 'Responda esta pergunta' }),
-  conhece_limites: z.boolean({ required_error: 'Responda esta pergunta' }),
-  art_disponivel: z.boolean({ required_error: 'Responda esta pergunta' }),
-  liberacao_acesso: z.boolean({ required_error: 'Responda esta pergunta' }),
-  pts_preenchida: z.boolean({ required_error: 'Responda esta pergunta' }),
-  local_adequado: z.boolean({ required_error: 'Responda esta pergunta' }),
-  local_sinalizado: z.boolean({ required_error: 'Responda esta pergunta' }),
-  manutencao_valida: z.boolean({ required_error: 'Responda esta pergunta' }),
+  answers: z.record(z.string().uuid(), z.boolean({ required_error: 'Responda esta pergunta' })),
 });
 
 export const activitySchema = z.object({

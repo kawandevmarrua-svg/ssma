@@ -14,7 +14,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  const auth = await authenticate(req, ["admin", "manager"]);
+  const auth = await authenticate(req, ["admin", "manager", "encarregado"]);
   if (!auth.ok) {
     return new Response(JSON.stringify({ error: auth.error }), {
       status: auth.status,
@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
           .from("checklists")
           .select(`
             *,
-            operators(name),
+            profiles!checklists_operator_id_fkey(full_name),
             equipment_types(name),
             checklist_responses(
               status,
@@ -92,8 +92,8 @@ Deno.serve(async (req) => {
           .from("behavioral_inspections")
           .select(`
             *,
-            operators(name),
-            profiles!behavioral_inspections_observer_id_fkey(full_name),
+            profiles!behavioral_inspections_operator_id_fkey(full_name),
+            observer:profiles!behavioral_inspections_observer_id_fkey(full_name),
             behavioral_inspection_items(category, description, status),
             behavioral_deviations(description, risk_level, immediate_action, status)
           `)
@@ -126,7 +126,7 @@ Deno.serve(async (req) => {
       case "activity": {
         let query = supabase
           .from("activities")
-          .select("*, operators(name)")
+          .select("*, profiles!activities_operator_id_fkey(full_name)")
           .gte("date", filters.dateFrom)
           .lte("date", filters.dateTo)
           .order("date", { ascending: false })
@@ -179,7 +179,7 @@ Deno.serve(async (req) => {
           .single();
 
         const { data: operator } = await supabase
-          .from("operators")
+          .from("profiles")
           .select("*")
           .eq("id", operator_id)
           .single();

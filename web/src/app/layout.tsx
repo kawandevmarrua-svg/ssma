@@ -3,7 +3,7 @@ import NextTopLoader from 'nextjs-toploader';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Segurança em 360 — SSMA Smart Vision',
+  title: 'Marrua',
   description:
     'Plataforma de gestão SSMA com visão 360°: inspeções, alertas, indicadores e equipes em uma única solução.',
 };

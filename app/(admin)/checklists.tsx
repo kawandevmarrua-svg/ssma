@@ -44,7 +44,7 @@ interface ChecklistWithOperator {
   result: string | null;
   ended_at: string | null;
   created_at: string;
-  operators: { name: string } | null;
+  profiles: { full_name: string } | null;
 }
 
 export default function AdminChecklistsScreen() {
@@ -52,7 +52,7 @@ export default function AdminChecklistsScreen() {
   const [checklists, setChecklists] = useState<ChecklistWithOperator[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [myOperatorId, setMyOperatorId] = useState<string | null>(null);
+  const myOperatorId = user?.id ?? null;
   const [checklistToFinish, setChecklistToFinish] = useState<ChecklistWithOperator | null>(null);
 
   // Flow: list | scan | pick | items | photos | result
@@ -86,27 +86,13 @@ export default function AdminChecklistsScreen() {
   const today = new Date().toISOString().split('T')[0];
 
   // --- Data loading ---
-  const findMyOperator = useCallback(async () => {
-    if (!user) return;
-    const { data: selfOp, error: e1 } = await supabase
-      .from('operators').select('id').eq('auth_user_id', user.id).single();
-    console.log('[Checklist] findMyOperator selfOp:', selfOp, 'error:', e1?.message);
-    if (selfOp) { setMyOperatorId(selfOp.id); return; }
-    const { data: firstOp, error: e2 } = await supabase
-      .from('operators').select('id').eq('created_by', user.id).eq('active', true)
-      .order('created_at').limit(1).single();
-    console.log('[Checklist] findMyOperator firstOp:', firstOp, 'error:', e2?.message);
-    if (firstOp) setMyOperatorId(firstOp.id);
-    else console.log('[Checklist] ATENCAO: Nenhum operador encontrado para user:', user.id);
-  }, [user]);
-
   const loadChecklists = useCallback(async () => {
     if (!user) return;
+    // Fetch operator profiles created by this admin
     const { data: myOps } = await supabase
-      .from('operators').select('id').eq('created_by', user.id);
+      .from('profiles').select('id').eq('created_by', user.id).eq('role', 'operator');
     const opIds = (myOps ?? []).map((o) => o.id);
-    const { data: selfOp } = await supabase.from('operators').select('id').eq('auth_user_id', user.id).single();
-    if (selfOp && !opIds.includes(selfOp.id)) opIds.push(selfOp.id);
+    if (!opIds.includes(user.id)) opIds.push(user.id);
     console.log('[Checklist] loadChecklists opIds:', opIds, 'user:', user.id);
     if (opIds.length === 0) {
       console.log('[Checklist] Nenhum operador encontrado — lista vazia');
@@ -114,7 +100,7 @@ export default function AdminChecklistsScreen() {
     }
     const { data, error } = await supabase
       .from('checklists')
-      .select('id, machine_name, tag, date, status, result, ended_at, created_at, operators(name)')
+      .select('id, machine_name, tag, date, status, result, ended_at, created_at, profiles!checklists_operator_id_fkey(full_name)')
       .in('operator_id', opIds)
       .order('created_at', { ascending: false })
       .limit(50);
@@ -134,7 +120,7 @@ export default function AdminChecklistsScreen() {
     setMachines((data as Machine[] | null) ?? []);
   }, [user]);
 
-  useEffect(() => { loadChecklists(); findMyOperator(); loadMachines(); }, [loadChecklists, findMyOperator, loadMachines]);
+  useEffect(() => { loadChecklists(); loadMachines(); }, [loadChecklists, loadMachines]);
 
   // Load checklist items when machine selected
   useEffect(() => {
@@ -184,7 +170,7 @@ export default function AdminChecklistsScreen() {
   async function pickItemPhoto(id: string, isPhotoType = false) {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) { Alert.alert('Permissao', 'Permita o acesso a camera.'); return; }
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.5, allowsEditing: true });
+    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.5, allowsEditing: false });
     if (!result.canceled && result.assets[0]) {
       setResponses((p) => ({
         ...p,
@@ -200,7 +186,7 @@ export default function AdminChecklistsScreen() {
   async function takeRequiredPhoto(slot: 'equipment_1' | 'equipment_2' | 'equipment_3' | 'equipment_4' | 'environment') {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) { Alert.alert('Permissao', 'Permita o acesso a camera.'); return; }
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.5, allowsEditing: true });
+    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.5, allowsEditing: false });
     if (result.canceled || !result.assets[0]) return;
     const uri = result.assets[0].uri;
     if (slot === 'environment') {
@@ -837,7 +823,7 @@ export default function AdminChecklistsScreen() {
                   <View style={st.headerLeft}>
                     <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
                     <Text style={st.metaLabel}>
-                      {new Date(item.date).toLocaleDateString('pt-BR')} · {item.operators?.name || 'Operador'}
+                      {new Date(item.date).toLocaleDateString('pt-BR')} · {item.profiles?.full_name || 'Operador'}
                     </Text>
                   </View>
                   <Badge label="EM ANDAMENTO" variant="warning" size="sm" />
@@ -886,7 +872,7 @@ export default function AdminChecklistsScreen() {
                       color={colors.textSecondary}
                     />
                     <Text style={st.metaLabel}>
-                      {new Date(item.date).toLocaleDateString('pt-BR')} · {item.operators?.name || 'Operador'}
+                      {new Date(item.date).toLocaleDateString('pt-BR')} · {item.profiles?.full_name || 'Operador'}
                     </Text>
                   </View>
                   <Badge

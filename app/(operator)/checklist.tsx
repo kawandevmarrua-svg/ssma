@@ -50,7 +50,7 @@ interface ChecklistRow {
 }
 
 export default function ChecklistScreen() {
-  const { user, operatorData } = useAuth();
+  const { user, profile } = useAuth();
   // Mantem a tela acesa enquanto o operador esta preenchendo um checklist em campo.
   useKeepAwake();
   const pendingFinishes = usePendingFinishes();
@@ -93,16 +93,16 @@ export default function ChecklistScreen() {
 
   // --- Data loading ---
   const loadChecklists = useCallback(async () => {
-    if (!operatorData) { setListLoading(false); return; }
+    if (!user) { setListLoading(false); return; }
     const { data } = await supabase
       .from('checklists')
       .select('id, machine_name, tag, date, status, result, ended_at, created_at')
-      .eq('operator_id', operatorData.id)
+      .eq('operator_id', user.id)
       .order('created_at', { ascending: false })
       .limit(50);
     setChecklists((data as ChecklistRow[] | null) ?? []);
     setListLoading(false);
-  }, [operatorData]);
+  }, [user]);
 
   const loadMachines = useCallback(async () => {
     if (!user) {
@@ -155,7 +155,7 @@ export default function ChecklistScreen() {
   async function takeRequiredPhoto(slot: 'equipment_1' | 'equipment_2' | 'equipment_3' | 'equipment_4' | 'environment') {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) { Alert.alert('Permissao', 'Permita o acesso a camera.'); return; }
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.5, allowsEditing: true });
+    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.5, allowsEditing: false });
     if (result.canceled || !result.assets[0]) return;
     const uri = result.assets[0].uri;
     if (slot === 'environment') {
@@ -193,7 +193,7 @@ export default function ChecklistScreen() {
   async function pickItemPhoto(id: string, isPhotoType = false) {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) { Alert.alert('Permissao', 'Permita o acesso a camera.'); return; }
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.5, allowsEditing: true });
+    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.5, allowsEditing: false });
     if (!result.canceled && result.assets[0]) {
       setResponses((p) => ({
         ...p,
@@ -389,7 +389,7 @@ export default function ChecklistScreen() {
   // --- Save ---
   async function handleSave() {
     if (saving) return;
-    if (!operatorData || !selectedMachine || !user) return;
+    if (!user || !selectedMachine || !profile) return;
     if (!allRequiredPhotosTaken()) {
       Alert.alert('Atencao', 'Anexe as 4 fotos do equipamento e a foto do ambiente antes de salvar.');
       return;
@@ -399,10 +399,10 @@ export default function ChecklistScreen() {
 
     const { data: preOp } = await supabase
       .from('pre_operation_checks').select('id')
-      .eq('operator_id', operatorData.id).eq('date', today).single();
+      .eq('operator_id', user.id).eq('date', today).single();
 
     const { data: checklist, error: clErr } = await supabase.from('checklists').insert({
-      operator_id: operatorData.id,
+      operator_id: user.id,
       machine_id: selectedMachine.id,
       pre_operation_id: preOp?.id ?? null,
       machine_name: selectedMachine.name,
@@ -410,7 +410,7 @@ export default function ChecklistScreen() {
       shift: shift || null,
       max_load_capacity: selectedMachine.max_load_capacity || null,
       date: today, status: 'pending', result,
-      inspector_name: operatorData.name || null,
+      inspector_name: profile.full_name || null,
     }).select().single();
 
     if (clErr || !checklist) {

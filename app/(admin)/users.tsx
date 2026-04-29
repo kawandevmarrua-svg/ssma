@@ -20,14 +20,15 @@ import { commonStyles } from '../../src/theme/commonStyles';
 import { Avatar, Badge, Button, StatCard, Text } from '../../src/components/ui';
 
 const CARGOS = [
-  'Técnico de segurança',
-  'Engenheiro de segurança',
-  'Coordenador de segurança',
-  'Analista de SSMA',
-  'Supervisor de operações',
+  { value: 'operator', label: 'Operador' },
+  { value: 'encarregado', label: 'Encarregado' },
+  { value: 'manager', label: 'Gestor' },
+  { value: 'admin', label: 'Administrador' },
 ] as const;
 
-type Cargo = typeof CARGOS[number];
+type CargoValue = typeof CARGOS[number]['value'];
+
+const CARGO_LABELS: Record<string, string> = Object.fromEntries(CARGOS.map((c) => [c.value, c.label]));
 
 interface UserRow {
   id: string;
@@ -35,7 +36,6 @@ interface UserRow {
   email: string;
   role: string;
   created_at: string;
-  operator_role: string | null;
   active: boolean;
 }
 
@@ -48,25 +48,25 @@ export default function UsersScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [selectedCargo, setSelectedCargo] = useState<Cargo | null>(null);
+  const [selectedCargo, setSelectedCargo] = useState<CargoValue>('operator');
   const [saving, setSaving] = useState(false);
 
   const loadUsers = useCallback(async () => {
     if (!user) return;
-    const { data: operators } = await supabase
-      .from('operators')
-      .select('id, name, email, role, active, auth_user_id, created_at')
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, full_name, email, role, active, created_at')
       .eq('created_by', user.id)
+      .in('role', ['operator', 'encarregado', 'manager', 'admin'])
       .order('created_at', { ascending: false });
 
-    const mapped: UserRow[] = (operators ?? []).map((op) => ({
-      id: op.id,
-      full_name: op.name,
-      email: op.email ?? '',
-      role: 'operator',
-      created_at: op.created_at,
-      operator_role: op.role,
-      active: op.active,
+    const mapped: UserRow[] = (profiles ?? []).map((p) => ({
+      id: p.id,
+      full_name: p.full_name,
+      email: p.email ?? '',
+      role: p.role,
+      created_at: p.created_at,
+      active: p.active,
     }));
 
     setUsers(mapped);
@@ -77,33 +77,32 @@ export default function UsersScreen() {
 
   function resetForm() {
     setName(''); setEmail('');
-    setSelectedCargo(null);
+    setSelectedCargo('operator');
   }
 
   async function handleCreate() {
     if (!user) return;
 
-    if (!name.trim()) { Alert.alert('Atenção', 'Preencha o nome completo.'); return; }
-    if (!email.trim()) { Alert.alert('Atenção', 'Preencha o email.'); return; }
-    if (!selectedCargo) { Alert.alert('Atenção', 'Selecione um cargo.'); return; }
+    if (!name.trim()) { Alert.alert('Atencao', 'Preencha o nome completo.'); return; }
+    if (!email.trim()) { Alert.alert('Atencao', 'Preencha o email.'); return; }
 
     setSaving(true);
     try {
       const { data, error } = await supabase.functions.invoke('create-operator', {
-        body: { name: name.trim(), email: email.trim().toLowerCase(), cargo: selectedCargo },
+        body: { name: name.trim(), email: email.trim().toLowerCase(), role: selectedCargo },
       });
       if (error || data?.success === false) {
-        const msg = (data?.error as string | undefined) ?? error?.message ?? 'Falha ao criar usuário.';
+        const msg = (data?.error as string | undefined) ?? error?.message ?? 'Falha ao criar usuario.';
         Alert.alert('Erro', msg);
         setSaving(false);
         return;
       }
       const tempPass = data?.tempPassword as string | undefined;
       Alert.alert(
-        'Usuário criado',
+        'Usuario criado',
         tempPass
-          ? `Senha temporária para ${name.trim()}:\n\n${tempPass}\n\nO operador será obrigado a trocar no primeiro login. Anote e repasse com segurança.`
-          : `Usuário ${name.trim()} criado com sucesso!`,
+          ? `Senha temporaria para ${name.trim()}:\n\n${tempPass}\n\nO usuario sera obrigado a trocar no primeiro login. Anote e repasse com seguranca.`
+          : `Usuario ${name.trim()} criado com sucesso!`,
       );
       resetForm();
       setModalVisible(false);
@@ -116,7 +115,7 @@ export default function UsersScreen() {
   }
 
   async function toggleUserActive(userId: string, currentActive: boolean) {
-    const { error } = await supabase.from('operators').update({ active: !currentActive }).eq('id', userId);
+    const { error } = await supabase.from('profiles').update({ active: !currentActive }).eq('id', userId);
     if (error) { Alert.alert('Erro', error.message); return; }
     loadUsers();
   }
@@ -156,10 +155,10 @@ export default function UsersScreen() {
           <View style={commonStyles.empty}>
             <Ionicons name="people-outline" size={40} color={colors.textLight} />
             <Text variant="callout" tone="muted" style={{ marginTop: spacing.md }}>
-              Nenhum usuário cadastrado
+              Nenhum usuario cadastrado
             </Text>
             <Text variant="caption" tone="subtle" style={{ marginTop: 4 }}>
-              Toque em + para adicionar um usuário
+              Toque em + para adicionar um usuario
             </Text>
           </View>
         ) : (
@@ -167,10 +166,11 @@ export default function UsersScreen() {
             <View key={item.id} style={[st.card, !item.active && st.inactiveCard]}>
               <View style={st.cardHeader}>
                 <View style={st.headerLeft}>
-                  <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} />
-                  <Text variant="captionStrong" tone="muted">
-                    Desde {new Date(item.created_at).toLocaleDateString('pt-BR')}
-                  </Text>
+                  <Badge
+                    label={CARGO_LABELS[item.role] || item.role}
+                    variant={item.role === 'admin' ? 'info' : item.role === 'operator' ? 'success' : 'neutral'}
+                    size="sm"
+                  />
                 </View>
                 <Badge
                   label={item.active ? 'ATIVO' : 'INATIVO'}
@@ -200,13 +200,6 @@ export default function UsersScreen() {
                   />
                 </TouchableOpacity>
               </View>
-
-              {item.operator_role && (
-                <View style={st.cargoRow}>
-                  <Ionicons name="briefcase-outline" size={12} color={colors.textSecondary} />
-                  <Text variant="caption" tone="muted">{item.operator_role}</Text>
-                </View>
-              )}
             </View>
           ))
         )}
@@ -226,7 +219,7 @@ export default function UsersScreen() {
           <View style={commonStyles.modalContent}>
             <ScrollView showsVerticalScrollIndicator={false}>
               <View style={commonStyles.modalHeader}>
-                <Text variant="h2">Novo usuário</Text>
+                <Text variant="h2">Novo usuario</Text>
                 <TouchableOpacity onPress={() => { setModalVisible(false); resetForm(); }} hitSlop={8}>
                   <Ionicons name="close" size={22} color={colors.textSecondary} />
                 </TouchableOpacity>
@@ -236,7 +229,7 @@ export default function UsersScreen() {
                 <Text style={commonStyles.label}>Nome completo *</Text>
                 <TextInput
                   style={commonStyles.input}
-                  placeholder="Nome do usuário"
+                  placeholder="Nome do usuario"
                   placeholderTextColor={colors.textLight}
                   value={name}
                   onChangeText={setName}
@@ -260,12 +253,12 @@ export default function UsersScreen() {
               <View style={commonStyles.inputGroup}>
                 <Text style={commonStyles.label}>Cargo *</Text>
                 {CARGOS.map((cargo) => {
-                  const isSelected = selectedCargo === cargo;
+                  const isSelected = selectedCargo === cargo.value;
                   return (
                     <TouchableOpacity
-                      key={cargo}
+                      key={cargo.value}
                       style={[st.cargoOption, isSelected && st.cargoOptionSelected]}
-                      onPress={() => setSelectedCargo(cargo)}
+                      onPress={() => setSelectedCargo(cargo.value)}
                     >
                       <Ionicons
                         name={isSelected ? 'radio-button-on' : 'radio-button-off'}
@@ -277,7 +270,7 @@ export default function UsersScreen() {
                         tone={isSelected ? 'primary' : 'default'}
                         weight={isSelected ? '700' : '500'}
                       >
-                        {cargo}
+                        {cargo.label}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -285,7 +278,7 @@ export default function UsersScreen() {
               </View>
 
               <Button
-                label={saving ? 'Criando...' : 'Criar usuário'}
+                label={saving ? 'Criando...' : 'Criar usuario'}
                 variant="primary"
                 size="lg"
                 fullWidth
@@ -337,15 +330,6 @@ const st = StyleSheet.create({
     width: 36, height: 36, borderRadius: radius.sm,
     borderWidth: 1, borderColor: colors.border,
     alignItems: 'center', justifyContent: 'center',
-  },
-  cargoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: spacing.sm,
-    paddingTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.divider,
   },
 
   // FAB

@@ -3,18 +3,18 @@
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
-import { CARGOS, type Cargo } from './cargos';
 
 interface CreateUserInput {
   nome: string;
   email: string;
   senha: string;
-  cargo: string;
-  ativo: boolean;
+  role: 'admin' | 'manager' | 'encarregado' | 'operator';
+  phone?: string;
 }
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const STRONG_PASSWORD = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{10,}$/;
+const STRONG_PASSWORD = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+const VALID_ROLES = new Set(['admin', 'manager', 'encarregado', 'operator']);
 
 export async function createUserAction(input: CreateUserInput) {
   const supabaseAuth = await createServerClient();
@@ -29,8 +29,12 @@ export async function createUserAction(input: CreateUserInput) {
     .eq('id', user.id)
     .single();
 
-  if (profileErr || callerProfile?.role !== 'admin') {
-    return { error: 'Apenas administradores podem criar usuarios.' };
+  if (profileErr || !callerProfile || !['admin', 'manager', 'encarregado'].includes(callerProfile.role)) {
+    return { error: 'Sem permissao para criar usuarios.' };
+  }
+
+  if (callerProfile.role !== 'admin' && input.role === 'admin') {
+    return { error: 'Apenas administradores podem criar outros administradores.' };
   }
 
   const nome = input.nome.trim();
@@ -42,10 +46,10 @@ export async function createUserAction(input: CreateUserInput) {
   if (!STRONG_PASSWORD.test(senha)) {
     return {
       error:
-        'A senha deve ter no minimo 10 caracteres, com letra maiuscula, minuscula e numero.',
+        'A senha deve ter no minimo 8 caracteres, com letra maiuscula, minuscula e numero.',
     };
   }
-  if (!CARGOS.includes(input.cargo as Cargo)) return { error: 'Cargo invalido.' };
+  if (!VALID_ROLES.has(input.role)) return { error: 'Cargo invalido.' };
 
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -66,7 +70,7 @@ export async function createUserAction(input: CreateUserInput) {
     email_confirm: true,
     user_metadata: {
       full_name: nome,
-      cargo: input.cargo,
+      role: input.role,
       must_reset_password: true,
       password_set_by_admin: true,
     },
@@ -76,17 +80,19 @@ export async function createUserAction(input: CreateUserInput) {
     return { error: createErr?.message ?? 'Falha ao criar usuario.' };
   }
 
-  const { error: insertErr } = await admin.from('usuarios').insert({
-    nome,
+  const { error: upsertErr } = await admin.from('profiles').upsert({
+    id: created.user.id,
     email,
-    cargo: input.cargo,
-    ativo: input.ativo,
-    auth_user_id: created.user.id,
+    full_name: nome,
+    role: input.role,
+    phone: input.phone?.trim() || null,
+    active: true,
+    created_by: user.id,
   });
 
-  if (insertErr) {
+  if (upsertErr) {
     await admin.auth.admin.deleteUser(created.user.id);
-    return { error: insertErr.message };
+    return { error: upsertErr.message };
   }
 
   revalidatePath('/usuarios');

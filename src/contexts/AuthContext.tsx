@@ -118,9 +118,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .maybeSingle();
       if (!mountedRef.current) return;
 
-      // Profile inexistente ou ainda pendente: limpa sessao para forcar novo login.
+      // Profile inexistente: limpa sessao para forcar novo login.
       // Erros de rede NAO derrubam a sessao — mantem o que ja estava em memoria.
-      if (!error && (!data || data.role === 'pending')) {
+      if (!error && !data) {
         await supabase.auth.signOut();
         setSession(null);
         setProfile(null);

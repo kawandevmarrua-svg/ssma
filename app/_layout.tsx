@@ -1,3 +1,7 @@
+// Patch do construtor de Response precisa rodar antes de qualquer fetch
+// para neutralizar status 0 que o whatwg-fetch (RN 0.83) injeta em falhas
+// de rede. Manter como primeiro import do bundle.
+import '../src/lib/fetchPatch';
 import { useEffect, useRef } from 'react';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -5,6 +9,7 @@ import { ActivityIndicator, View, StyleSheet, AppState, AppStateStatus } from 'r
 import { AuthProvider, useAuth } from '../src/contexts/AuthContext';
 import { colors } from '../src/theme/colors';
 import { startOfflineQueueAutoFlush } from '../src/lib/offlineQueue';
+import { ErrorBoundary } from '../src/components/ErrorBoundary';
 // Registra a task de localizacao em background no nivel do bundle.
 // Tem que ser importado antes de qualquer chamada de Location.startLocationUpdatesAsync.
 import '../src/lib/locationTask';
@@ -77,9 +82,11 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <AuthProvider>
-      <RootLayoutNav />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <RootLayoutNav />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 

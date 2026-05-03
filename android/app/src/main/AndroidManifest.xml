@@ -36,6 +36,7 @@
         <category android:name="android.intent.category.DEFAULT"/>
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="checklist-app"/>
+        <data android:scheme="exp+checklist-app"/>
       </intent-filter>
     </activity>
   </application>

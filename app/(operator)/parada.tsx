@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { supabase } from '../../src/lib/supabase';
+import { todayLocal } from '../../src/lib/dates';
 import { ActivityType } from '../../src/types/database';
 import { colors, spacing, radius, fontSize } from '../../src/theme/colors';
 import { commonStyles } from '../../src/theme/commonStyles';
@@ -105,7 +106,7 @@ export default function ParadaScreen() {
       : activityType.description;
 
     setSaving(true);
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayLocal();
     const { error } = await supabase.from('activities').insert({
       operator_id: user.id,
       activity_type_id: activityType.id,

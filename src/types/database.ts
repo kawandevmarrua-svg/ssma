@@ -198,15 +198,21 @@ export type Database = {
           check_id: string;
           question_id: string;
           value: boolean | null;
+          nc_description: string | null;
+          nc_photo_url: string | null;
           created_at: string;
         };
         Insert: {
           check_id: string;
           question_id: string;
           value: boolean | null;
+          nc_description?: string | null;
+          nc_photo_url?: string | null;
         };
         Update: {
           value?: boolean | null;
+          nc_description?: string | null;
+          nc_photo_url?: string | null;
         };
         Relationships: [
           {
@@ -316,6 +322,7 @@ export type Database = {
           result: 'released' | 'not_released' | null;
           inspector_name: string | null;
           inspector_registration: string | null;
+          encarregado_id: string | null;
           notes: string | null;
           equipment_photo_1_url: string | null;
           equipment_photo_2_url: string | null;
@@ -332,6 +339,7 @@ export type Database = {
           created_at: string;
         };
         Insert: {
+          id?: string;
           operator_id: string;
           equipment_type_id?: string | null;
           machine_id?: string | null;
@@ -347,6 +355,7 @@ export type Database = {
           result?: 'released' | 'not_released' | null;
           inspector_name?: string | null;
           inspector_registration?: string | null;
+          encarregado_id?: string | null;
           notes?: string | null;
           equipment_photo_1_url?: string | null;
           equipment_photo_2_url?: string | null;
@@ -359,6 +368,7 @@ export type Database = {
           result?: 'released' | 'not_released' | null;
           inspector_name?: string | null;
           inspector_registration?: string | null;
+          encarregado_id?: string | null;
           notes?: string | null;
           equipment_photo_1_url?: string | null;
           equipment_photo_2_url?: string | null;
@@ -502,6 +512,7 @@ export type Database = {
           created_at: string;
         };
         Insert: {
+          id?: string;
           operator_id: string;
           checklist_id?: string | null;
           pre_operation_id?: string | null;

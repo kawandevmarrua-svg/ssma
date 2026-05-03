@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { supabase } from '../../src/lib/supabase';
 import { OperatorScore } from '../../src/types/database';
-import { colors, elevation, radius, spacing } from '../../src/theme/colors';
-import { Avatar, Button, Card, Text } from '../../src/components/ui';
+import { colors, radius, spacing } from '../../src/theme/colors';
+import { commonStyles } from '../../src/theme/commonStyles';
+import { Avatar, Text } from '../../src/components/ui';
+import { AppHeader } from '../../src/components/AppHeader';
 
 export default function OperatorProfileScreen() {
   const { user, profile, signOut } = useAuth();
@@ -26,180 +29,219 @@ export default function OperatorProfileScreen() {
   const name = profile?.full_name || 'Operador';
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Profile card */}
-      <Card variant="elevated" padding="lg">
-        <View style={styles.avatarRow}>
-          <Avatar name={name} size="xl" />
-          <View style={styles.identity}>
-            <Text variant="h2" numberOfLines={1}>{name}</Text>
-            <View style={styles.metaRow}>
-              <Text variant="caption" tone="muted">Operador</Text>
-            </View>
-          </View>
+    <View style={commonStyles.container}>
+      <AppHeader />
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.topBar}>
+          <TouchableOpacity
+            style={styles.logoutBtn}
+            onPress={signOut}
+            activeOpacity={0.7}
+            hitSlop={8}
+          >
+            <Ionicons name="log-out-outline" size={16} color={colors.danger} />
+            <Text style={styles.logoutText}>Sair</Text>
+          </TouchableOpacity>
         </View>
 
+        <View style={styles.heroBlock}>
+        <Avatar name={name} size="xl" />
+        <Text style={styles.name} numberOfLines={1}>{name}</Text>
+        <Text style={styles.role}>OPERADOR</Text>
+
         {(profile?.email || profile?.phone) && (
-          <View style={styles.infoSection}>
-            {profile?.email && (
-              <View style={styles.infoRow}>
-                <Ionicons name="mail-outline" size={16} color={colors.textSecondary} />
-                <Text variant="bodyMedium">{profile.email}</Text>
+          <View style={styles.contactList}>
+            {profile?.email ? (
+              <View style={styles.contactRow}>
+                <Ionicons name="mail-outline" size={14} color={colors.textSecondary} />
+                <Text style={styles.contactText} numberOfLines={1}>{profile.email}</Text>
               </View>
-            )}
-            {profile?.phone && (
-              <View style={styles.infoRow}>
-                <Ionicons name="call-outline" size={16} color={colors.textSecondary} />
-                <Text variant="bodyMedium">{profile.phone}</Text>
+            ) : null}
+            {profile?.phone ? (
+              <View style={styles.contactRow}>
+                <Ionicons name="call-outline" size={14} color={colors.textSecondary} />
+                <Text style={styles.contactText}>{profile.phone}</Text>
               </View>
-            )}
+            ) : null}
           </View>
         )}
-      </Card>
+      </View>
 
-      {/* Score */}
       {score && (
-        <View style={styles.scoreCard}>
-          <View style={styles.cardHeader}>
-            <View style={styles.cardHeaderLeft}>
-              <Ionicons name="stats-chart-outline" size={14} color={colors.textSecondary} />
-              <Text variant="captionStrong" tone="muted">INDICADORES DO MÊS</Text>
-            </View>
+        <View style={styles.statsBlock}>
+          <View style={styles.statsHeader}>
+            <Text style={styles.sectionLabel}>INDICADORES DO MÊS</Text>
+            <View style={styles.sectionLine} />
           </View>
 
-          <View style={styles.scoreCircle}>
-            <Text style={styles.scoreValue}>{score.score.toFixed(0)}</Text>
-            <Text variant="caption" tone="muted">Score</Text>
-          </View>
-
-          <View style={styles.scoreGrid}>
-            <ScoreItem
-              label="Checklists"
+          <View style={styles.statsGrid}>
+            <Stat value={score.score.toFixed(0)} label="Score" highlight />
+            <Stat
               value={`${score.checklists_done}/${score.checklists_total}`}
+              label="Checklists"
             />
-            <ScoreItem
-              label="Inspeções"
+            <Stat
               value={`${score.inspections_done}/${score.inspections_total}`}
+              label="Inspeções"
             />
-            <ScoreItem label="Desvios" value={score.deviations_count} />
-            <ScoreItem label="Intervenções" value={score.interventions_count} />
+            <Stat value={String(score.deviations_count)} label="Desvios" />
+            <Stat value={String(score.interventions_count)} label="Intervenções" />
           </View>
         </View>
       )}
 
-      {/* Logout */}
-      <Button
-        label="Sair"
-        icon="log-out-outline"
-        variant="secondary"
-        size="lg"
-        fullWidth
-        onPress={signOut}
-        style={styles.logoutBtn}
-      />
-    </ScrollView>
+        <View style={styles.actions}>
+          <TouchableOpacity
+            style={styles.actionRow}
+            onPress={() => router.push('/(operator)/auditoria')}
+            activeOpacity={0.6}
+          >
+            <Ionicons name="document-text-outline" size={18} color={colors.text} />
+            <Text style={styles.actionText}>Auditoria de atividades</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.textLight} />
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
-function ScoreItem({ label, value }: { label: string; value: string | number }) {
+function Stat({ value, label, highlight }: { value: string; label: string; highlight?: boolean }) {
   return (
-    <View style={styles.scoreItem}>
-      <Text style={styles.scoreItemValue}>{value}</Text>
-      <Text variant="caption" tone="muted">{label}</Text>
+    <View style={styles.statItem}>
+      <Text style={[styles.statValue, highlight && { color: colors.primary }]}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, paddingBottom: spacing['2xl'] },
+  content: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing['2xl'] },
 
-  avatarRow: {
+  topBar: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
+    justifyContent: 'flex-end',
+    marginBottom: spacing.sm,
   },
-  identity: { flex: 1 },
-  metaRow: {
+  logoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
     gap: 4,
-    marginTop: 2,
-  },
-  metaLink: { fontWeight: '600' },
-  infoSection: {
-    borderTopWidth: 1,
-    borderTopColor: colors.divider,
-    marginTop: spacing.md,
-    paddingTop: spacing.md,
-    gap: spacing.sm,
-  },
-  infoRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-
-  // Score card
-  scoreCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.lg,
-    marginTop: spacing.md,
-    ...elevation.sm,
+    borderColor: '#FECACA',
+    backgroundColor: '#FEF2F2',
   },
-  cardHeader: {
-    flexDirection: 'row',
+  logoutText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.danger,
+    letterSpacing: 0.2,
+  },
+
+  // Hero
+  heroBlock: {
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.lg,
+    gap: spacing.sm,
+    paddingBottom: spacing['2xl'],
   },
-  cardHeaderLeft: {
+  name: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.text,
+    letterSpacing: -0.4,
+    marginTop: spacing.md,
+  },
+  role: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    letterSpacing: 1.6,
+    marginTop: -2,
+  },
+  contactList: {
+    marginTop: spacing.md,
+    gap: 6,
+    alignItems: 'center',
+  },
+  contactRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
-  scoreCircle: {
-    alignSelf: 'center',
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: colors.primarySurface,
-    borderWidth: 1,
-    borderColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.lg,
-  },
-  scoreValue: {
-    fontSize: 30,
-    lineHeight: 34,
-    fontWeight: '800',
-    color: colors.primary,
-    letterSpacing: -0.5,
-  },
-  scoreGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  scoreItem: {
-    flexBasis: '48%',
-    flexGrow: 1,
-    backgroundColor: colors.background,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    padding: spacing.md,
-    alignItems: 'flex-start',
-  },
-  scoreItemValue: {
-    fontSize: 20,
-    lineHeight: 24,
-    fontWeight: '700',
-    color: colors.text,
-    letterSpacing: -0.2,
-    marginBottom: 2,
+  contactText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontWeight: '500',
   },
 
-  logoutBtn: { marginTop: spacing.lg },
+  // Stats
+  statsBlock: {
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.lg,
+  },
+  statsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.textSecondary,
+    letterSpacing: 1.6,
+  },
+  sectionLine: { flex: 1, height: 1, backgroundColor: '#E5E7EB' },
+
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    rowGap: spacing.lg,
+  },
+  statItem: {
+    flexBasis: '33.33%',
+    alignItems: 'flex-start',
+  },
+  statValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.text,
+    letterSpacing: -0.5,
+    lineHeight: 26,
+  },
+  statLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    letterSpacing: 0.4,
+    marginTop: 2,
+  },
+
+  // Actions
+  actions: {
+    marginTop: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md + 2,
+  },
+  actionText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+    letterSpacing: -0.1,
+  },
 });

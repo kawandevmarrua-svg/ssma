@@ -10,6 +10,7 @@ import { supabase } from '../../src/lib/supabase';
 import { SafetyAlert } from '../../src/types/database';
 import { colors } from '../../src/theme/colors';
 import { useLocationTracking } from '../../src/hooks/useLocationTracking';
+import { Avatar } from '../../src/components/ui';
 
 const isExpoGo = Constants.appOwnership === 'expo';
 let Notifications: typeof import('expo-notifications') | null = null;
@@ -111,19 +112,32 @@ export default function OperatorLayout() {
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.textLight,
+        tabBarInactiveTintColor: '#94A3B8',
         tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '600',
-          marginTop: 2,
+          fontSize: 10,
+          fontWeight: '700',
+          letterSpacing: 0.5,
+          marginBottom: 4,
+        },
+        tabBarIconStyle: {
+          marginTop: 4,
         },
         tabBarStyle: {
-          backgroundColor: colors.surface,
-          borderTopColor: colors.border,
-          borderTopWidth: 0.5,
-          height: 64 + insets.bottom,
-          paddingBottom: insets.bottom,
+          height: 70 + insets.bottom,
           paddingTop: 8,
+          paddingBottom: insets.bottom + 6,
+          borderTopLeftRadius: 24,
+          borderTopRightRadius: 24,
+          borderTopWidth: 1,
+          borderLeftWidth: 0,
+          borderRightWidth: 0,
+          borderColor: '#E5E7EB',
+          backgroundColor: '#FFFFFF',
+          shadowColor: '#0F172A',
+          shadowOffset: { width: 0, height: -4 },
+          shadowOpacity: 0.06,
+          shadowRadius: 12,
+          elevation: 12,
         },
         headerStyle: {
           backgroundColor: colors.surface,
@@ -145,8 +159,8 @@ export default function OperatorLayout() {
         options={{
           title: 'Início',
           headerShown: false,
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home" size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'home' : 'home-outline'} size={22} color={color} />
           ),
         }}
       />
@@ -154,8 +168,9 @@ export default function OperatorLayout() {
         name="checklist"
         options={{
           title: 'Checklist',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="checkbox" size={size} color={color} />
+          headerShown: false,
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'checkbox' : 'checkbox-outline'} size={22} color={color} />
           ),
         }}
       />
@@ -163,8 +178,9 @@ export default function OperatorLayout() {
         name="atividade"
         options={{
           title: 'Atividades',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="construct" size={size} color={color} />
+          headerShown: false,
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'construct' : 'construct-outline'} size={22} color={color} />
           ),
         }}
       />
@@ -172,8 +188,9 @@ export default function OperatorLayout() {
         name="alerts"
         options={{
           title: 'Alertas',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="warning" size={size} color={color} />
+          headerShown: false,
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'warning' : 'warning-outline'} size={22} color={color} />
           ),
         }}
       />
@@ -181,8 +198,13 @@ export default function OperatorLayout() {
         name="profile"
         options={{
           title: 'Perfil',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person" size={size} color={color} />
+          headerShown: false,
+          tabBarIcon: ({ focused }) => (
+            <Avatar
+              name={profile?.full_name || profile?.email || ''}
+              size="xs"
+              style={focused ? { borderWidth: 2, borderColor: colors.primary } : undefined}
+            />
           ),
         }}
       />
@@ -205,6 +227,7 @@ export default function OperatorLayout() {
         options={{
           href: null,
           title: 'Selecionar atividade',
+          headerShown: false,
         }}
       />
       <Tabs.Screen
@@ -212,6 +235,14 @@ export default function OperatorLayout() {
         options={{
           href: null,
           title: 'Nova atividade',
+          headerShown: false,
+        }}
+      />
+      <Tabs.Screen
+        name="auditoria"
+        options={{
+          href: null,
+          title: 'Auditoria de atividades',
         }}
       />
     </Tabs>

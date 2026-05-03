@@ -1,36 +1,65 @@
-import { useEffect, useState, useCallback } from 'react';
+import { memo, useEffect, useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   FlatList,
+  SectionList,
   TouchableOpacity,
   TextInput,
   Alert,
   ActivityIndicator,
-  Image,
   RefreshControl,
   KeyboardAvoidingView,
   Platform,
+  Modal,
+  Pressable,
 } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import { useKeepAwake } from 'expo-keep-awake';
-import { decode } from 'base64-arraybuffer';
+import * as Crypto from 'expo-crypto';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { supabase } from '../../src/lib/supabase';
+import { todayLocal } from '../../src/lib/dates';
 import { Machine, MachineChecklistItem } from '../../src/types/database';
 import { colors, elevation, spacing, radius, fontSize } from '../../src/theme/colors';
 import { commonStyles } from '../../src/theme/commonStyles';
 import { Badge } from '../../src/components/ui';
+import { AppHeader } from '../../src/components/AppHeader';
 import { FinishChecklistModal } from '../../src/components/FinishChecklistModal';
 import { usePendingFinishes } from '../../src/hooks/usePendingFinishes';
 
 const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'heic', 'webp'];
+const UPLOAD_CONCURRENCY = 3;
+const SAFE_KEY_RE = /^[a-zA-Z0-9_-]+$/;
+
+// Roda promises com limite de concorrencia para nao saturar rede em 3G
+async function runWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let cursor = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const idx = cursor++;
+      if (idx >= items.length) return;
+      out[idx] = await worker(items[idx], idx);
+    }
+  });
+  await Promise.all(runners);
+  return out;
+}
+
+function isDev() {
+  return typeof __DEV__ !== 'undefined' && __DEV__;
+}
 
 type ItemResponse = {
   status: 'C' | 'NC' | 'NA' | null;
@@ -47,7 +76,92 @@ interface ChecklistRow {
   result: string | null;
   ended_at: string | null;
   created_at: string;
+  equipment_photo_1_url: string | null;
+  environment_photo_url: string | null;
+  photo_signed_url?: string | null;
 }
+
+type RequiredSlot = 'equipment_1' | 'equipment_2' | 'equipment_3' | 'equipment_4' | 'environment';
+
+type PhotoSlotCardProps = {
+  uri: string | null;
+  number?: number;
+  label: string;
+  slot: RequiredSlot;
+  wide?: boolean;
+  onTake: (slot: RequiredSlot) => void;
+  onConfirmClear: (slot: RequiredSlot) => void;
+  onPreview: (uri: string) => void;
+};
+
+const PhotoSlotCard = memo(function PhotoSlotCard({
+  uri,
+  number,
+  label,
+  slot,
+  wide,
+  onTake,
+  onConfirmClear,
+  onPreview,
+}: PhotoSlotCardProps) {
+  const containerStyle = wide ? st.photoSlotWide : st.photoSlot;
+  const imageStyle = wide ? st.photoSlotWideImage : st.photoSlotImage;
+  if (uri) {
+    return (
+      <View style={[containerStyle, st.photoSlotFilled]}>
+        <Pressable
+          style={StyleSheet.absoluteFillObject}
+          onPress={() => onPreview(uri)}
+          onLongPress={() => onConfirmClear(slot)}
+        >
+          <ExpoImage
+            source={{ uri }}
+            style={imageStyle}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+          />
+        </Pressable>
+
+        <View style={st.photoSlotOverlay}>
+          <View style={st.photoSlotTopRow}>
+            {number != null && (
+              <View style={st.photoNumberFilled}>
+                <Text style={st.photoNumberFilledText}>{number}</Text>
+              </View>
+            )}
+            <TouchableOpacity
+              style={st.photoRemoveBtn}
+              onPress={() => onConfirmClear(slot)}
+              hitSlop={8}
+            >
+              <Ionicons name="trash-outline" size={16} color={colors.white} />
+            </TouchableOpacity>
+          </View>
+          <View style={st.photoSlotBottomRow}>
+            <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+            <Text style={st.photoSlotFilledLabel} numberOfLines={1}>{label}</Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
+  return (
+    <TouchableOpacity
+      style={containerStyle}
+      onPress={() => onTake(slot)}
+      activeOpacity={0.7}
+    >
+      {number != null && (
+        <View style={st.photoNumberEmpty}>
+          <Text style={st.photoNumberEmptyText}>{number}</Text>
+        </View>
+      )}
+      <Ionicons name="camera" size={wide ? 36 : 28} color={colors.primary} />
+      <Text style={st.photoSlotLabel}>{label}</Text>
+      <Text style={st.photoSlotHint}>Toque para tirar</Text>
+    </TouchableOpacity>
+  );
+});
 
 export default function ChecklistScreen() {
   const { user, profile } = useAuth();
@@ -73,6 +187,12 @@ export default function ChecklistScreen() {
   const [tag, setTag] = useState('');
   const [shift, setShift] = useState('');
 
+  // Encarregados disponiveis para escolha do responsavel
+  type EncarregadoOption = { id: string; full_name: string | null; email: string };
+  const [encarregados, setEncarregados] = useState<EncarregadoOption[]>([]);
+  const [encarregadosError, setEncarregadosError] = useState(false);
+  const [selectedEncarregadoId, setSelectedEncarregadoId] = useState<string | null>(null);
+
   // Items
   const [templateItems, setTemplateItems] = useState<MachineChecklistItem[]>([]);
   const [itemsLoading, setItemsLoading] = useState(false);
@@ -81,6 +201,8 @@ export default function ChecklistScreen() {
   // Required photos: 4 do equipamento + 1 do ambiente
   const [equipmentPhotos, setEquipmentPhotos] = useState<(string | null)[]>([null, null, null, null]);
   const [environmentPhoto, setEnvironmentPhoto] = useState<string | null>(null);
+  // Preview em tela cheia das fotos tiradas
+  const [previewUri, setPreviewUri] = useState<string | null>(null);
 
   // Result
   const [saving, setSaving] = useState(false);
@@ -89,45 +211,81 @@ export default function ChecklistScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
 
   // --- Data loading ---
   const loadChecklists = useCallback(async () => {
     if (!user) { setListLoading(false); return; }
     const { data } = await supabase
       .from('checklists')
-      .select('id, machine_name, tag, date, status, result, ended_at, created_at')
+      .select('id, machine_name, tag, date, status, result, ended_at, created_at, equipment_photo_1_url, environment_photo_url')
       .eq('operator_id', user.id)
       .order('created_at', { ascending: false })
       .limit(50);
-    setChecklists((data as ChecklistRow[] | null) ?? []);
+    const rows = (data as ChecklistRow[] | null) ?? [];
+
+    // Resolve signed URLs em batch para a foto do card (bucket privado)
+    const paths = Array.from(new Set(
+      rows
+        .map((r) => r.equipment_photo_1_url ?? r.environment_photo_url)
+        .filter((p): p is string => !!p)
+    ));
+    const pathToUrl: Record<string, string> = {};
+    if (paths.length > 0) {
+      const { data: signed } = await supabase.storage
+        .from('checklist-photos')
+        .createSignedUrls(paths, 3600);
+      for (const s of signed ?? []) {
+        if (s.path && s.signedUrl) pathToUrl[s.path] = s.signedUrl;
+      }
+    }
+    const enriched = rows.map((r) => {
+      const p = r.equipment_photo_1_url ?? r.environment_photo_url;
+      return { ...r, photo_signed_url: p ? pathToUrl[p] ?? null : null };
+    });
+    setChecklists(enriched);
     setListLoading(false);
   }, [user]);
 
   const loadMachines = useCallback(async () => {
-    if (!user) {
-      console.log('[Checklist] loadMachines: sem usuario autenticado, aguardando...');
-      return;
-    }
+    if (!user) return;
     const { data, error } = await supabase.from('machines').select('*').eq('active', true).order('name');
-    console.log('[Checklist] loadMachines:', data?.length ?? 0, 'maquinas carregadas', error?.message ?? 'OK');
-    if (data && data.length > 0) {
-      console.log('[Checklist] Exemplo:', data[0].name, '| qr_code:', data[0].qr_code);
+    if (error) {
+      if (isDev()) console.log('[Checklist] loadMachines erro:', error.message);
     }
     setMachines(data ?? []);
   }, [user]);
 
-  useEffect(() => { loadChecklists(); loadMachines(); }, [loadChecklists, loadMachines]);
+  const loadEncarregados = useCallback(async () => {
+    if (!user) return;
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, full_name, email')
+      .eq('role', 'encarregado')
+      .eq('active', true)
+      .order('full_name', { ascending: true });
+    if (error) {
+      if (isDev()) console.log('[Checklist] loadEncarregados erro:', error.message);
+      setEncarregadosError(true);
+      return;
+    }
+    setEncarregadosError(false);
+    setEncarregados((data ?? []) as EncarregadoOption[]);
+  }, [user]);
+
+  useEffect(() => { loadChecklists(); loadMachines(); loadEncarregados(); }, [loadChecklists, loadMachines, loadEncarregados]);
 
   // Load checklist items when machine selected
   useEffect(() => {
     if (!selectedMachine) return;
+    let cancelled = false;
     setItemsLoading(true);
     supabase.from('machine_checklist_items').select('*')
       .eq('machine_id', selectedMachine.id).eq('active', true).order('order_index')
       .then(({ data, error }) => {
+        if (cancelled) return;
         if (error) {
-          console.log('[Checklist] Erro ao carregar itens:', error.message);
+          if (isDev()) console.log('[Checklist] Erro ao carregar itens:', error.message);
           Alert.alert('Erro', 'Nao foi possivel carregar os itens do checklist. Tente novamente.');
           setItemsLoading(false);
           return;
@@ -138,6 +296,7 @@ export default function ChecklistScreen() {
         setResponses(init);
         setItemsLoading(false);
       });
+    return () => { cancelled = true; };
   }, [selectedMachine]);
 
   // --- Helpers ---
@@ -146,13 +305,14 @@ export default function ChecklistScreen() {
     setSelectedMachine(null);
     setMachineSearch('');
     setTag(''); setShift('');
+    setSelectedEncarregadoId(null);
     setTemplateItems([]); setItemsLoading(false); setResponses({});
     setEquipmentPhotos([null, null, null, null]);
     setEnvironmentPhoto(null);
     setScanned(false);
   }
 
-  async function takeRequiredPhoto(slot: 'equipment_1' | 'equipment_2' | 'equipment_3' | 'equipment_4' | 'environment') {
+  const takeRequiredPhoto = useCallback(async (slot: RequiredSlot) => {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) { Alert.alert('Permissao', 'Permita o acesso a camera.'); return; }
     const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.5, allowsEditing: false });
@@ -168,7 +328,31 @@ export default function ChecklistScreen() {
         return copy;
       });
     }
-  }
+  }, []);
+
+  const clearRequiredPhoto = useCallback((slot: RequiredSlot) => {
+    if (slot === 'environment') {
+      setEnvironmentPhoto(null);
+      return;
+    }
+    const idx = parseInt(slot.split('_')[1], 10) - 1;
+    setEquipmentPhotos((prev) => {
+      const copy = [...prev];
+      copy[idx] = null;
+      return copy;
+    });
+  }, []);
+
+  const confirmClearPhoto = useCallback((slot: RequiredSlot) => {
+    Alert.alert(
+      'Remover foto',
+      'Deseja remover esta foto e tirar outra?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Remover', style: 'destructive', onPress: () => clearRequiredPhoto(slot) },
+      ],
+    );
+  }, [clearRequiredPhoto]);
 
   function allRequiredPhotosTaken() {
     return equipmentPhotos.every((p) => !!p) && !!environmentPhoto;
@@ -190,6 +374,13 @@ export default function ChecklistScreen() {
     }));
   }
 
+  function setItemNcDescription(id: string, value: string) {
+    setResponses((p) => ({
+      ...p,
+      [id]: { ...p[id], value },
+    }));
+  }
+
   async function pickItemPhoto(id: string, isPhotoType = false) {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) { Alert.alert('Permissao', 'Permita o acesso a camera.'); return; }
@@ -206,12 +397,12 @@ export default function ChecklistScreen() {
     }
   }
 
-  function calculateResult(): 'released' | 'not_released' {
+  const calculateResult = useCallback((): 'released' | 'not_released' => {
     return templateItems.filter((i) => i.is_blocking).some((i) => responses[i.id]?.status === 'NC')
       ? 'not_released' : 'released';
-  }
+  }, [templateItems, responses]);
 
-  function isItemAnswered(item: MachineChecklistItem): boolean {
+  const isItemAnswered = useCallback((item: MachineChecklistItem): boolean => {
     const r = responses[item.id];
     if (!r) return false;
     if (item.response_type === 'text' || item.response_type === 'numeric') {
@@ -220,106 +411,130 @@ export default function ChecklistScreen() {
     if (item.response_type === 'photo') {
       return !!r.photoUri;
     }
-    return r.status !== null;
-  }
+    if (r.status === null) return false;
+    if (r.status === 'NC' && !r.photoUri) return false;
+    return true;
+  }, [responses]);
 
-  function allItemsAnswered() {
-    return templateItems.every(isItemAnswered);
-  }
+  const allItemsAnswered = useCallback(
+    () => templateItems.every(isItemAnswered),
+    [templateItems, isItemAnswered],
+  );
 
-  async function uploadPhoto(uri: string, checklistId: string, itemId: string) {
-    try {
-      const ext = uri.split('.').pop()?.toLowerCase() ?? 'jpg';
-      if (!ALLOWED_EXTENSIONS.includes(ext)) {
-        Alert.alert('Falha no upload da foto', `Tipo de imagem nao suportado: .${ext}`);
-        return null;
-      }
-      const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      const path = `${user?.id}/${checklistId}/${itemId}.${ext}`;
-      const { error } = await supabase.storage.from('checklist-photos')
-        .upload(path, decode(base64), { contentType: `image/${ext === 'jpg' ? 'jpeg' : ext}`, upsert: true });
-      if (error) {
-        console.log('[Upload] Erro checklist foto:', error.message);
-        Alert.alert('Falha no upload da foto', `${itemId}: ${error.message}`);
-        return null;
-      }
-      return path;
-    } catch (e: any) {
-      console.log('[Upload] Excecao:', e);
-      Alert.alert('Falha no upload da foto', e?.message ?? 'Erro inesperado ao enviar a imagem.');
-      return null;
+  async function uploadPhoto(
+    uri: string,
+    checklistId: string,
+    itemId: string,
+    label?: string,
+  ): Promise<string> {
+    if (!user?.id) throw new Error('Sessao expirada. Faca login novamente.');
+    if (!SAFE_KEY_RE.test(checklistId) || !SAFE_KEY_RE.test(itemId)) {
+      throw new Error('Identificador invalido para upload.');
     }
+    const ext = (uri.split('.').pop() ?? 'jpg').toLowerCase();
+    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+      throw new Error(`Tipo de imagem nao suportado: .${ext}`);
+    }
+    // ArrayBuffer evita inflar a memoria em ~33% que o base64 causaria
+    const res = await fetch(uri);
+    if (!res.ok) throw new Error('Nao foi possivel ler a foto local.');
+    const buffer = await res.arrayBuffer();
+    const path = `${user.id}/${checklistId}/${itemId}.${ext}`;
+    const { error } = await supabase.storage
+      .from('checklist-photos')
+      .upload(path, buffer, {
+        contentType: `image/${ext === 'jpg' ? 'jpeg' : ext}`,
+        upsert: true,
+      });
+    if (error) {
+      if (isDev()) console.log('[Upload] Erro checklist foto:', error.message);
+      throw new Error(label ? `Falha ao enviar "${label}".` : 'Falha ao enviar a foto.');
+    }
+    return path;
   }
 
-  function getGroupedItems() {
+  const groupedItems = useMemo(() => {
     const groups: Record<string, MachineChecklistItem[]> = {};
     templateItems.forEach((i) => {
-      const s = i.section || 'Geral';
+      const s = i.section || 'Itens de segurança e funcionamento';
       if (!groups[s]) groups[s] = [];
       groups[s].push(i);
     });
     return groups;
-  }
+  }, [templateItems]);
+
+  const sections = useMemo(() => {
+    const pending: ChecklistRow[] = [];
+    const history: ChecklistRow[] = [];
+    for (const item of checklists) {
+      const isQueuedFinish = pendingFinishes.checklistIds.has(item.id);
+      const isPending = item.status === 'pending' && !isQueuedFinish;
+      if (isPending) pending.push(item);
+      else history.push(item);
+    }
+    const out: { key: string; title: string; data: ChecklistRow[] }[] = [];
+    if (pending.length > 0) out.push({ key: 'pending', title: 'Em andamento', data: pending });
+    if (history.length > 0) out.push({ key: 'history', title: 'Histórico', data: history });
+    return out;
+  }, [checklists, pendingFinishes.checklistIds]);
 
   // --- QR handler ---
   function normalize(str: string): string {
     return str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
   }
 
-  function findMachineMatch(qrData: string): Machine | undefined {
+  // Retorna match exato (selecao automatica) ou candidatos para o operador escolher.
+  // Match exato so acontece quando o QR/codigo identifica unicamente uma maquina.
+  function findMachineMatch(qrData: string): { exact?: Machine; candidates: Machine[] } {
     const raw = qrData.trim();
     const norm = normalize(raw);
 
-    // 1) Exact match on qr_code (e.g. "MAQ-A1B2C3D4")
+    // Tentativas de match exato (sem ambiguidade)
     const byQr = machines.find((m) => m.qr_code === raw);
-    if (byQr) return byQr;
+    if (byQr) return { exact: byQr, candidates: [] };
 
-    // 2) Case-insensitive match on qr_code
     const byQrLower = machines.find((m) => m.qr_code?.toLowerCase() === raw.toLowerCase());
-    if (byQrLower) return byQrLower;
+    if (byQrLower) return { exact: byQrLower, candidates: [] };
 
-    // 3) Exact match on id (UUID)
     const byId = machines.find((m) => m.id === raw);
-    if (byId) return byId;
+    if (byId) return { exact: byId, candidates: [] };
 
-    // 4) Try parsing as JSON
     try {
       const parsed = JSON.parse(raw);
-      if (parsed.qr_code) {
-        const m = machines.find((m) => m.qr_code === parsed.qr_code);
-        if (m) return m;
+      if (parsed?.qr_code) {
+        const m = machines.find((mm) => mm.qr_code === parsed.qr_code);
+        if (m) return { exact: m, candidates: [] };
       }
-      if (parsed.id) {
-        const m = machines.find((m) => m.id === parsed.id);
-        if (m) return m;
+      if (parsed?.id) {
+        const m = machines.find((mm) => mm.id === parsed.id);
+        if (m) return { exact: m, candidates: [] };
       }
-      if (parsed.name) {
-        const m = machines.find((m) => normalize(m.name) === normalize(parsed.name));
-        if (m) return m;
+      if (parsed?.name) {
+        const m = machines.find((mm) => normalize(mm.name) === normalize(parsed.name));
+        if (m) return { exact: m, candidates: [] };
       }
     } catch { /* not JSON */ }
 
-    // 5) Exact match on name (case/accent insensitive)
     const byName = machines.find((m) => normalize(m.name) === norm);
-    if (byName) return byName;
+    if (byName) return { exact: byName, candidates: [] };
 
-    // 6) Match on tag
     const byTag = machines.find((m) => m.tag && normalize(m.tag) === norm);
-    if (byTag) return byTag;
+    if (byTag) return { exact: byTag, candidates: [] };
 
-    // 7) Partial name match
-    const byPartial = machines.find((m) =>
-      normalize(m.name).includes(norm) || norm.includes(normalize(m.name))
+    // Matches difusos: nunca auto-seleciona, retorna candidatos
+    const candidates = machines.filter((m) =>
+      normalize(m.name).includes(norm) ||
+      norm.includes(normalize(m.name)) ||
+      (m.qr_code && norm.includes(m.qr_code.toLowerCase())),
     );
-    if (byPartial) return byPartial;
+    return { candidates };
+  }
 
-    // 8) QR data contains qr_code somewhere (e.g. URL with code in it)
-    const byQrContains = machines.find((m) => m.qr_code && norm.includes(m.qr_code.toLowerCase()));
-    if (byQrContains) return byQrContains;
-
-    return undefined;
+  function selectMachine(machine: Machine) {
+    setSelectedMachine(machine);
+    setTag(machine.tag || machine.qr_code || '');
+    setMachines((prev) => prev.some((m) => m.id === machine.id) ? prev : [...prev, machine]);
+    setView('items');
   }
 
   async function handleBarcode({ data }: { data: string }) {
@@ -328,16 +543,14 @@ export default function ChecklistScreen() {
 
     const raw = data.trim();
 
-    // 1) Try local match first (instant)
-    const localMatch = findMachineMatch(raw);
-    if (localMatch) {
-      setSelectedMachine(localMatch);
-      setTag(localMatch.tag || localMatch.qr_code || '');
-      setView('items');
+    // 1) Match local
+    const local = findMachineMatch(raw);
+    if (local.exact) {
+      selectMachine(local.exact);
       return;
     }
 
-    // 2) Local match failed — query Supabase directly by qr_code
+    // 2) Match exato no Supabase por qr_code
     try {
       const { data: byQr } = await supabase
         .from('machines')
@@ -347,15 +560,11 @@ export default function ChecklistScreen() {
         .maybeSingle();
 
       if (byQr) {
-        const machine = byQr as Machine;
-        setSelectedMachine(machine);
-        setTag(machine.tag || machine.qr_code || '');
-        setMachines((prev) => prev.some((m) => m.id === machine.id) ? prev : [...prev, machine]);
-        setView('items');
+        selectMachine(byQr as Machine);
         return;
       }
 
-      // 3) Try by name (case-insensitive)
+      // 3) Match exato por nome (case-insensitive)
       const { data: byName } = await supabase
         .from('machines')
         .select('*')
@@ -365,19 +574,27 @@ export default function ChecklistScreen() {
         .maybeSingle();
 
       if (byName) {
-        const machine = byName as Machine;
-        setSelectedMachine(machine);
-        setTag(machine.tag || machine.qr_code || '');
-        setMachines((prev) => prev.some((m) => m.id === machine.id) ? prev : [...prev, machine]);
-        setView('items');
+        selectMachine(byName as Machine);
         return;
       }
     } catch {
-      // Query failed — continue to manual selection
+      // ignora — cai pro fluxo manual
     }
 
-    // 4) Nothing found — show diagnostic info
+    // 4) Sem match exato. Se houver candidatos parciais, deixa o operador escolher.
     setTag(raw);
+    if (local.candidates.length > 0) {
+      Alert.alert(
+        'Confirme a maquina',
+        `Codigo lido: "${raw}"\n\nNao encontramos correspondencia exata. Selecione manualmente.`,
+        [
+          { text: 'Cancelar', style: 'cancel', onPress: () => setScanned(false) },
+          { text: 'Selecionar', onPress: () => { setView('pick'); setScanned(false); } },
+        ],
+      );
+      return;
+    }
+
     const msg = machines.length === 0
       ? `Codigo: "${raw}"\n\nNenhuma maquina foi carregada. Verifique se existem maquinas cadastradas no painel web.`
       : `Codigo: "${raw}"\n\n${machines.length} maquinas carregadas, mas nenhuma com este codigo.\n\nSelecione manualmente.`;
@@ -390,78 +607,126 @@ export default function ChecklistScreen() {
   async function handleSave() {
     if (saving) return;
     if (!user || !selectedMachine || !profile) return;
+    if (!selectedEncarregadoId) {
+      Alert.alert('Atencao', 'Selecione o encarregado responsavel antes de salvar.');
+      return;
+    }
+    if (!allItemsAnswered()) {
+      Alert.alert('Atencao', 'Responda todos os itens antes de salvar.');
+      return;
+    }
     if (!allRequiredPhotosTaken()) {
       Alert.alert('Atencao', 'Anexe as 4 fotos do equipamento e a foto do ambiente antes de salvar.');
       return;
     }
+
     setSaving(true);
     const result = calculateResult();
+    // ID gerado no cliente: permite subir as fotos ANTES de criar a linha,
+    // garantindo que nenhum checklist orfao seja persistido em caso de falha.
+    const checklistId = Crypto.randomUUID();
+    const uploadedPaths: string[] = [];
 
-    const { data: preOp } = await supabase
-      .from('pre_operation_checks').select('id')
-      .eq('operator_id', user.id).eq('date', today).single();
+    try {
+      // 1) Subir fotos obrigatorias com concorrencia limitada
+      const equipmentLabels = ['Frente', 'Traseira', 'Lateral esquerda', 'Lateral direita'];
+      const eqUploads = equipmentPhotos.map((uri, idx) => ({ uri, idx }));
+      const equipmentPaths = await runWithConcurrency(eqUploads, UPLOAD_CONCURRENCY, async ({ uri, idx }) => {
+        if (!uri) return null;
+        const path = await uploadPhoto(uri, checklistId, `equipment_${idx + 1}`, equipmentLabels[idx]);
+        uploadedPaths.push(path);
+        return path;
+      });
 
-    const { data: checklist, error: clErr } = await supabase.from('checklists').insert({
-      operator_id: user.id,
-      machine_id: selectedMachine.id,
-      pre_operation_id: preOp?.id ?? null,
-      machine_name: selectedMachine.name,
-      tag: tag || selectedMachine.tag || null,
-      shift: shift || null,
-      max_load_capacity: selectedMachine.max_load_capacity || null,
-      date: today, status: 'pending', result,
-      inspector_name: profile.full_name || null,
-    }).select().single();
+      let environmentPath: string | null = null;
+      if (environmentPhoto) {
+        environmentPath = await uploadPhoto(environmentPhoto, checklistId, 'environment', 'Ambiente');
+        uploadedPaths.push(environmentPath);
+      }
 
-    if (clErr || !checklist) {
-      Alert.alert('Erro', clErr?.message ?? 'Erro ao criar checklist.');
+      // 2) Subir fotos por item (mesmo limite de concorrencia)
+      const entries = Object.entries(responses);
+      const itemPhotoTargets = entries
+        .map(([itemId, resp]) => ({ itemId, uri: resp.photoUri }))
+        .filter((t): t is { itemId: string; uri: string } => !!t.uri);
+      const itemPaths = await runWithConcurrency(itemPhotoTargets, UPLOAD_CONCURRENCY, async ({ itemId, uri }) => {
+        const item = templateItems.find((i) => i.id === itemId);
+        const path = await uploadPhoto(uri, checklistId, itemId, item?.description);
+        uploadedPaths.push(path);
+        return { itemId, path };
+      });
+      const photoUrls: Record<string, string> = {};
+      for (const { itemId, path } of itemPaths) photoUrls[itemId] = path;
+
+      // 3) Buscar pre_operation_check do dia (opcional)
+      const { data: preOp } = await supabase
+        .from('pre_operation_checks').select('id')
+        .eq('operator_id', user.id).eq('date', today).maybeSingle();
+
+      const selectedEncarregado = encarregados.find((e) => e.id === selectedEncarregadoId);
+
+      // 4) Insert do checklist com ID pre-gerado e ja com as URLs das fotos
+      const { error: clErr } = await supabase.from('checklists').insert({
+        id: checklistId,
+        operator_id: user.id,
+        machine_id: selectedMachine.id,
+        pre_operation_id: preOp?.id ?? null,
+        machine_name: selectedMachine.name,
+        tag: tag || selectedMachine.tag || null,
+        shift: shift || null,
+        max_load_capacity: selectedMachine.max_load_capacity || null,
+        date: today,
+        status: 'pending',
+        result,
+        encarregado_id: selectedEncarregadoId,
+        inspector_name: selectedEncarregado?.full_name || selectedEncarregado?.email || null,
+        equipment_photo_1_url: equipmentPaths[0],
+        equipment_photo_2_url: equipmentPaths[1],
+        equipment_photo_3_url: equipmentPaths[2],
+        equipment_photo_4_url: equipmentPaths[3],
+        environment_photo_url: environmentPath,
+      });
+      if (clErr) {
+        if (isDev()) console.log('[Checklist] Insert erro:', clErr.message);
+        throw new Error('Nao foi possivel salvar o checklist. Tente novamente.');
+      }
+
+      // 5) Insert das respostas — falha aqui aciona rollback do checklist
+      const { error: respErr } = await supabase.from('checklist_responses').insert(
+        entries.map(([itemId, resp]) => ({
+          checklist_id: checklistId,
+          machine_item_id: itemId,
+          status: resp.status ?? 'C',
+          response_value: resp.value ?? null,
+          photo_url: photoUrls[itemId] ?? null,
+        })),
+      );
+      if (respErr) {
+        if (isDev()) console.log('[Checklist] Insert responses erro:', respErr.message);
+        await supabase.from('checklists').delete().eq('id', checklistId);
+        throw new Error('Nao foi possivel salvar as respostas. Tente novamente.');
+      }
+
+      const msg = result === 'released'
+        ? 'EQUIPAMENTO LIBERADO AO TRABALHO'
+        : 'NAO LIBERADO. SOLICITAR MANUTENCAO';
+
+      Alert.alert(msg, 'Checklist salvo!', [
+        { text: 'OK', onPress: () => { resetFlow(); loadChecklists(); } },
+      ]);
+    } catch (e: any) {
+      // Limpa storage para nao deixar lixo orfao no bucket
+      if (uploadedPaths.length > 0) {
+        try {
+          await supabase.storage.from('checklist-photos').remove(uploadedPaths);
+        } catch (cleanupErr) {
+          if (isDev()) console.log('[Checklist] Cleanup erro:', cleanupErr);
+        }
+      }
+      Alert.alert('Erro ao salvar', e?.message ?? 'Falha inesperada ao salvar o checklist.');
+    } finally {
       setSaving(false);
-      return;
     }
-
-    // Upload das fotos obrigatorias do equipamento + ambiente
-    const equipmentPaths: (string | null)[] = await Promise.all(
-      equipmentPhotos.map((uri, idx) =>
-        uri ? uploadPhoto(uri, checklist.id, `equipment_${idx + 1}`) : Promise.resolve(null),
-      ),
-    );
-    const environmentPath = environmentPhoto
-      ? await uploadPhoto(environmentPhoto, checklist.id, 'environment')
-      : null;
-
-    await supabase.from('checklists').update({
-      equipment_photo_1_url: equipmentPaths[0],
-      equipment_photo_2_url: equipmentPaths[1],
-      equipment_photo_3_url: equipmentPaths[2],
-      equipment_photo_4_url: equipmentPaths[3],
-      environment_photo_url: environmentPath,
-    }).eq('id', checklist.id);
-
-    // Upload photos & save responses
-    const entries = Object.entries(responses);
-    const photoUrls: Record<string, string | null> = {};
-    for (const [itemId, resp] of entries) {
-      if (resp.photoUri) photoUrls[itemId] = await uploadPhoto(resp.photoUri, checklist.id, itemId);
-    }
-    await supabase.from('checklist_responses').insert(
-      entries.map(([itemId, resp]) => ({
-        checklist_id: checklist.id,
-        machine_item_id: itemId,
-        status: resp.status ?? 'C',
-        response_value: resp.value ?? null,
-        photo_url: photoUrls[itemId] ?? null,
-      }))
-    );
-
-    setSaving(false);
-
-    const msg = result === 'released'
-      ? 'EQUIPAMENTO LIBERADO AO TRABALHO'
-      : 'NAO LIBERADO. SOLICITAR MANUTENCAO';
-
-    Alert.alert(msg, 'Checklist salvo!', [
-      { text: 'OK', onPress: () => { resetFlow(); loadChecklists(); } },
-    ]);
   }
 
   // --- VIEWS ---
@@ -523,13 +788,13 @@ export default function ChecklistScreen() {
 
     return (
       <View style={st.page}>
+        <AppHeader />
         <View style={st.pickHeader}>
           <TouchableOpacity style={st.backRow} onPress={resetFlow}>
-            <Ionicons name="arrow-back" size={22} color={colors.primary} />
+            <Ionicons name="arrow-back" size={18} color={colors.textSecondary} />
             <Text style={st.backText}>Voltar</Text>
           </TouchableOpacity>
-          <Text style={st.stepTitle}>Selecione a Maquina</Text>
-          <Text style={st.pickSubtitle}>{machines.length} maquinas disponiveis</Text>
+          <Text style={st.pickFieldLabel}>Selecionar máquina</Text>
           <View style={st.searchRow}>
             <Ionicons name="search" size={20} color={colors.textLight} style={st.searchIcon} />
             <TextInput
@@ -559,7 +824,7 @@ export default function ChecklistScreen() {
               activeOpacity={0.7}
             >
               <View style={st.machineIconWrap}>
-                <Ionicons name="construct" size={24} color={colors.primary} />
+                <Ionicons name="camera-outline" size={22} color={colors.textSecondary} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={st.machineName} numberOfLines={2}>{item.name}</Text>
@@ -605,88 +870,211 @@ export default function ChecklistScreen() {
       );
     }
 
-    const groups = getGroupedItems();
+    const groups = groupedItems;
     const answered = templateItems.filter(isItemAnswered).length;
     const total = templateItems.length;
     const progress = total > 0 ? answered / total : 0;
 
     return (
       <KeyboardAvoidingView style={st.page} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <AppHeader />
       <ScrollView contentContainerStyle={st.scroll} keyboardShouldPersistTaps="handled">
-        <TouchableOpacity style={st.backRow} onPress={() => setView('pick')}>
-          <Ionicons name="arrow-back" size={22} color={colors.primary} />
+        <TouchableOpacity style={st.backRow} onPress={() => setView('pick')} hitSlop={10} activeOpacity={0.7}>
+          <Ionicons name="arrow-back" size={20} color={colors.text} />
           <Text style={st.backText}>Voltar</Text>
         </TouchableOpacity>
+        <View style={[st.encarregadoChoice, st.encarregadoChoiceSel]}>
+          <View style={[st.encarregadoAvatar, st.encarregadoAvatarSel]}>
+            <Ionicons name="image-outline" size={22} color={colors.primary} />
+          </View>
+          <View style={st.encarregadoInfo}>
+            <Text style={st.encarregadoName} numberOfLines={1}>
+              {selectedMachine?.name}
+            </Text>
+            <Text style={st.encarregadoRole}>
+              {selectedMachine?.tag || selectedMachine?.qr_code || 'Sem TAG'}
+            </Text>
+          </View>
+        </View>
 
-        <Text style={st.stepTitle}>Checklist — {selectedMachine?.name}</Text>
-        {selectedMachine?.tag && (
-          <Text style={st.headerInfo}>TAG: {selectedMachine.tag}</Text>
+        {/* Responsavel (Encarregado) */}
+        <Text style={st.sectionLabel}>Encarregado responsável</Text>
+        {encarregados.length === 0 ? (
+          <View style={st.emptyEncarregado}>
+            <Ionicons
+              name={encarregadosError ? 'alert-circle-outline' : 'person-outline'}
+              size={20}
+              color={encarregadosError ? colors.danger : colors.textLight}
+            />
+            <Text style={st.emptyEncarregadoText}>
+              {encarregadosError
+                ? 'Falha ao carregar encarregados. Verifique sua conexao.'
+                : 'Nenhum encarregado ativo cadastrado. Solicite o cadastro ao admin.'}
+            </Text>
+            {encarregadosError && (
+              <TouchableOpacity
+                style={st.permBtn}
+                onPress={() => loadEncarregados()}
+              >
+                <Text style={st.permBtnText}>Tentar novamente</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : (
+          encarregados.map((e) => {
+            const isSel = e.id === selectedEncarregadoId;
+            const display = e.full_name || e.email;
+            return (
+              <TouchableOpacity
+                key={e.id}
+                style={[st.encarregadoChoice, isSel && st.encarregadoChoiceSel]}
+                onPress={() => setSelectedEncarregadoId(e.id)}
+                activeOpacity={0.8}
+              >
+                <View style={[st.encarregadoAvatar, isSel && st.encarregadoAvatarSel]}>
+                  <Ionicons
+                    name="image-outline"
+                    size={22}
+                    color={isSel ? colors.primary : colors.textSecondary}
+                  />
+                </View>
+                <View style={st.encarregadoInfo}>
+                  <Text style={st.encarregadoName} numberOfLines={1}>{display}</Text>
+                  <Text style={st.encarregadoRole}>Encarregado</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })
         )}
 
-        {/* Turno */}
-        <View style={st.shiftRow}>
+        {/* Turno — segmented control */}
+        <Text style={st.sectionLabel}>Turno</Text>
+        <View style={st.segmented}>
           {['Diurno', 'Noturno'].map((sv) => (
-            <TouchableOpacity key={sv} style={[st.shiftBtn, shift === sv && st.shiftBtnActive]} onPress={() => setShift(sv)}>
-              <Text style={[st.shiftBtnText, shift === sv && st.shiftBtnTextActive]}>{sv}</Text>
+            <TouchableOpacity
+              key={sv}
+              style={[st.segmentedItem, shift === sv && st.segmentedItemActive]}
+              onPress={() => setShift(sv)}
+              activeOpacity={0.7}
+            >
+              <Text style={[st.segmentedText, shift === sv && st.segmentedTextActive]}>{sv}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* Progress bar */}
+        {/* Progress */}
         <View style={st.progressWrap}>
+          <View style={st.progressTextRow}>
+            <Text style={st.progressLabel}>Progresso</Text>
+            <Text style={st.progressCount}>{answered} de {total}</Text>
+          </View>
           <View style={st.progressBar}>
             <View style={[st.progressFill, { width: `${progress * 100}%` }]} />
           </View>
-          <Text style={st.progressLabel}>{answered}/{total} itens</Text>
         </View>
 
-        {Object.entries(groups).map(([section, items]) => (
+        {Object.entries(groups).map(([section, items]) => {
+          const sectionAnswered = items.filter(isItemAnswered).length;
+          return (
           <View key={section}>
-            <Text style={st.sectionTitle}>{section}</Text>
-            {items.map((item) => {
+            <View style={st.groupHeader}>
+              <Text style={st.groupTitle}>{section}</Text>
+              <View style={[
+                st.groupCount,
+                sectionAnswered === items.length && st.groupCountDone,
+              ]}>
+                <Text style={[
+                  st.groupCountText,
+                  sectionAnswered === items.length && st.groupCountTextDone,
+                ]}>
+                  {sectionAnswered}/{items.length}
+                </Text>
+              </View>
+            </View>
+            {items.map((item, idx) => {
               const resp = responses[item.id];
+              const answered = isItemAnswered(item);
               return (
-                <View key={item.id} style={[st.itemCard, item.is_blocking && st.itemBlocking]}>
+                <View
+                  key={item.id}
+                  style={[
+                    st.itemCard,
+                    item.is_blocking && st.itemBlocking,
+                    answered && resp?.status !== 'NC' && st.itemAnswered,
+                    resp?.status === 'NC' && st.itemNc,
+                  ]}
+                >
                   <View style={st.itemHeader}>
+                    <View style={st.itemNumber}>
+                      <Text style={st.itemNumberText}>{idx + 1}</Text>
+                    </View>
                     <Text style={st.itemDesc}>{item.description}</Text>
-                    {item.is_blocking && (
-                      <View style={st.blockBadge}>
-                        <Ionicons name="alert" size={12} color={colors.danger} />
-                        <Text style={st.blockText}>Impeditivo</Text>
-                      </View>
+                    {answered && resp?.status !== 'NC' && (
+                      <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+                    )}
+                    {resp?.status === 'NC' && (
+                      <Ionicons name="alert-circle" size={18} color={colors.danger} />
                     )}
                   </View>
+                  {item.is_blocking && (
+                    <View style={st.blockingRow}>
+                      <Ionicons name="alert" size={11} color={colors.danger} />
+                      <Text style={st.blockText}>Item impeditivo</Text>
+                    </View>
+                  )}
 
                   {(item.response_type === 'yes_no' || item.response_type === 'yes_no_na') && (
-                    <View style={st.statusRow}>
-                      <TouchableOpacity
-                        style={[st.statusBtn, resp?.status === 'C' && st.statusC]}
-                        onPress={() => setItemStatus(item.id, 'C')}
-                      >
-                        <Text style={[st.statusBtnText, resp?.status === 'C' && st.statusBtnTextActive]}>Sim</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[st.statusBtn, resp?.status === 'NC' && st.statusNC]}
-                        onPress={() => setItemStatus(item.id, 'NC')}
-                      >
-                        <Text style={[st.statusBtnText, resp?.status === 'NC' && st.statusBtnTextActive]}>Nao</Text>
-                      </TouchableOpacity>
-                      {item.response_type === 'yes_no_na' && (
+                    <>
+                      <View style={st.statusRow}>
                         <TouchableOpacity
-                          style={[st.statusBtn, resp?.status === 'NA' && st.statusNA]}
-                          onPress={() => setItemStatus(item.id, 'NA')}
+                          style={[st.statusBtn, resp?.status === 'C' && st.statusC]}
+                          onPress={() => setItemStatus(item.id, 'C')}
                         >
-                          <Text style={[st.statusBtnText, resp?.status === 'NA' && st.statusBtnTextActive]}>N.A.</Text>
+                          <Text style={[st.statusBtnText, resp?.status === 'C' && st.statusBtnTextActive]}>Sim</Text>
                         </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[st.statusBtn, resp?.status === 'NC' && st.statusNC]}
+                          onPress={() => setItemStatus(item.id, 'NC')}
+                        >
+                          <Text style={[st.statusBtnText, resp?.status === 'NC' && st.statusBtnTextActive]}>Nao</Text>
+                        </TouchableOpacity>
+                        {item.response_type === 'yes_no_na' && (
+                          <TouchableOpacity
+                            style={[st.statusBtn, resp?.status === 'NA' && st.statusNA]}
+                            onPress={() => setItemStatus(item.id, 'NA')}
+                          >
+                            <Text style={[st.statusBtnText, resp?.status === 'NA' && st.statusBtnTextActive]}>N.A.</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+
+                      {resp?.status === 'NC' && (
+                        <View style={st.ncPanel}>
+                          <Text style={st.ncPanelTitle}>Evidencia da nao conformidade</Text>
+                          <TextInput
+                            style={st.textInput}
+                            placeholder="Descreva o que aconteceu (opcional)"
+                            placeholderTextColor={colors.textLight}
+                            value={resp?.value ?? ''}
+                            onChangeText={(t) => setItemNcDescription(item.id, t)}
+                            multiline
+                          />
+                          <TouchableOpacity
+                            style={[st.photoFullBtn, { marginTop: spacing.sm }]}
+                            onPress={() => pickItemPhoto(item.id)}
+                          >
+                            <Ionicons
+                              name={resp?.photoUri ? 'checkmark-circle' : 'camera'}
+                              size={20}
+                              color={resp?.photoUri ? colors.success : colors.primary}
+                            />
+                            <Text style={[st.photoFullBtnText, resp?.photoUri && { color: colors.success }]}>
+                              {resp?.photoUri ? 'Foto capturada — toque para refazer' : 'Tirar foto * (obrigatoria)'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
                       )}
-                      <TouchableOpacity style={st.photoBtn} onPress={() => pickItemPhoto(item.id)}>
-                        <Ionicons
-                          name={resp?.photoUri ? 'image' : 'camera-outline'}
-                          size={20}
-                          color={resp?.photoUri ? colors.success : colors.textSecondary}
-                        />
-                      </TouchableOpacity>
-                    </View>
+                    </>
                   )}
 
                   {item.response_type === 'text' && (
@@ -724,12 +1112,20 @@ export default function ChecklistScreen() {
                     </TouchableOpacity>
                   )}
 
-                  {resp?.photoUri && <Image source={{ uri: resp.photoUri }} style={st.thumb} />}
+                  {resp?.photoUri && (
+                    <ExpoImage
+                      source={{ uri: resp.photoUri }}
+                      style={st.thumb}
+                      contentFit="cover"
+                      cachePolicy="memory-disk"
+                    />
+                  )}
                 </View>
               );
             })}
           </View>
-        ))}
+          );
+        })}
 
         {templateItems.length === 0 && (
           <View style={st.centered}>
@@ -741,14 +1137,29 @@ export default function ChecklistScreen() {
 
         {templateItems.length > 0 && (
           <TouchableOpacity
-            style={[st.nextBtn, !allItemsAnswered() && st.btnDisabled]}
+            style={[st.nextBtn, (!allItemsAnswered() || !selectedEncarregadoId) && st.btnDisabled]}
             onPress={() => {
-              if (allItemsAnswered()) setView('photos');
-              else Alert.alert('Atencao', 'Responda todos os itens antes de prosseguir.');
+              if (!selectedEncarregadoId) {
+                Alert.alert('Atencao', 'Selecione o encarregado responsavel antes de prosseguir.');
+                return;
+              }
+              if (allItemsAnswered()) {
+                setView('photos');
+                return;
+              }
+              const hasNcWithoutPhoto = templateItems.some((i) => {
+                const r = responses[i.id];
+                return r?.status === 'NC' && !r?.photoUri;
+              });
+              if (hasNcWithoutPhoto) {
+                Alert.alert('Atencao', 'Anexe uma foto em cada item marcado como "Nao" antes de prosseguir.');
+              } else {
+                Alert.alert('Atencao', 'Responda todos os itens antes de prosseguir.');
+              }
             }}
           >
-            <Text style={st.nextBtnText}>Proximo: Fotos</Text>
-            <Ionicons name="arrow-forward" size={20} color={colors.white} />
+            <Text style={st.nextBtnText}>Continuar</Text>
+            <Ionicons name="arrow-forward" size={18} color={colors.white} />
           </TouchableOpacity>
         )}
       </ScrollView>
@@ -759,91 +1170,121 @@ export default function ChecklistScreen() {
   // PHOTOS — 4 fotos do equipamento + 1 do ambiente
   if (view === 'photos') {
     const equipmentLabels = [
-      'Foto 1 do equipamento',
-      'Foto 2 do equipamento',
-      'Foto 3 do equipamento',
-      'Foto 4 do equipamento',
+      'Frente',
+      'Traseira',
+      'Lateral esquerda',
+      'Lateral direita',
     ];
     const taken = equipmentPhotos.filter((p) => !!p).length + (environmentPhoto ? 1 : 0);
+    const totalSlots = 5;
+    const progressPct = Math.round((taken / totalSlots) * 100);
 
     return (
-      <ScrollView style={st.page} contentContainerStyle={st.scroll}>
-        <TouchableOpacity style={st.backRow} onPress={() => setView('items')}>
-          <Ionicons name="arrow-back" size={22} color={colors.primary} />
-          <Text style={st.backText}>Voltar</Text>
-        </TouchableOpacity>
-
-        <Text style={st.stepTitle}>Fotos obrigatorias</Text>
-        <Text style={st.headerInfo}>
-          Anexe 4 fotos do equipamento e 1 foto do ambiente onde voce vai trabalhar.
-        </Text>
-
-        <View style={st.progressWrap}>
-          <View style={st.progressBar}>
-            <View style={[st.progressFill, { width: `${(taken / 5) * 100}%` }]} />
+      <>
+        <View style={st.page}>
+        <AppHeader />
+        <ScrollView contentContainerStyle={st.scroll}>
+          <TouchableOpacity style={st.backRow} onPress={() => setView('items')}>
+            <Ionicons name="arrow-back" size={18} color={colors.textSecondary} />
+            <Text style={st.backText}>Voltar</Text>
+          </TouchableOpacity>
+          <View style={st.photosHeader}>
+            <Text style={st.stepTitle}>Registro do equipamento</Text>
           </View>
-          <Text style={st.progressLabel}>{taken}/5 fotos</Text>
+
+          <View style={st.progressCard}>
+            <View style={st.progressTopRow}>
+              <Text style={st.progressTitle}>Progresso</Text>
+              <Text style={st.progressValue}>{taken}/{totalSlots}</Text>
+            </View>
+            <View style={st.progressBar}>
+              <View style={[st.progressFill, { width: `${progressPct}%` }]} />
+            </View>
+            <Text style={st.progressHint}>
+              {taken === totalSlots
+                ? 'Tudo certo, pode finalizar.'
+                : `Faltam ${totalSlots - taken} foto${totalSlots - taken > 1 ? 's' : ''}.`}
+            </Text>
+          </View>
+
+          <Text style={st.sectionTitle}>Equipamento</Text>
+          <View style={st.photoGrid}>
+            {equipmentPhotos.map((uri, idx) => (
+              <PhotoSlotCard
+                key={idx}
+                uri={uri}
+                number={idx + 1}
+                label={equipmentLabels[idx]}
+                slot={`equipment_${idx + 1}` as RequiredSlot}
+                onTake={takeRequiredPhoto}
+                onConfirmClear={confirmClearPhoto}
+                onPreview={setPreviewUri}
+              />
+            ))}
+          </View>
+
+          <Text style={[st.sectionTitle, { marginTop: 0, marginBottom: 0, lineHeight: 14 }]}>Ambiente de trabalho</Text>
+          <PhotoSlotCard
+            uri={environmentPhoto}
+            label="Local onde você vai operar"
+            slot="environment"
+            wide
+            onTake={takeRequiredPhoto}
+            onConfirmClear={confirmClearPhoto}
+            onPreview={setPreviewUri}
+          />
+
+          <TouchableOpacity
+            style={[st.nextBtn, (!allRequiredPhotosTaken() || saving) && st.btnDisabled]}
+            onPress={() => {
+              if (saving) return;
+              if (!allRequiredPhotosTaken()) {
+                const missingEq = equipmentPhotos.findIndex((p) => !p);
+                if (missingEq !== -1) {
+                  Alert.alert(
+                    'Foto faltando',
+                    `Tire a foto "${equipmentLabels[missingEq]}" do equipamento antes de finalizar.`,
+                  );
+                } else {
+                  Alert.alert('Foto faltando', 'Tire a foto do ambiente antes de finalizar.');
+                }
+                return;
+              }
+              handleSave();
+            }}
+            disabled={saving}
+          >
+            {saving ? (
+              <ActivityIndicator color={colors.white} />
+            ) : (
+              <Ionicons name="checkmark-circle" size={20} color={colors.white} />
+            )}
+            <Text style={st.nextBtnText}>{saving ? 'Salvando checklist...' : 'Finalizar Checklist'}</Text>
+          </TouchableOpacity>
+        </ScrollView>
         </View>
 
-        <Text style={st.sectionTitle}>Equipamento</Text>
-        <View style={st.photoGrid}>
-          {equipmentPhotos.map((uri, idx) => (
-            <TouchableOpacity
-              key={idx}
-              style={st.photoSlot}
-              onPress={() => takeRequiredPhoto(`equipment_${idx + 1}` as 'equipment_1')}
-              activeOpacity={0.7}
-            >
-              {uri ? (
-                <>
-                  <Image source={{ uri }} style={st.photoSlotImage} />
-                  <View style={st.photoSlotBadge}>
-                    <Ionicons name="checkmark-circle" size={20} color={colors.success} />
-                  </View>
-                </>
-              ) : (
-                <>
-                  <Ionicons name="camera" size={28} color={colors.textLight} />
-                  <Text style={st.photoSlotLabel}>{equipmentLabels[idx]}</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <Text style={st.sectionTitle}>Ambiente de trabalho</Text>
-        <TouchableOpacity
-          style={[st.photoSlotWide]}
-          onPress={() => takeRequiredPhoto('environment')}
-          activeOpacity={0.7}
+        <Modal
+          visible={!!previewUri}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setPreviewUri(null)}
         >
-          {environmentPhoto ? (
-            <>
-              <Image source={{ uri: environmentPhoto }} style={st.photoSlotWideImage} />
-              <View style={st.photoSlotBadge}>
-                <Ionicons name="checkmark-circle" size={20} color={colors.success} />
-              </View>
-            </>
-          ) : (
-            <>
-              <Ionicons name="image" size={32} color={colors.textLight} />
-              <Text style={st.photoSlotLabel}>Foto do ambiente</Text>
-            </>
-          )}
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[st.nextBtn, (!allRequiredPhotosTaken() || saving) && st.btnDisabled]}
-          onPress={() => {
-            if (allRequiredPhotosTaken()) handleSave();
-            else Alert.alert('Atencao', 'Anexe todas as 5 fotos antes de prosseguir.');
-          }}
-          disabled={saving}
-        >
-          <Text style={st.nextBtnText}>{saving ? 'Salvando...' : 'Finalizar Checklist'}</Text>
-          <Ionicons name={saving ? 'hourglass' : 'checkmark-circle'} size={20} color={colors.white} />
-        </TouchableOpacity>
-      </ScrollView>
+          <Pressable style={st.previewBackdrop} onPress={() => setPreviewUri(null)}>
+            {previewUri && (
+              <ExpoImage
+                source={{ uri: previewUri }}
+                style={st.previewImage}
+                contentFit="contain"
+                cachePolicy="memory-disk"
+              />
+            )}
+            <View style={st.previewCloseBtn}>
+              <Ionicons name="close" size={24} color={colors.white} />
+            </View>
+          </Pressable>
+        </Modal>
+      </>
     );
   }
 
@@ -855,50 +1296,118 @@ export default function ChecklistScreen() {
 
   return (
     <View style={commonStyles.container}>
-      <FlatList
-        data={checklists}
+      <AppHeader subtitle="Checklists do equipamento" />
+      <SectionList
+        sections={sections}
         keyExtractor={(item) => item.id}
+        stickySectionHeadersEnabled={false}
+        renderSectionHeader={({ section }) => (
+          <View style={st.sectionHeader}>
+            <Text style={st.sectionHeaderLabel}>{section.title.toUpperCase()}</Text>
+            <View style={st.sectionHeaderLine} />
+            <Text style={st.sectionHeaderCount}>{String(section.data.length).padStart(2, '0')}</Text>
+          </View>
+        )}
         renderItem={({ item }) => {
-          // Encerramento offline na fila: trata como ja finalizado (otimista),
-          // assim o operador nao tenta finalizar de novo e duplicar o job.
           const isQueuedFinish = pendingFinishes.checklistIds.has(item.id);
           const isReleased = item.result === 'released';
           const isPending = item.status === 'pending' && !isQueuedFinish;
-          const variant = isQueuedFinish
-            ? 'warning'
-            : isPending ? 'warning' : isReleased ? 'success' : 'danger';
-          const label = isQueuedFinish
-            ? 'SINCRONIZANDO'
-            : isPending ? 'EM ANDAMENTO' : isReleased ? 'LIBERADO' : 'NÃO LIBERADO';
-          const icon = isQueuedFinish
-            ? 'cloud-upload-outline'
-            : isPending ? 'time-outline' : isReleased ? 'checkmark-circle-outline' : 'close-circle-outline';
+
+          const statusColor = isQueuedFinish
+            ? colors.warning
+            : isPending ? colors.warning
+            : isReleased ? colors.success
+            : colors.danger;
+
+          const statusLabel = isQueuedFinish
+            ? 'Sincronizando'
+            : isPending ? 'Em andamento'
+            : isReleased ? 'Liberado'
+            : 'Não liberado';
+
+          const startedAt = new Date(item.created_at);
+          const endedAt = item.ended_at ? new Date(item.ended_at) : null;
+          const dateStr = startedAt.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+          const timeStr = startedAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+          let durationStr: string | null = null;
+          if (endedAt) {
+            const ms = endedAt.getTime() - startedAt.getTime();
+            const min = Math.max(1, Math.round(ms / 60000));
+            if (min < 60) durationStr = `${min} min`;
+            else durationStr = `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, '0')}m`;
+          }
+
+          const imageUri = item.photo_signed_url ?? null;
+
           return (
-            <View style={[st.listCard, isPending && st.pendingCard]}>
-              <View style={st.listCardHeader}>
-                <View style={st.headerLeft}>
-                  <Ionicons name={icon} size={14} color={colors.textSecondary} />
-                  <Text style={st.metaLabel}>{new Date(item.date).toLocaleDateString('pt-BR')}</Text>
+            <View style={st.listCardNew}>
+              <View style={st.cardRow}>
+                {imageUri ? (
+                  <ExpoImage
+                    source={{ uri: imageUri }}
+                    style={st.cardImage}
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                  />
+                ) : (
+                  <View style={[st.cardImage, st.cardImagePlaceholder]}>
+                    <Ionicons name="construct-outline" size={28} color={colors.textLight} />
+                  </View>
+                )}
+
+                <View style={st.cardInfo}>
+                  <Text style={st.machineName} numberOfLines={2}>{item.machine_name}</Text>
+
+                  <View style={st.metaRow}>
+                    <View style={st.metaItem}>
+                      <Ionicons name="calendar-outline" size={12} color={colors.textSecondary} />
+                      <Text style={st.metaText}>{dateStr}</Text>
+                    </View>
+                    <Text style={st.metaSep}>|</Text>
+                    <View style={st.metaItem}>
+                      <Ionicons name="time-outline" size={12} color={colors.textSecondary} />
+                      <Text style={st.metaText}>{durationStr ?? timeStr}</Text>
+                    </View>
+                    {item.tag ? (
+                      <>
+                        <Text style={st.metaSep}>|</Text>
+                        <View style={st.metaItem}>
+                          <Ionicons name="pricetag-outline" size={12} color={colors.textSecondary} />
+                          <Text style={st.metaText} numberOfLines={1}>{item.tag}</Text>
+                        </View>
+                      </>
+                    ) : null}
+                  </View>
+
+                  <View style={st.statusFooter}>
+                    <View style={st.statusGroup}>
+                      <View style={[st.statusDot, { backgroundColor: statusColor }]} />
+                      <Text style={st.statusLabel}>{statusLabel}</Text>
+                    </View>
+
+                    {isPending && (
+                      <TouchableOpacity style={st.finishBtnNew} onPress={() => setChecklistToFinish(item)}>
+                        <Ionicons name="stop-circle-outline" size={14} color={colors.white} />
+                        <Text style={st.finishBtnText}>Finalizar checklist</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
-                <Badge label={label} variant={variant} size="sm" />
               </View>
-              <Text style={st.listMachineName}>{item.machine_name}</Text>
-              {item.tag && <Text style={st.metaLabel}>TAG: {item.tag}</Text>}
-              {isPending && (
-                <TouchableOpacity style={st.finishBtn} onPress={() => setChecklistToFinish(item)}>
-                  <Ionicons name="stop-circle-outline" size={18} color={colors.white} />
-                  <Text style={st.finishBtnText}>Finalizar checklist</Text>
-                </TouchableOpacity>
-              )}
             </View>
           );
         }}
-        contentContainerStyle={commonStyles.list}
+        ItemSeparatorComponent={() => <View style={st.cardSeparator} />}
+        contentContainerStyle={st.listContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await loadChecklists(); await loadMachines(); setRefreshing(false); }} tintColor={colors.primary} />}
         ListEmptyComponent={
-          <View style={commonStyles.empty}>
-            <Ionicons name="clipboard-outline" size={40} color={colors.textLight} />
-            <Text style={commonStyles.emptyText}>Nenhum checklist realizado</Text>
+          <View style={st.emptyWrap}>
+            <View style={st.emptyIcon}>
+              <Ionicons name="clipboard-outline" size={28} color={colors.textSecondary} />
+            </View>
+            <Text style={st.emptyTitle}>Nenhum checklist realizado</Text>
+            <Text style={st.emptyMessage}>Toque no botão de QR Code para iniciar um novo checklist.</Text>
           </View>
         }
       />
@@ -929,8 +1438,100 @@ const st = StyleSheet.create({
   scroll: { padding: spacing.lg, paddingBottom: spacing.xl * 2 },
 
   // Back
-  backRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.lg },
-  backText: { fontSize: fontSize.base, color: colors.primary, fontWeight: '600' },
+  topBar: {
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  backRow: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.xs + 2,
+    paddingHorizontal: spacing.sm,
+    marginLeft: -spacing.sm,
+    marginBottom: spacing.md,
+    borderRadius: radius.full,
+  },
+  backText: { fontSize: fontSize.sm, color: colors.text, fontWeight: '600' },
+
+  // Eyebrow / labels
+  eyebrow: {
+    fontSize: fontSize['2xs'],
+    fontWeight: '700',
+    color: colors.textSecondary,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: spacing.xs,
+  },
+  sectionLabel: {
+    fontSize: fontSize['2xs'],
+    fontWeight: '700',
+    color: colors.textSecondary,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  tagChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radius.full,
+    backgroundColor: colors.surfaceMuted,
+    marginBottom: spacing.sm,
+  },
+  tagChipText: { fontSize: fontSize.xs, color: colors.textSecondary, fontWeight: '600' },
+
+  // Card da máquina selecionada (mesmo padrão do encarregado)
+  machineSelectedCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm + 4,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 4,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.sm,
+    ...elevation.sm,
+  },
+  machineSelectedAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceMuted,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  machineSelectedInfo: { flex: 1 },
+  machineSelectedName: {
+    fontSize: fontSize.base,
+    fontWeight: '700',
+    color: colors.text,
+    letterSpacing: -0.2,
+  },
+  machineSelectedTag: {
+    fontSize: fontSize.xs,
+    color: colors.primary,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  machineSelectedSwap: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceMuted,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
 
   // Scanner
   scanContainer: { flex: 1, backgroundColor: '#000' },
@@ -950,14 +1551,24 @@ const st = StyleSheet.create({
 
   // Pick
   pickHeader: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
-  pickSubtitle: { fontSize: fontSize.sm, color: colors.textSecondary, marginBottom: spacing.md },
+  pickSubtitle: {
+    fontSize: fontSize['2xs'], color: colors.textSecondary, marginBottom: spacing.md,
+    fontWeight: '700', letterSpacing: 1.2, textTransform: 'uppercase',
+  },
+  pickFieldLabel: {
+    fontSize: fontSize.sm,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
   searchRow: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: colors.inputBg,
-    borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, marginBottom: spacing.sm,
+    flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.full, marginBottom: spacing.md,
   },
   searchIcon: { paddingLeft: spacing.md },
   searchInputNew: {
-    flex: 1, padding: spacing.md, fontSize: fontSize.base, color: colors.text,
+    flex: 1, paddingHorizontal: spacing.sm + 2, paddingVertical: spacing.sm + 4,
+    fontSize: fontSize.sm, color: colors.text,
   },
   searchClear: { paddingRight: spacing.md },
   pickList: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl * 2 },
@@ -968,116 +1579,451 @@ const st = StyleSheet.create({
     borderWidth: 1, borderColor: colors.border, gap: spacing.md,
   },
   machineIconWrap: {
-    width: 44, height: 44, borderRadius: radius.sm, backgroundColor: colors.primary + '10',
+    width: 40, height: 40, borderRadius: radius.full, backgroundColor: colors.surfaceMuted,
     justifyContent: 'center', alignItems: 'center',
   },
-  machineName: { fontSize: fontSize.base, fontWeight: '600', color: colors.text },
-  machineMetaRow: { flexDirection: 'row', gap: spacing.sm, marginTop: 4 },
+  machineName: { fontSize: fontSize.sm, fontWeight: '600', color: colors.text, letterSpacing: -0.1 },
+  machineMetaRow: { flexDirection: 'row', gap: spacing.sm, marginTop: 3 },
   machineMetaBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 3,
-    backgroundColor: colors.background, paddingHorizontal: spacing.xs, paddingVertical: 2, borderRadius: radius.full,
+    paddingHorizontal: 0, paddingVertical: 0,
   },
   machineMetaText: { fontSize: fontSize.xs, color: colors.textSecondary, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   machineArrow: { padding: spacing.xs },
 
-  stepTitle: { fontSize: fontSize.lg, fontWeight: '700', color: colors.text, marginBottom: spacing.md },
+  stepTitle: { fontSize: fontSize.xl, fontWeight: '700', color: colors.text, letterSpacing: -0.4, marginBottom: spacing.sm },
   emptyText: { fontSize: fontSize.base, color: colors.textLight, textAlign: 'center', marginTop: spacing.xl },
 
   headerInfo: { fontSize: fontSize.sm, color: colors.textSecondary, marginBottom: spacing.sm },
   inputGroup: { marginBottom: spacing.md },
   label: { fontSize: fontSize.sm, fontWeight: '600', color: colors.text, marginBottom: spacing.xs },
   input: {
-    backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border,
-    borderRadius: radius.sm, padding: spacing.md, fontSize: fontSize.base, color: colors.text,
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+    borderRadius: radius.md, padding: spacing.md, fontSize: fontSize.base, color: colors.text,
   },
   textInput: {
-    backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border,
-    borderRadius: radius.sm, padding: spacing.md, fontSize: fontSize.base, color: colors.text,
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+    borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2,
+    fontSize: fontSize.sm, color: colors.text,
     minHeight: 44,
   },
   photoFullBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm,
-    paddingVertical: spacing.sm, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.primary,
-    backgroundColor: colors.primary + '10',
+    paddingVertical: spacing.sm + 2, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
-  photoFullBtnText: { fontSize: fontSize.sm, fontWeight: '600', color: colors.primary },
-  shiftRow: { flexDirection: 'row', gap: spacing.sm },
-  shiftBtn: { flex: 1, paddingVertical: spacing.sm, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
-  shiftBtnActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  shiftBtnText: { fontSize: fontSize.sm, fontWeight: '600', color: colors.textSecondary },
-  shiftBtnTextActive: { color: colors.white },
+  photoFullBtnText: { fontSize: fontSize.sm, fontWeight: '600', color: colors.text },
+
+  // Turno: botões outlined claros
+  segmented: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  segmentedItem: {
+    flex: 1,
+    paddingVertical: spacing.sm + 4,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+  },
+  segmentedItemActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  segmentedText: { fontSize: fontSize.sm, fontWeight: '600', color: colors.textSecondary },
+  segmentedTextActive: { color: colors.white },
+
+  encarregadoChoice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm + 4,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 4,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.sm,
+    ...elevation.sm,
+  },
+  encarregadoChoiceSel: { borderColor: colors.primary, borderWidth: 2 },
+  encarregadoAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceMuted,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  encarregadoAvatarSel: { backgroundColor: colors.primarySurface },
+  encarregadoInfo: {
+    flex: 1,
+  },
+  encarregadoName: {
+    fontSize: fontSize.base,
+    fontWeight: '700',
+    color: colors.text,
+    letterSpacing: -0.2,
+  },
+  encarregadoRole: {
+    fontSize: fontSize.xs,
+    color: colors.primary,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  encarregadoEmail: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2 },
+  emptyEncarregado: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.md,
+    marginBottom: spacing.sm,
+  },
+  emptyEncarregadoText: { flex: 1, fontSize: fontSize.sm, color: colors.textSecondary },
   nextBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: colors.primary, paddingVertical: spacing.md, borderRadius: radius.sm, gap: spacing.xs, marginTop: spacing.md,
+    backgroundColor: colors.text, paddingVertical: spacing.md + 2,
+    borderRadius: radius.full, gap: spacing.sm, marginTop: spacing.lg,
   },
-  nextBtnText: { fontSize: fontSize.base, fontWeight: '700', color: colors.white },
-  btnDisabled: { opacity: 0.5 },
+  nextBtnText: { fontSize: fontSize.sm, fontWeight: '700', color: colors.white, letterSpacing: 0.2 },
+  btnDisabled: { opacity: 0.35 },
 
-  // Items
-  progressWrap: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md },
-  progressBar: { flex: 1, height: 8, backgroundColor: colors.border, borderRadius: 4, overflow: 'hidden' },
-  progressFill: { height: '100%', backgroundColor: colors.primary, borderRadius: 4 },
-  progressLabel: { fontSize: fontSize.sm, color: colors.textSecondary, fontWeight: '600' },
-  sectionTitle: {
-    fontSize: fontSize.base, fontWeight: '700', color: colors.primary,
-    marginTop: spacing.md, marginBottom: spacing.sm, paddingBottom: spacing.xs,
-    borderBottomWidth: 1, borderBottomColor: colors.primary + '30',
+  // Progress
+  progressWrap: {
+    marginTop: spacing.lg,
+    marginBottom: spacing.md,
   },
+  progressTextRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  progressBar: { height: 4, backgroundColor: colors.surfaceMuted, borderRadius: 2, overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: colors.text, borderRadius: 2 },
+  progressLabel: {
+    fontSize: fontSize['2xs'], fontWeight: '700', color: colors.textSecondary,
+    letterSpacing: 1.2, textTransform: 'uppercase',
+  },
+  progressCount: { fontSize: fontSize.sm, color: colors.text, fontWeight: '600' },
+
+  // Group header (Geral / seções)
+  sectionTitle: {
+    fontSize: fontSize['2xs'], fontWeight: '700', color: colors.textSecondary,
+    letterSpacing: 1.2, textTransform: 'uppercase',
+    marginTop: spacing.lg, marginBottom: spacing.sm,
+  },
+  groupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  groupTitle: {
+    fontSize: fontSize.base,
+    fontWeight: '700',
+    color: colors.text,
+    letterSpacing: -0.2,
+  },
+  groupCount: {
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    backgroundColor: colors.surfaceMuted,
+  },
+  groupCountDone: { backgroundColor: colors.successLight },
+  groupCountText: {
+    fontSize: fontSize.xs,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  groupCountTextDone: { color: colors.successDark },
+
+  // Item card
   itemCard: {
-    backgroundColor: colors.surface, borderRadius: radius.md, padding: spacing.md,
-    marginBottom: spacing.sm, shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   itemBlocking: { borderLeftWidth: 3, borderLeftColor: colors.danger },
-  itemHeader: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: spacing.sm },
-  itemDesc: { flex: 1, fontSize: fontSize.sm, fontWeight: '600', color: colors.text },
-  blockBadge: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: colors.dangerLight,
-    paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.full, gap: 2, marginLeft: spacing.xs,
+  itemAnswered: { borderColor: colors.successLight, backgroundColor: colors.successSurface },
+  itemNc: { borderColor: colors.dangerLight, backgroundColor: colors.dangerSurface },
+  itemHeader: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: spacing.md, gap: spacing.sm },
+  itemNumber: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.surfaceMuted,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  blockText: { fontSize: 10, fontWeight: '700', color: colors.danger },
-  statusRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
+  itemNumberText: {
+    fontSize: fontSize.xs,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  itemDesc: { flex: 1, fontSize: fontSize.sm, fontWeight: '600', color: colors.text, lineHeight: 20, paddingTop: 2 },
+  blockingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: spacing.sm,
+    marginLeft: 32,
+  },
+  blockText: { fontSize: 10, fontWeight: '700', color: colors.danger, letterSpacing: 0.4, textTransform: 'uppercase' },
+
+  // Sim / Não / N.A. — outlined com cor de ação no estado ativo
+  statusRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
   statusBtn: {
-    flex: 1, paddingVertical: spacing.sm, borderRadius: radius.sm,
-    borderWidth: 1, borderColor: colors.border, alignItems: 'center',
+    flex: 1, paddingVertical: spacing.sm + 4, borderRadius: radius.md,
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
   },
   statusC: { backgroundColor: colors.success, borderColor: colors.success },
   statusNC: { backgroundColor: colors.danger, borderColor: colors.danger },
-  statusNA: { backgroundColor: colors.textLight, borderColor: colors.textLight },
+  statusNA: { backgroundColor: colors.textSecondary, borderColor: colors.textSecondary },
   statusBtnText: { fontSize: fontSize.sm, fontWeight: '700', color: colors.textSecondary },
   statusBtnTextActive: { color: colors.white },
   photoBtn: { padding: spacing.xs },
+  ncPanel: {
+    marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.dangerSurface,
+  },
+  ncPanelTitle: {
+    fontSize: fontSize['2xs'],
+    fontWeight: '700',
+    color: colors.dangerDark,
+    marginBottom: spacing.sm,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+  },
 
   // Required photos grid
-  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md },
+  photosHeader: {
+    marginBottom: spacing.md,
+  },
+  photosHeaderIcon: {
+    display: 'none',
+  },
+  photosHeaderHint: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+    lineHeight: 20,
+  },
+  progressCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  progressTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  progressTitle: {
+    fontSize: fontSize['2xs'],
+    fontWeight: '700',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+  },
+  progressValue: {
+    fontSize: fontSize.base,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  progressHint: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+  },
+  tipBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceMuted,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    marginBottom: spacing.md,
+  },
+  tipText: {
+    flex: 1,
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+  photoGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: 0,
+  },
   photoSlot: {
-    width: '48%', aspectRatio: 1, borderRadius: radius.md, borderWidth: 2,
-    borderColor: colors.border, borderStyle: 'dashed',
-    backgroundColor: colors.surface, justifyContent: 'center', alignItems: 'center',
-    overflow: 'hidden', position: 'relative',
+    width: '48%',
+    aspectRatio: 1.15,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+    position: 'relative',
+    padding: spacing.sm,
+  },
+  photoSlotFilled: {
+    borderColor: colors.text,
+    backgroundColor: colors.text,
   },
   photoSlotImage: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
   photoSlotWide: {
-    width: '100%', height: 180, borderRadius: radius.md, borderWidth: 2,
-    borderColor: colors.border, borderStyle: 'dashed',
-    backgroundColor: colors.surface, justifyContent: 'center', alignItems: 'center',
-    overflow: 'hidden', position: 'relative', marginBottom: spacing.md,
+    width: '100%',
+    height: 180,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+    position: 'relative',
+    marginBottom: spacing.md,
+    padding: spacing.sm,
   },
   photoSlotWideImage: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
   photoSlotLabel: {
-    fontSize: fontSize.xs, color: colors.textSecondary, marginTop: spacing.xs, textAlign: 'center',
+    fontSize: fontSize.sm,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: spacing.xs,
+    textAlign: 'center',
   },
-  photoSlotBadge: {
-    position: 'absolute', top: spacing.xs, right: spacing.xs,
-    backgroundColor: colors.white, borderRadius: 12,
+  photoSlotHint: {
+    fontSize: fontSize.xs,
+    color: colors.textLight,
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  photoSlotOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'space-between',
+    padding: spacing.xs,
+  },
+  photoSlotTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  photoSlotBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    alignSelf: 'flex-start',
+  },
+  photoSlotFilledLabel: {
+    fontSize: fontSize.xs,
+    fontWeight: '700',
+    color: colors.white,
+    flexShrink: 1,
+  },
+  photoNumberEmpty: {
+    position: 'absolute',
+    top: spacing.xs,
+    left: spacing.xs,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  photoNumberEmptyText: {
+    fontSize: fontSize.xs,
+    fontWeight: '800',
+    color: colors.textSecondary,
+  },
+  photoNumberFilled: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  photoNumberFilledText: {
+    fontSize: fontSize.xs,
+    fontWeight: '800',
+    color: colors.white,
+  },
+  photoRemoveBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  previewBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  previewImage: {
+    width: '100%',
+    height: '100%',
+  },
+  previewCloseBtn: {
+    position: 'absolute',
+    top: 48,
+    right: spacing.lg,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
   thumb: { width: 60, height: 60, borderRadius: radius.sm, marginTop: spacing.sm },
 
 
   // List
+  listHeaderTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: '700',
+    color: colors.text,
+    letterSpacing: -0.2,
+    paddingVertical: spacing.xs,
+  },
   listRow: { flexDirection: 'row', alignItems: 'center' },
-  // List card
   listCard: {
     backgroundColor: colors.surface,
     borderRadius: radius.md,
@@ -1085,7 +2031,6 @@ const st = StyleSheet.create({
     borderColor: colors.border,
     padding: spacing.md,
     marginBottom: spacing.sm,
-    ...elevation.sm,
   },
   pendingCard: { borderLeftWidth: 3, borderLeftColor: colors.warning },
   listCardHeader: {
@@ -1096,16 +2041,180 @@ const st = StyleSheet.create({
     gap: spacing.sm,
   },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
-  listMachineName: { fontSize: 16, fontWeight: '700', color: colors.text, letterSpacing: -0.1 },
-  metaLabel: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+  listMachineName: { fontSize: fontSize.base, fontWeight: '700', color: colors.text, letterSpacing: -0.2 },
+  metaLabel: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2 },
 
   finishBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: colors.primary, paddingVertical: spacing.sm + 2,
-    borderRadius: radius.sm, gap: spacing.xs, marginTop: spacing.md,
-    ...elevation.brand,
+    backgroundColor: colors.text, paddingVertical: spacing.sm + 4,
+    borderRadius: radius.full, gap: spacing.xs, marginTop: spacing.md,
   },
-  finishBtnText: { fontSize: fontSize.sm, fontWeight: '700', color: colors.white, letterSpacing: 0.2 },
+  finishBtnText: { fontSize: 12, fontWeight: '700', color: colors.white, letterSpacing: 0.2 },
+
+  // ============ NEW LIST (refatorado) ============
+  listContent: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing['3xl'] * 2,
+  },
+
+  // Section header
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  sectionHeaderLabel: {
+    fontSize: 11,
+    letterSpacing: 1.6,
+    fontWeight: '800',
+    color: colors.textSecondary,
+  },
+  sectionHeaderLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E5E7EB',
+  },
+  sectionHeaderCount: {
+    fontSize: 11,
+    letterSpacing: 1,
+    fontWeight: '700',
+    color: colors.textLight,
+  },
+
+  // Card
+  listCardNew: {
+    backgroundColor: colors.surface,
+    paddingVertical: spacing.md,
+    paddingHorizontal: 2,
+  },
+  cardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  cardImage: {
+    width: 92,
+    height: 92,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceMuted,
+  },
+  cardImagePlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  cardInfo: {
+    flex: 1,
+    gap: 6,
+  },
+  cardSeparator: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+  },
+  statusFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    marginTop: 2,
+  },
+  statusGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 1,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.text,
+    letterSpacing: -0.1,
+  },
+  dateText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    letterSpacing: 0.2,
+  },
+  machineName: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.text,
+    letterSpacing: -0.3,
+    lineHeight: 19,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  metaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  metaText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.textSecondary,
+    letterSpacing: 0.1,
+  },
+  metaSep: {
+    fontSize: 12,
+    color: colors.textLight,
+    fontWeight: '400',
+  },
+  finishBtnNew: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+    gap: 4,
+    backgroundColor: colors.text,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: radius.full,
+  },
+
+  // Empty
+  emptyWrap: {
+    alignItems: 'center',
+    paddingVertical: spacing['3xl'],
+    paddingHorizontal: spacing.lg,
+  },
+  emptyIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.text,
+    letterSpacing: -0.2,
+    marginBottom: 6,
+  },
+  emptyMessage: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 19,
+  },
 
   // FABs
   fabRow: {
@@ -1113,13 +2222,13 @@ const st = StyleSheet.create({
     flexDirection: 'row', gap: spacing.sm, alignItems: 'center',
   },
   fabSecondary: {
-    width: 48, height: 48, borderRadius: 24, backgroundColor: colors.surface,
+    width: 52, height: 52, borderRadius: 26, backgroundColor: colors.surface,
     justifyContent: 'center', alignItems: 'center',
     borderWidth: 1, borderColor: colors.border,
-    ...elevation.sm,
+    ...elevation.md,
   },
   fab: {
-    width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary,
+    width: 60, height: 60, borderRadius: 30, backgroundColor: colors.primary,
     justifyContent: 'center', alignItems: 'center',
     ...elevation.brand,
   },

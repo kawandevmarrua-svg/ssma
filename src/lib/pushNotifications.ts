@@ -1,19 +1,30 @@
-import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { supabase } from './supabase';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+const isExpoGo = Constants.appOwnership === 'expo';
+
+if (!isExpoGo) {
+  const Notifications = require('expo-notifications');
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+}
 
 export async function registerPushTokenForUser(userId: string) {
+  if (isExpoGo) {
+    console.log('[Push] skip: rodando em Expo Go (push remoto exige dev build no SDK 53+)');
+    return;
+  }
+
+  const Notifications = require('expo-notifications');
+  const Device = require('expo-device');
+
   if (!Device.isDevice) {
     console.log('[Push] skip: nao eh dispositivo fisico (emulador/simulador)');
     return;
@@ -41,7 +52,7 @@ export async function registerPushTokenForUser(userId: string) {
 
   const projectId =
     Constants.expoConfig?.extra?.eas?.projectId ??
-    Constants.easConfig?.projectId;
+    (Constants as any).easConfig?.projectId;
 
   if (!projectId) {
     console.warn(

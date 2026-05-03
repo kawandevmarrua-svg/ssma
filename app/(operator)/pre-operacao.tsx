@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { supabase } from '../../src/lib/supabase';
+import { todayLocal } from '../../src/lib/dates';
 import { PreOperationCheck, PreOpQuestion } from '../../src/types/database';
 import { colors, spacing, radius, fontSize } from '../../src/theme/colors';
 
@@ -26,7 +27,7 @@ export default function PreOperacaoScreen() {
   const [questions, setQuestions] = useState<PreOpQuestion[]>([]);
   const [answers, setAnswers] = useState<Answers>({});
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
 
   const load = useCallback(async () => {
     if (!user) return;

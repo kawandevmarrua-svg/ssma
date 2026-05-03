@@ -14,10 +14,11 @@ import { ActivityType } from '../../src/types/database';
 import { colors, spacing, radius, fontSize } from '../../src/theme/colors';
 import { commonStyles } from '../../src/theme/commonStyles';
 import { Text } from '../../src/components/ui';
+import { AppHeader } from '../../src/components/AppHeader';
 
 const CATEGORY_LABELS: Record<ActivityType['category'], string> = {
-  parada: 'Paradas (P)',
-  servico: 'Servicos (S)',
+  parada: 'Paradas',
+  servico: 'Serviços',
   outro: 'Outros',
 };
 
@@ -59,11 +60,11 @@ export default function SelecionarAtividadeScreen() {
       map.set(t.category, arr);
     }
     const out: Array<
-      | { kind: 'header'; category: ActivityType['category'] }
+      | { kind: 'header'; category: ActivityType['category']; count: number }
       | { kind: 'item'; type: ActivityType }
     > = [];
     for (const [category, items] of map) {
-      out.push({ kind: 'header', category });
+      out.push({ kind: 'header', category, count: items.length });
       for (const t of items) out.push({ kind: 'item', type: t });
     }
     return out;
@@ -85,22 +86,31 @@ export default function SelecionarAtividadeScreen() {
 
   return (
     <View style={commonStyles.container}>
-      <View style={st.searchRow}>
-        <Ionicons name="search" size={16} color={colors.textLight} />
-        <TextInput
-          style={st.searchInput}
-          placeholder="Buscar por codigo ou descricao"
-          placeholderTextColor={colors.textLight}
-          value={search}
-          onChangeText={setSearch}
-          autoCorrect={false}
-          autoCapitalize="none"
-        />
-        {search ? (
-          <TouchableOpacity onPress={() => setSearch('')} hitSlop={8}>
-            <Ionicons name="close-circle" size={16} color={colors.textLight} />
-          </TouchableOpacity>
-        ) : null}
+      <AppHeader />
+
+      <View style={st.headerArea}>
+        <TouchableOpacity style={st.backRow} onPress={() => router.back()} activeOpacity={0.7}>
+          <Ionicons name="arrow-back" size={18} color={colors.textSecondary} />
+          <Text style={st.backText}>Voltar</Text>
+        </TouchableOpacity>
+        <Text style={st.fieldLabel}>Selecionar atividade</Text>
+        <View style={st.searchRow}>
+          <Ionicons name="search" size={18} color={colors.textLight} style={{ paddingLeft: spacing.md }} />
+          <TextInput
+            style={st.searchInput}
+            placeholder="Buscar por código ou descrição"
+            placeholderTextColor={colors.textLight}
+            value={search}
+            onChangeText={setSearch}
+            autoCorrect={false}
+            autoCapitalize="none"
+          />
+          {search ? (
+            <TouchableOpacity onPress={() => setSearch('')} hitSlop={8} style={{ paddingRight: spacing.md }}>
+              <Ionicons name="close-circle" size={18} color={colors.textLight} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
       </View>
 
       {loading ? (
@@ -109,6 +119,7 @@ export default function SelecionarAtividadeScreen() {
         </View>
       ) : flatData.length === 0 ? (
         <View style={st.center}>
+          <Ionicons name="search-outline" size={40} color={colors.textLight} />
           <Text style={st.emptyText}>Nenhuma atividade encontrada.</Text>
         </View>
       ) : (
@@ -117,22 +128,33 @@ export default function SelecionarAtividadeScreen() {
           keyExtractor={(it, idx) =>
             it.kind === 'header' ? `h-${it.category}` : `t-${it.type.id}-${idx}`
           }
+          contentContainerStyle={st.listContent}
           renderItem={({ item }) => {
             if (item.kind === 'header') {
-              return <Text style={st.sectionHeader}>{CATEGORY_LABELS[item.category]}</Text>;
+              return (
+                <View style={st.groupHeader}>
+                  <Text style={st.groupTitle}>{CATEGORY_LABELS[item.category]}</Text>
+                  <View style={st.groupCount}>
+                    <Text style={st.groupCountText}>{item.count}</Text>
+                  </View>
+                </View>
+              );
             }
             const t = item.type;
             return (
-              <TouchableOpacity style={st.row} onPress={() => handleSelect(t)}>
-                <Text style={st.code}>{t.code}</Text>
-                <Text style={st.desc} numberOfLines={2}>
-                  {t.description}
-                </Text>
-                {t.allow_custom && (
-                  <View style={st.customBadge}>
-                    <Text style={st.customText}>livre</Text>
-                  </View>
-                )}
+              <TouchableOpacity style={st.row} onPress={() => handleSelect(t)} activeOpacity={0.85}>
+                <View style={st.codeBadge}>
+                  <Text style={st.codeText}>{t.code}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={st.desc} numberOfLines={2}>
+                    {t.description}
+                  </Text>
+                  {t.allow_custom && (
+                    <Text style={st.customText}>Descrição livre</Text>
+                  )}
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.textLight} />
               </TouchableOpacity>
             );
           }}
@@ -143,54 +165,94 @@ export default function SelecionarAtividadeScreen() {
 }
 
 const st = StyleSheet.create({
+  topBar: {
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  backRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingVertical: spacing.xs },
+  backText: { fontSize: fontSize.sm, color: colors.textSecondary, fontWeight: '500' },
+
+  headerArea: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
+  fieldLabel: {
+    fontSize: fontSize.sm,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    margin: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.full,
+    marginBottom: spacing.md,
   },
-  searchInput: { flex: 1, fontSize: fontSize.base, color: colors.text, paddingVertical: 0 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.lg },
-  emptyText: { color: colors.textSecondary, fontSize: fontSize.sm },
-  sectionHeader: {
+  searchInput: {
+    flex: 1,
+    fontSize: fontSize.sm,
+    color: colors.text,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.sm + 4,
+  },
+
+  listContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl * 2 },
+  groupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  groupTitle: {
+    fontSize: fontSize.base,
+    fontWeight: '700',
+    color: colors.text,
+    letterSpacing: -0.2,
+  },
+  groupCount: {
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    backgroundColor: colors.surfaceMuted,
+  },
+  groupCountText: {
     fontSize: fontSize.xs,
     fontWeight: '700',
     color: colors.textSecondary,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xs,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
   },
+
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: spacing.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderRadius: radius.md,
     backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.sm,
   },
-  code: {
-    minWidth: 70,
-    fontSize: fontSize.sm,
+  codeBadge: {
+    minWidth: 56,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.sm,
+    backgroundColor: colors.primarySurface,
+    alignItems: 'center',
+  },
+  codeText: {
+    fontSize: fontSize.xs,
     fontWeight: '700',
     color: colors.primary,
     fontFamily: 'monospace',
+    letterSpacing: 0.4,
   },
-  desc: { flex: 1, fontSize: fontSize.sm, color: colors.text },
-  customBadge: {
-    backgroundColor: colors.warningSurface,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: radius.full,
-  },
-  customText: { fontSize: 10, fontWeight: '700', color: colors.warningDark, letterSpacing: 0.3 },
+  desc: { fontSize: fontSize.sm, color: colors.text, fontWeight: '600', lineHeight: 20 },
+  customText: { fontSize: fontSize.xs, color: colors.warningDark, fontWeight: '600', marginTop: 2 },
+
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.lg, gap: spacing.sm },
+  emptyText: { color: colors.textSecondary, fontSize: fontSize.sm },
 });

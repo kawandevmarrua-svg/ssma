@@ -9,19 +9,25 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
+import * as Crypto from 'expo-crypto';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { supabase } from '../../src/lib/supabase';
+import { todayLocal } from '../../src/lib/dates';
 import { pickPhoto, uploadPhoto } from '../../src/lib/imageUtils';
 import { ActivityType, PreOpQuestion, Location } from '../../src/types/database';
 import { colors, spacing, radius, fontSize } from '../../src/theme/colors';
 import { commonStyles } from '../../src/theme/commonStyles';
-import { Button, Text } from '../../src/components/ui';
+import { Text } from '../../src/components/ui';
+import { AppHeader } from '../../src/components/AppHeader';
 import { LocationPicker } from '../../src/components/LocationPicker';
 
 type PreOpAnswers = Record<string, boolean | null>;
+type PreOpNcDescriptions = Record<string, string>;
+type PreOpNcPhotos = Record<string, string | null>;
 
 export default function ServicoScreen() {
   const { user } = useAuth();
@@ -39,24 +45,44 @@ export default function ServicoScreen() {
   const [equipmentPhotoUri, setEquipmentPhotoUri] = useState<string | null>(null);
   const [startPhotoUri, setStartPhotoUri] = useState<string | null>(null);
   const [preopAnswers, setPreopAnswers] = useState<PreOpAnswers>({});
+  const [preopNcDescriptions, setPreopNcDescriptions] = useState<PreOpNcDescriptions>({});
+  const [preopNcPhotos, setPreopNcPhotos] = useState<PreOpNcPhotos>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayLocal();
+  const userId = user?.id ?? null;
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      if (!type_id || !user) return;
+      if (!type_id || !userId) return;
+      // Buscamos TODOS os checklists do dia do operador (sem filtrar por
+      // status/result aqui) para conseguir dar uma mensagem precisa quando
+      // nao encontrar nenhum elegivel.
+      // Limpa qualquer estado residual da tela (em caso de re-uso do componente
+      // entre criacoes, p.ex. quando o operador finaliza uma atividade e abre outra
+      // do mesmo tipo, os campos abaixo nao podem vir preenchidos).
+      setLoading(true);
+      setActivityType(null);
+      setQuestions([]);
+      setAvailableChecklists([]);
+      setSelectedChecklistId(null);
+      setSelectedLocation(null);
+      setDescription('');
+      setEquipmentPhotoUri(null);
+      setStartPhotoUri(null);
+      setPreopAnswers({});
+      setPreopNcDescriptions({});
+      setPreopNcPhotos({});
+
       const [typeRes, clRes, qRes] = await Promise.all([
         supabase.from('activity_types').select('*').eq('id', type_id).single(),
         supabase
           .from('checklists')
-          .select('id, machine_name, tag, machine_id')
-          .eq('operator_id', user.id)
+          .select('id, machine_name, tag, machine_id, status, result')
+          .eq('operator_id', userId)
           .eq('date', today)
-          .eq('result', 'released')
-          .eq('status', 'pending')
           .order('created_at', { ascending: false }),
         supabase
           .from('pre_op_questions')
@@ -71,22 +97,54 @@ export default function ServicoScreen() {
         router.replace('/(operator)/atividade');
         return;
       }
-      const list = clRes.data ?? [];
-      if (list.length === 0) {
-        Alert.alert(
-          'Checklist necessario',
-          'Voce precisa realizar o checklist do equipamento antes de iniciar uma atividade.',
-        );
+
+      const allToday = clRes.data ?? [];
+      const eligible = allToday.filter(
+        (c) => c.status === 'pending' && c.result === 'released',
+      );
+
+      if (eligible.length === 0) {
+        let title = 'Checklist necessario';
+        let message: string;
+        if (allToday.length === 0) {
+          message = 'Voce nao realizou nenhum checklist hoje. Faca o checklist do equipamento antes de iniciar uma atividade.';
+        } else {
+          const finalized = allToday.filter((c) => c.status === 'completed').length;
+          const notReleased = allToday.filter((c) => c.result === 'not_released').length;
+          if (notReleased > 0 && finalized === 0) {
+            title = 'Equipamento nao liberado';
+            message = 'Seu checklist de hoje resultou em "Nao liberado". Solicite manutencao ou refaca o checklist em outro equipamento.';
+          } else if (finalized > 0 && notReleased === 0) {
+            title = 'Checklist ja finalizado';
+            message = 'Voce ja encerrou seu checklist de hoje. Para iniciar uma nova atividade, faca um novo checklist.';
+          } else {
+            message = 'Voce tem checklists hoje, mas nenhum esta liberado e em uso. Verifique a aba Checklist.';
+          }
+        }
+        Alert.alert(title, message);
         router.replace('/(operator)/atividade');
         return;
       }
+
       const qList = (qRes.data ?? []) as PreOpQuestion[];
       const initial: PreOpAnswers = {};
       for (const q of qList) initial[q.id] = null;
 
+      const eligibleMapped = eligible.map((c) => ({
+        id: c.id,
+        machine_name: c.machine_name,
+        tag: c.tag,
+        machine_id: c.machine_id,
+      }));
+
+      // Auto-seleciona o equipamento (checklist liberado mais recente do dia).
+      // Determinístico a partir dos dados de hoje — nao reaproveita escolha anterior.
+      const autoChecklistId = eligibleMapped[0]?.id ?? null;
+
       setActivityType(typeRes.data as ActivityType);
       setQuestions(qList);
-      setAvailableChecklists(list);
+      setAvailableChecklists(eligibleMapped);
+      setSelectedChecklistId(autoChecklistId);
       setPreopAnswers(initial);
       setLoading(false);
     }
@@ -94,14 +152,43 @@ export default function ServicoScreen() {
     return () => {
       cancelled = true;
     };
-  }, [type_id, user]);
+  }, [type_id, userId, today]);
 
   function setPreopAnswer(questionId: string, value: boolean) {
     setPreopAnswers((prev) => ({ ...prev, [questionId]: value }));
+    if (value === true) {
+      // Operador mudou de "Nao" para "Sim": limpa evidencia coletada antes
+      // para nao persistir foto/descricao orfas no banco.
+      setPreopNcDescriptions((prev) => {
+        const { [questionId]: _drop, ...rest } = prev;
+        return rest;
+      });
+      setPreopNcPhotos((prev) => {
+        const { [questionId]: _drop, ...rest } = prev;
+        return rest;
+      });
+    }
+  }
+
+  function setPreopNcDescription(questionId: string, value: string) {
+    setPreopNcDescriptions((prev) => ({ ...prev, [questionId]: value }));
+  }
+
+  async function pickPreopNcPhoto(questionId: string) {
+    const uri = await pickPhoto();
+    if (uri) setPreopNcPhotos((prev) => ({ ...prev, [questionId]: uri }));
   }
 
   function allPreopAnswered() {
-    return questions.length > 0 && questions.every((q) => preopAnswers[q.id] === true || preopAnswers[q.id] === false);
+    // Sem perguntas configuradas, "todas respondidas" eh trivialmente true.
+    // Antes retornava false e travava o submit em instalacoes sem pre-op.
+    if (questions.length === 0) return true;
+    return questions.every((q) => {
+      const ans = preopAnswers[q.id];
+      if (ans === true) return true;
+      if (ans === false) return !!preopNcPhotos[q.id];
+      return false;
+    });
   }
 
   async function handleCreate() {
@@ -120,7 +207,17 @@ export default function ServicoScreen() {
       return;
     }
     if (!allPreopAnswered()) {
-      Alert.alert('Atencao', `Responda todas as ${questions.length} perguntas da pre-operacao antes de iniciar.`);
+      const hasNoWithoutPhoto = questions.some(
+        (q) => preopAnswers[q.id] === false && !preopNcPhotos[q.id],
+      );
+      if (hasNoWithoutPhoto) {
+        Alert.alert(
+          'Atencao',
+          'Anexe uma foto em cada pergunta respondida com "Nao" antes de iniciar.',
+        );
+      } else {
+        Alert.alert('Atencao', `Responda todas as ${questions.length} perguntas da pre-operacao antes de iniciar.`);
+      }
       return;
     }
 
@@ -129,37 +226,94 @@ export default function ServicoScreen() {
     setSaving(true);
     const now = new Date().toISOString();
 
-    const { data: preop, error: preopErr } = await supabase
-      .from('pre_operation_checks')
-      .insert({ operator_id: user.id, date: today })
-      .select()
-      .single();
+    // Activity ID gerado no cliente: permite subir as fotos pra um prefixo
+    // estavel ANTES de inserir qualquer linha. Se algum upload falhar, abortamos
+    // sem deixar pre_operation_checks/pre_op_answers/activities orfaos.
+    const activityId = Crypto.randomUUID();
+    const uploadedPaths: string[] = [];
 
-    if (preopErr || !preop) {
-      Alert.alert('Erro', preopErr?.message ?? 'Falha ao salvar pre-operacao.');
-      setSaving(false);
-      return;
-    }
+    try {
+      // FASE 1 — Sobe TODAS as fotos primeiro. Qualquer falha aborta a
+      // operacao inteira (sem inserts no banco) e limpa o storage.
+      const ncPhotoPaths: Record<string, string> = {};
+      for (const q of questions) {
+        if (preopAnswers[q.id] !== false) continue;
+        const uri = preopNcPhotos[q.id];
+        if (!uri) continue;
+        const path = await uploadPhoto(
+          uri,
+          'activity-photos',
+          `${user.id}/${activityId}/preop/${q.id}`,
+        );
+        if (!path) throw new Error('Falha ao enviar foto da pre-operacao. Tente novamente.');
+        ncPhotoPaths[q.id] = path;
+        uploadedPaths.push(path);
+      }
 
-    const answerRows = questions.map((q) => ({
-      check_id: preop.id,
-      question_id: q.id,
-      value: preopAnswers[q.id]!,
-    }));
-    const { error: ansErr } = await supabase.from('pre_op_answers').insert(answerRows);
-    if (ansErr) {
-      Alert.alert('Erro', ansErr.message);
-      setSaving(false);
-      return;
-    }
+      let equipmentPath: string | null = null;
+      if (equipmentPhotoUri) {
+        equipmentPath = await uploadPhoto(
+          equipmentPhotoUri,
+          'activity-photos',
+          `${user.id}/${activityId}/equipment`,
+        );
+        if (!equipmentPath) throw new Error('Falha ao enviar foto do equipamento. Tente novamente.');
+        uploadedPaths.push(equipmentPath);
+      }
 
-    const finalDescription = activityType.allow_custom
-      ? `${activityType.code} - ${description.trim()}`
-      : activityType.description;
+      let startPath: string | null = null;
+      if (startPhotoUri) {
+        startPath = await uploadPhoto(
+          startPhotoUri,
+          'activity-photos',
+          `${user.id}/${activityId}/start`,
+        );
+        if (!startPath) throw new Error('Falha ao enviar foto de inicio. Tente novamente.');
+        uploadedPaths.push(startPath);
+      }
 
-    const { data: activity, error } = await supabase
-      .from('activities')
-      .insert({
+      // FASE 2 — pre_operation_checks
+      const { data: preop, error: preopErr } = await supabase
+        .from('pre_operation_checks')
+        .insert({ operator_id: user.id, date: today })
+        .select()
+        .single();
+      if (preopErr || !preop) throw new Error(preopErr?.message ?? 'Falha ao salvar pre-operacao.');
+
+      // FASE 3 — pre_op_answers (com rollback do preop em caso de falha)
+      // Monta o row sem incluir as chaves de NC quando a resposta for "Sim",
+      // protegendo contra falha em ambientes onde a migracao das colunas
+      // nc_* ainda nao foi aplicada.
+      const answerRows = questions.map((q) => {
+        const value = preopAnswers[q.id]!;
+        const row: {
+          check_id: string;
+          question_id: string;
+          value: boolean;
+          nc_description?: string | null;
+          nc_photo_url?: string | null;
+        } = { check_id: preop.id, question_id: q.id, value };
+        if (value === false) {
+          const desc = preopNcDescriptions[q.id]?.trim();
+          if (desc) row.nc_description = desc;
+          const photo = ncPhotoPaths[q.id];
+          if (photo) row.nc_photo_url = photo;
+        }
+        return row;
+      });
+      const { error: ansErr } = await supabase.from('pre_op_answers').insert(answerRows);
+      if (ansErr) {
+        await supabase.from('pre_operation_checks').delete().eq('id', preop.id);
+        throw new Error(ansErr.message);
+      }
+
+      // FASE 4 — activities (com URLs das fotos ja preenchidas no proprio insert)
+      const finalDescription = activityType.allow_custom
+        ? `${activityType.code} - ${description.trim()}`
+        : activityType.description;
+
+      const { error: actErr } = await supabase.from('activities').insert({
+        id: activityId,
         operator_id: user.id,
         pre_operation_id: preop.id,
         checklist_id: selectedChecklistId,
@@ -170,128 +324,145 @@ export default function ServicoScreen() {
         location: selectedLocation.name,
         description: finalDescription,
         start_time: now,
-      })
-      .select()
-      .single();
+        equipment_photo_url: equipmentPath,
+        start_photo_url: startPath,
+      });
+      if (actErr) {
+        await supabase.from('pre_op_answers').delete().eq('check_id', preop.id);
+        await supabase.from('pre_operation_checks').delete().eq('id', preop.id);
+        throw new Error(actErr.message);
+      }
 
-    if (error || !activity) {
-      Alert.alert('Erro', error?.message ?? 'Erro ao criar atividade.');
       setSaving(false);
-      return;
+      router.replace('/(operator)/atividade');
+    } catch (e: any) {
+      // Limpa qualquer foto que tenha sido enviada antes do erro.
+      if (uploadedPaths.length > 0) {
+        try {
+          await supabase.storage.from('activity-photos').remove(uploadedPaths);
+        } catch {
+          // best-effort cleanup; nao trava o fluxo do operador
+        }
+      }
+      setSaving(false);
+      Alert.alert('Erro', e?.message ?? 'Erro ao criar atividade.');
     }
+  }
 
-    if (equipmentPhotoUri) {
-      const path = await uploadPhoto(equipmentPhotoUri, 'activity-photos', `${user.id}/${activity.id}/equipment`);
-      if (path) await supabase.from('activities').update({ equipment_photo_url: path }).eq('id', activity.id);
-    }
-    if (startPhotoUri) {
-      const path = await uploadPhoto(startPhotoUri, 'activity-photos', `${user.id}/${activity.id}/start`);
-      if (path) await supabase.from('activities').update({ start_photo_url: path }).eq('id', activity.id);
-    }
+  const answeredCount = questions.filter((q) => {
+    const ans = preopAnswers[q.id];
+    if (ans === true) return true;
+    if (ans === false) return !!preopNcPhotos[q.id];
+    return false;
+  }).length;
 
-    setSaving(false);
-    router.replace('/(operator)/atividade');
+  if (loading) {
+    return (
+      <View style={commonStyles.container}>
+        <AppHeader />
+        <View style={st.loadingWrap}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={st.loadingText}>Preparando atividade…</Text>
+          <Text style={st.loadingHint}>Carregando equipamento, local e perguntas</Text>
+        </View>
+      </View>
+    );
   }
 
   return (
     <View style={commonStyles.container}>
+      <AppHeader />
+
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView contentContainerStyle={st.content} showsVerticalScrollIndicator={false}>
+          <TouchableOpacity style={st.backRow} onPress={() => router.back()} activeOpacity={0.7}>
+            <Ionicons name="arrow-back" size={18} color={colors.textSecondary} />
+            <Text style={st.backText}>Voltar</Text>
+          </TouchableOpacity>
           {activityType && (
-            <View style={commonStyles.inputGroup}>
-              <Text style={commonStyles.label}>Tipo de atividade</Text>
-              <View style={[st.typePickerBtn, { backgroundColor: colors.background }]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={st.typePickerCode}>{activityType.code}</Text>
-                  <Text style={st.typePickerDesc}>{activityType.description}</Text>
+            <>
+              <Text style={st.eyebrow}>Tipo de atividade</Text>
+              <View style={st.activityCard}>
+                <View style={st.activityAvatar}>
+                  <Text style={st.activityCode}>{activityType.code}</Text>
                 </View>
-                <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+                <View style={{ flex: 1 }}>
+                  <Text style={st.activityName} numberOfLines={2}>
+                    {activityType.description}
+                  </Text>
+                  <Text style={st.activityRole}>
+                    {activityType.allow_custom ? 'Descrição livre' : 'Atividade fixa'}
+                  </Text>
+                </View>
               </View>
-            </View>
+            </>
           )}
 
-          <Text style={st.sectionTitle}>Pre-Operacao (formulario Vale)</Text>
-          <Text style={st.sectionHint}>Responda as {questions.length} perguntas antes de iniciar a atividade.</Text>
-          {questions.map((q) => (
-            <View key={q.id} style={[st.questionCard, q.critical && st.questionCritical]}>
-              <View style={st.questionHeaderRow}>
-                <Text style={st.questionText}>{q.label}</Text>
-                {q.critical && (
-                  <View style={st.criticalBadge}>
-                    <Ionicons name="alert" size={12} color={colors.danger} />
-                    <Text style={st.criticalText}>Critico</Text>
-                  </View>
-                )}
-              </View>
-              <View style={st.answerRow}>
-                <TouchableOpacity
-                  style={[st.answerBtn, preopAnswers[q.id] === true && st.answerYes]}
-                  onPress={() => setPreopAnswer(q.id, true)}
-                >
-                  <Text style={preopAnswers[q.id] === true ? [st.answerText, st.answerTextActive] : st.answerText}>Sim</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[st.answerBtn, preopAnswers[q.id] === false && st.answerNo]}
-                  onPress={() => setPreopAnswer(q.id, false)}
-                >
-                  <Text style={preopAnswers[q.id] === false ? [st.answerText, st.answerTextActive] : st.answerText}>Não</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))}
-
-          <Text style={st.sectionTitle}>Maquina (checklist do dia) *</Text>
+          {/* Maquina */}
+          <Text style={st.sectionLabel}>Equipamento</Text>
           {availableChecklists.map((c) => {
             const isSel = c.id === selectedChecklistId;
             return (
               <TouchableOpacity
                 key={c.id}
-                style={[st.machineChoice, isSel && st.machineChoiceSel]}
+                style={[st.choiceCard, isSel && st.choiceCardSel]}
                 onPress={() => setSelectedChecklistId(c.id)}
+                activeOpacity={0.85}
               >
-                <Ionicons
-                  name={isSel ? 'radio-button-on' : 'radio-button-off'}
-                  size={20}
-                  color={isSel ? colors.primary : colors.textLight}
-                />
-                <View style={{ flex: 1, marginLeft: spacing.sm }}>
-                  <Text style={st.machineChoiceName}>{c.machine_name}</Text>
-                  {c.tag && <Text style={st.machineChoiceTag}>TAG: {c.tag}</Text>}
+                <View style={[st.choiceAvatar, isSel && st.choiceAvatarSel]}>
+                  <Ionicons
+                    name="image-outline"
+                    size={22}
+                    color={isSel ? colors.primary : colors.textSecondary}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={st.choiceName} numberOfLines={1}>{c.machine_name}</Text>
+                  <Text style={st.choiceTag}>{c.tag || 'Sem TAG'}</Text>
                 </View>
               </TouchableOpacity>
             );
           })}
 
-          <Text style={st.sectionTitle}>Detalhes da Atividade</Text>
-
-          <View style={commonStyles.inputGroup}>
-            <Text style={[commonStyles.label, { color: '#FF8C00' }]}>Local *</Text>
-            <TouchableOpacity
-              style={st.typePickerBtn}
-              onPress={() => setLocationPickerVisible(true)}
-            >
+          {/* Local */}
+          <Text style={st.sectionLabel}>Local</Text>
+          <TouchableOpacity
+            style={[st.choiceCard, !!selectedLocation && st.choiceCardSel]}
+            onPress={() => setLocationPickerVisible(true)}
+            activeOpacity={0.85}
+          >
+            <View style={[st.choiceAvatar, !!selectedLocation && st.choiceAvatarSel]}>
+              <Ionicons
+                name="location-outline"
+                size={22}
+                color={selectedLocation ? colors.primary : colors.textSecondary}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
               {selectedLocation ? (
-                <View style={{ flex: 1 }}>
-                  <Text style={st.machineChoiceName}>{selectedLocation.name}</Text>
-                  {selectedLocation.code && (
-                    <Text style={st.machineChoiceTag}>{selectedLocation.code}</Text>
-                  )}
-                </View>
+                <>
+                  <Text style={st.choiceName} numberOfLines={1}>{selectedLocation.name}</Text>
+                  <Text style={st.choiceTag}>{selectedLocation.code || 'Local'}</Text>
+                </>
               ) : (
-                <Text style={st.typePickerPlaceholder}>Toque para selecionar a localidade</Text>
+                <>
+                  <Text style={st.choiceName}>Selecionar local</Text>
+                  <Text style={st.choiceTagPlaceholder}>Toque para escolher</Text>
+                </>
               )}
-              <Ionicons name="location-outline" size={18} color={colors.textLight} />
-            </TouchableOpacity>
-          </View>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.textLight} />
+          </TouchableOpacity>
 
-          {activityType?.allow_custom && (
-            <View style={commonStyles.inputGroup}>
-              <Text style={commonStyles.label}>Informe a atividade *</Text>
+          {/* Descricao livre */}
+          {activityType.allow_custom && (
+            <>
+              <Text style={st.sectionLabel}>Descrição da atividade</Text>
               <TextInput
-                style={[commonStyles.input, commonStyles.textArea]}
+                style={st.textInput}
                 placeholder="Descreva a atividade"
                 placeholderTextColor={colors.textLight}
                 value={description}
@@ -299,9 +470,111 @@ export default function ServicoScreen() {
                 multiline
                 numberOfLines={3}
               />
-            </View>
+            </>
           )}
 
+          {/* Pre-operacao: progress + perguntas */}
+          <View style={st.progressWrap}>
+            <View style={st.progressTextRow}>
+              <Text style={st.progressLabel}>Pré-operação</Text>
+              <Text style={st.progressCount}>{answeredCount} de {questions.length}</Text>
+            </View>
+            <View style={st.progressBar}>
+              <View
+                style={[
+                  st.progressFill,
+                  { width: questions.length > 0 ? `${(answeredCount / questions.length) * 100}%` : '0%' },
+                ]}
+              />
+            </View>
+          </View>
+
+          {questions.map((q, idx) => {
+            const ans = preopAnswers[q.id];
+            const isYes = ans === true;
+            const isNo = ans === false;
+            const ncPhoto = preopNcPhotos[q.id] ?? null;
+            const answered = isYes || (isNo && !!ncPhoto);
+            return (
+              <View
+                key={q.id}
+                style={[
+                  st.questionCard,
+                  q.critical && st.questionCritical,
+                  answered && isYes && st.questionAnswered,
+                  isNo && st.questionNc,
+                ]}
+              >
+                <View style={st.questionHeaderRow}>
+                  <View style={st.questionNumber}>
+                    <Text style={st.questionNumberText}>{idx + 1}</Text>
+                  </View>
+                  <Text style={st.questionText}>{q.label}</Text>
+                  {answered && isYes && (
+                    <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+                  )}
+                  {isNo && (
+                    <Ionicons name="alert-circle" size={18} color={colors.danger} />
+                  )}
+                </View>
+                {q.critical && (
+                  <View style={st.criticalRow}>
+                    <Ionicons name="alert" size={11} color={colors.danger} />
+                    <Text style={st.criticalText}>Pergunta crítica</Text>
+                  </View>
+                )}
+
+                <View style={st.answerRow}>
+                  <TouchableOpacity
+                    style={[st.answerBtn, isYes && st.answerYes]}
+                    onPress={() => setPreopAnswer(q.id, true)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={isYes ? [st.answerText, st.answerTextActive] : st.answerText}>Sim</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[st.answerBtn, isNo && st.answerNo]}
+                    onPress={() => setPreopAnswer(q.id, false)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={isNo ? [st.answerText, st.answerTextActive] : st.answerText}>Não</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {isNo && (
+                  <View style={st.ncPanel}>
+                    <Text style={st.ncPanelTitle}>Evidência da não conformidade</Text>
+                    <TextInput
+                      style={[st.textInput, { marginBottom: spacing.sm }]}
+                      placeholder="Descreva o que aconteceu (opcional)"
+                      placeholderTextColor={colors.textLight}
+                      value={preopNcDescriptions[q.id] ?? ''}
+                      onChangeText={(t) => setPreopNcDescription(q.id, t)}
+                      multiline
+                      numberOfLines={3}
+                    />
+                    <TouchableOpacity
+                      style={st.ncPhotoBtn}
+                      onPress={() => pickPreopNcPhoto(q.id)}
+                      activeOpacity={0.85}
+                    >
+                      {ncPhoto ? (
+                        <Image source={{ uri: ncPhoto }} style={st.ncPhotoPreview} />
+                      ) : (
+                        <>
+                          <Ionicons name="camera" size={20} color={colors.text} />
+                          <Text style={st.ncPhotoBtnText}>Tirar foto da evidência</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            );
+          })}
+
+          {/* Fotos opcionais */}
+          <Text style={st.sectionLabel}>Registros visuais</Text>
           <View style={st.photoRow}>
             <TouchableOpacity
               style={st.photoPicker}
@@ -309,13 +582,14 @@ export default function ServicoScreen() {
                 const uri = await pickPhoto();
                 if (uri) setEquipmentPhotoUri(uri);
               }}
+              activeOpacity={0.85}
             >
               {equipmentPhotoUri ? (
                 <Image source={{ uri: equipmentPhotoUri }} style={st.photoPreview} />
               ) : (
                 <>
                   <Ionicons name="camera" size={24} color={colors.textLight} />
-                  <Text style={st.photoLabel}>Foto Equipamento</Text>
+                  <Text style={st.photoLabel}>Equipamento</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -325,28 +599,28 @@ export default function ServicoScreen() {
                 const uri = await pickPhoto();
                 if (uri) setStartPhotoUri(uri);
               }}
+              activeOpacity={0.85}
             >
               {startPhotoUri ? (
                 <Image source={{ uri: startPhotoUri }} style={st.photoPreview} />
               ) : (
                 <>
                   <Ionicons name="camera" size={24} color={colors.textLight} />
-                  <Text style={st.photoLabel}>Foto Inicio</Text>
+                  <Text style={st.photoLabel}>Início</Text>
                 </>
               )}
             </TouchableOpacity>
           </View>
 
-          <Button
-            label={saving ? 'Criando...' : 'Iniciar atividade'}
-            variant="primary"
-            size="lg"
-            fullWidth
-            loading={saving}
-            disabled={saving || loading}
+          <TouchableOpacity
+            style={[st.cta, saving && st.ctaDisabled]}
             onPress={handleCreate}
-            style={{ marginBottom: spacing.lg }}
-          />
+            disabled={saving}
+            activeOpacity={0.9}
+          >
+            <Ionicons name="play-circle" size={20} color={colors.white} />
+            <Text style={st.ctaText}>{saving ? 'Criando...' : 'Iniciar atividade'}</Text>
+          </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -355,72 +629,329 @@ export default function ServicoScreen() {
         onClose={() => setLocationPickerVisible(false)}
         onSelect={(loc) => setSelectedLocation(loc)}
       />
+
+      {saving && (
+        <View style={st.savingOverlay} pointerEvents="auto">
+          <View style={st.savingCard}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={st.savingTitle}>Salvando atividade…</Text>
+            <Text style={st.savingHint}>Enviando fotos e registrando dados</Text>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
 
 const st = StyleSheet.create({
-  content: { padding: spacing.md, paddingBottom: spacing.xl },
-  photoRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
-  photoPicker: {
-    flex: 1, height: 100, backgroundColor: colors.background, borderWidth: 1,
-    borderColor: colors.border, borderRadius: radius.sm, borderStyle: 'dashed',
-    justifyContent: 'center', alignItems: 'center',
+  topBar: {
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  photoPreview: { width: '100%', height: '100%', borderRadius: radius.sm },
-  photoLabel: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: spacing.xs, fontWeight: '500' },
+  backRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingVertical: spacing.xs },
+  backText: { fontSize: fontSize.sm, color: colors.textSecondary, fontWeight: '500' },
 
-  sectionTitle: {
-    fontSize: fontSize.xs, fontWeight: '700', color: colors.textSecondary,
-    marginTop: spacing.lg, marginBottom: spacing.sm,
-    textTransform: 'uppercase', letterSpacing: 0.4,
+  content: { padding: spacing.lg, paddingBottom: spacing.xl * 2 },
+
+  loadingWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+    gap: spacing.sm,
   },
-  sectionHint: { fontSize: fontSize.xs, color: colors.textSecondary, marginBottom: spacing.sm },
+  loadingText: {
+    marginTop: spacing.md,
+    fontSize: fontSize.base,
+    fontWeight: '700',
+    color: colors.text,
+    letterSpacing: -0.2,
+  },
+  loadingHint: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+
+  savingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  savingCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.xl,
+    alignItems: 'center',
+    gap: spacing.sm,
+    minWidth: 220,
+  },
+  savingTitle: {
+    marginTop: spacing.sm,
+    fontSize: fontSize.base,
+    fontWeight: '700',
+    color: colors.text,
+    letterSpacing: -0.2,
+  },
+  savingHint: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+
+  eyebrow: {
+    fontSize: fontSize['2xs'],
+    fontWeight: '700',
+    color: colors.textSecondary,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: spacing.xs,
+  },
+  sectionLabel: {
+    fontSize: fontSize['2xs'],
+    fontWeight: '700',
+    color: colors.textSecondary,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+
+  // Tipo de atividade card
+  activityCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm + 4,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 4,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.sm,
+  },
+  activityAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.md,
+    backgroundColor: colors.primarySurface,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  activityCode: {
+    fontSize: fontSize.xs,
+    fontWeight: '800',
+    color: colors.primary,
+    fontFamily: 'monospace',
+    letterSpacing: 0.4,
+  },
+  activityName: {
+    fontSize: fontSize.base,
+    fontWeight: '700',
+    color: colors.text,
+    letterSpacing: -0.2,
+  },
+  activityRole: {
+    fontSize: fontSize.xs,
+    color: colors.primary,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+
+  // Choice card (maquina, local) — mesmo estilo do encarregado
+  choiceCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm + 4,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 4,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.sm,
+  },
+  choiceCardSel: { borderColor: colors.primary, borderWidth: 2 },
+  choiceAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceMuted,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  choiceAvatarSel: { backgroundColor: colors.primarySurface },
+  choiceName: {
+    fontSize: fontSize.base,
+    fontWeight: '700',
+    color: colors.text,
+    letterSpacing: -0.2,
+  },
+  choiceTag: {
+    fontSize: fontSize.xs,
+    color: colors.primary,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  choiceTagPlaceholder: {
+    fontSize: fontSize.xs,
+    color: colors.textLight,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+
+  // Inputs
+  textInput: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    fontSize: fontSize.sm,
+    color: colors.text,
+    minHeight: 44,
+  },
+
+  // Progress
+  progressWrap: {
+    marginTop: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  progressTextRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  progressBar: { height: 4, backgroundColor: colors.surfaceMuted, borderRadius: 2, overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: colors.text, borderRadius: 2 },
+  progressLabel: {
+    fontSize: fontSize['2xs'], fontWeight: '700', color: colors.textSecondary,
+    letterSpacing: 1.2, textTransform: 'uppercase',
+  },
+  progressCount: { fontSize: fontSize.sm, color: colors.text, fontWeight: '600' },
+
+  // Question card
   questionCard: {
-    backgroundColor: colors.surface, borderRadius: radius.sm, padding: spacing.md,
-    marginBottom: spacing.sm, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   questionCritical: { borderLeftWidth: 3, borderLeftColor: colors.danger },
-  questionHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: spacing.sm, gap: spacing.sm },
-  questionText: { flex: 1, fontSize: fontSize.sm, fontWeight: '600', color: colors.text, lineHeight: 18 },
-  criticalBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 2,
-    backgroundColor: colors.dangerSurface, paddingHorizontal: spacing.sm, paddingVertical: 2,
-    borderRadius: radius.full,
+  questionAnswered: { borderColor: colors.successLight, backgroundColor: colors.successSurface },
+  questionNc: { borderColor: colors.dangerLight, backgroundColor: colors.dangerSurface },
+  questionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: spacing.sm,
+    gap: spacing.sm,
   },
-  criticalText: { fontSize: 10, fontWeight: '700', color: colors.danger, letterSpacing: 0.3 },
+  questionNumber: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.surfaceMuted,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  questionNumberText: {
+    fontSize: fontSize.xs,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  questionText: { flex: 1, fontSize: fontSize.sm, fontWeight: '600', color: colors.text, lineHeight: 20, paddingTop: 2 },
+  criticalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: spacing.sm,
+    marginLeft: 32,
+  },
+  criticalText: { fontSize: 10, fontWeight: '700', color: colors.danger, letterSpacing: 0.4, textTransform: 'uppercase' },
+
+  // Sim / Nao
   answerRow: { flexDirection: 'row', gap: spacing.sm },
   answerBtn: {
-    flex: 1, paddingVertical: spacing.sm + 2, borderRadius: radius.sm,
-    borderWidth: 1, borderColor: colors.border, alignItems: 'center',
+    flex: 1,
+    paddingVertical: spacing.sm + 4,
+    borderRadius: radius.md,
+    alignItems: 'center',
     backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
   },
   answerYes: { backgroundColor: colors.success, borderColor: colors.success },
   answerNo: { backgroundColor: colors.danger, borderColor: colors.danger },
   answerText: { fontSize: fontSize.sm, fontWeight: '700', color: colors.textSecondary },
   answerTextActive: { color: colors.white },
 
-  machineChoice: {
-    flexDirection: 'row', alignItems: 'center', padding: spacing.md,
-    backgroundColor: colors.surface, borderRadius: radius.sm,
-    borderWidth: 1, borderColor: colors.border, marginBottom: spacing.sm,
+  // NC panel
+  ncPanel: {
+    marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.dangerSurface,
   },
-  machineChoiceSel: { borderColor: colors.primary, backgroundColor: colors.primarySurface },
-  machineChoiceName: { fontSize: fontSize.sm, fontWeight: '700', color: colors.text },
-  machineChoiceTag: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: 2 },
-
-  typePickerBtn: {
+  ncPanelTitle: {
+    fontSize: fontSize['2xs'],
+    fontWeight: '700',
+    color: colors.dangerDark,
+    marginBottom: spacing.sm,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+  },
+  ncPhotoBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.surface,
+    paddingVertical: spacing.sm + 2,
+    borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radius.sm,
-    padding: spacing.md,
-    minHeight: 52,
+    backgroundColor: colors.surface,
+    overflow: 'hidden',
+    minHeight: 60,
   },
-  typePickerPlaceholder: { flex: 1, fontSize: fontSize.sm, color: colors.textLight },
-  typePickerCode: { fontSize: fontSize.xs, fontWeight: '700', color: colors.primary, letterSpacing: 0.5 },
-  typePickerDesc: { fontSize: fontSize.sm, color: colors.text, marginTop: 2 },
+  ncPhotoBtnText: { fontSize: fontSize.sm, fontWeight: '600', color: colors.text },
+  ncPhotoPreview: { width: '100%', height: 120, borderRadius: radius.sm },
+
+  // Fotos
+  photoRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
+  photoPicker: {
+    flex: 1,
+    height: 110,
+    backgroundColor: colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  photoPreview: { width: '100%', height: '100%', borderRadius: radius.md },
+  photoLabel: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: spacing.xs, fontWeight: '600' },
+
+  // CTA
+  cta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.text,
+    paddingVertical: spacing.md + 2,
+    borderRadius: radius.full,
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+  },
+  ctaDisabled: { opacity: 0.4 },
+  ctaText: { fontSize: fontSize.sm, fontWeight: '700', color: colors.white, letterSpacing: 0.2 },
 });

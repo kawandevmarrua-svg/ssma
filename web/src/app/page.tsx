@@ -712,7 +712,7 @@ export default function LandingPage() {
             { icon: <Shield size={20} />, title: 'Dados protegidos' },
             { icon: <ShieldCheck size={20} />, title: 'Uso simplificado' },
           ]}
-          appLink="https://github.com/kawandevmarrua-svg/ssma/releases/tag/v1.0.3"
+          appLink="https://github.com/kawandevmarrua-svg/ssma/releases/tag/v1.0.4"
           appLinkLabel="Acessar o app"
           phoneContent={<FieldPhone />}
           className="py-24 md:py-32"

@@ -16,6 +16,6 @@ if (OriginalResponse) {
       super(body, init);
     }
   }
-  // @ts-expect-error - override global
+  // @ts-ignore - override global
   globalThis.Response = SafeResponse;
 }

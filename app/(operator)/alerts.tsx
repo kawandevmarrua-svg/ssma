@@ -395,7 +395,7 @@ function FilterPill({
       hitSlop={6}
       style={({ pressed }) => [styles.filterTab, pressed && { opacity: 0.6 }]}
     >
-      <Text style={[styles.filterText, active && styles.filterTextActive]}>
+      <Text style={[styles.filterText, ...(active ? [styles.filterTextActive] : [])]}>
         {label} <Text style={styles.filterCountInline}>{count}</Text>
       </Text>
       {active && <View style={styles.filterUnderline} />}

@@ -382,7 +382,7 @@ function TechStat({
       <View style={statStyles.iconWrap}>
         <Ionicons name={icon} size={14} color={highlight ? colors.primary : colors.textSecondary} />
       </View>
-      <Text style={[statStyles.value, highlight && { color: colors.primary }]}>
+      <Text style={[statStyles.value, ...(highlight ? [{ color: colors.primary }] : [])]}>
         {String(value).padStart(2, '0')}
       </Text>
       <Text style={statStyles.label}>{label}</Text>

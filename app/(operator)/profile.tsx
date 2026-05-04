@@ -113,7 +113,7 @@ export default function OperatorProfileScreen() {
 function Stat({ value, label, highlight }: { value: string; label: string; highlight?: boolean }) {
   return (
     <View style={styles.statItem}>
-      <Text style={[styles.statValue, highlight && { color: colors.primary }]}>{value}</Text>
+      <Text style={[styles.statValue, ...(highlight ? [{ color: colors.primary }] : [])]}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
     </View>
   );

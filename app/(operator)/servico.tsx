@@ -454,7 +454,7 @@ export default function ServicoScreen() {
           </TouchableOpacity>
 
           {/* Descricao livre */}
-          {activityType.allow_custom && (
+          {activityType?.allow_custom && (
             <>
               <Text style={st.sectionLabel}>Descrição da atividade</Text>
               <TextInput

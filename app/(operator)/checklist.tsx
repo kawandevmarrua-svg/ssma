@@ -1570,7 +1570,6 @@ const st = StyleSheet.create({
     width: 40, height: 40, borderRadius: radius.full, backgroundColor: colors.surfaceMuted,
     justifyContent: 'center', alignItems: 'center',
   },
-  machineName: { fontSize: fontSize.sm, fontWeight: '600', color: colors.text, letterSpacing: -0.1 },
   machineMetaRow: { flexDirection: 'row', gap: spacing.sm, marginTop: 3 },
   machineMetaBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 3,

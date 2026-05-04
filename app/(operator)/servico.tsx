@@ -18,23 +18,23 @@ import { useAuth } from '../../src/contexts/AuthContext';
 import { supabase } from '../../src/lib/supabase';
 import { todayLocal } from '../../src/lib/dates';
 import { pickPhoto, uploadPhoto } from '../../src/lib/imageUtils';
-import { ActivityType, PreOpQuestion, Location } from '../../src/types/database';
+import { ActivityType, ActivityQuestion, Location } from '../../src/types/database';
 import { colors, spacing, radius, fontSize } from '../../src/theme/colors';
 import { commonStyles } from '../../src/theme/commonStyles';
 import { Text } from '../../src/components/ui';
 import { AppHeader } from '../../src/components/AppHeader';
 import { LocationPicker } from '../../src/components/LocationPicker';
 
-type PreOpAnswers = Record<string, boolean | null>;
-type PreOpNcDescriptions = Record<string, string>;
-type PreOpNcPhotos = Record<string, string | null>;
+type ActivityAnswers = Record<string, boolean | null>;
+type ActivityNcDescriptions = Record<string, string>;
+type ActivityNcPhotos = Record<string, string | null>;
 
 export default function ServicoScreen() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { type_id } = useLocalSearchParams<{ type_id?: string }>();
 
   const [activityType, setActivityType] = useState<ActivityType | null>(null);
-  const [questions, setQuestions] = useState<PreOpQuestion[]>([]);
+  const [questions, setQuestions] = useState<ActivityQuestion[]>([]);
   const [availableChecklists, setAvailableChecklists] = useState<
     { id: string; machine_name: string; tag: string | null; machine_id: string | null }[]
   >([]);
@@ -44,14 +44,15 @@ export default function ServicoScreen() {
   const [description, setDescription] = useState('');
   const [equipmentPhotoUri, setEquipmentPhotoUri] = useState<string | null>(null);
   const [startPhotoUri, setStartPhotoUri] = useState<string | null>(null);
-  const [preopAnswers, setPreopAnswers] = useState<PreOpAnswers>({});
-  const [preopNcDescriptions, setPreopNcDescriptions] = useState<PreOpNcDescriptions>({});
-  const [preopNcPhotos, setPreopNcPhotos] = useState<PreOpNcPhotos>({});
+  const [preopAnswers, setPreopAnswers] = useState<ActivityAnswers>({});
+  const [preopNcDescriptions, setPreopNcDescriptions] = useState<ActivityNcDescriptions>({});
+  const [preopNcPhotos, setPreopNcPhotos] = useState<ActivityNcPhotos>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const today = todayLocal();
   const userId = user?.id ?? null;
+  const isEncarregado = profile?.role === 'encarregado';
 
   useEffect(() => {
     let cancelled = false;
@@ -84,11 +85,13 @@ export default function ServicoScreen() {
           .eq('operator_id', userId)
           .eq('date', today)
           .order('created_at', { ascending: false }),
-        supabase
-          .from('pre_op_questions')
-          .select('*')
-          .eq('active', true)
-          .order('order_index', { ascending: true }),
+        isEncarregado
+          ? Promise.resolve({ data: null, error: null })
+          : supabase
+              .from('activity_questions')
+              .select('*')
+              .eq('active', true)
+              .order('order_index', { ascending: true }),
       ]);
       if (cancelled) return;
 
@@ -103,7 +106,7 @@ export default function ServicoScreen() {
         (c) => c.status === 'pending' && c.result === 'released',
       );
 
-      if (eligible.length === 0) {
+      if (!isEncarregado && eligible.length === 0) {
         let title = 'Checklist necessario';
         let message: string;
         if (allToday.length === 0) {
@@ -126,8 +129,8 @@ export default function ServicoScreen() {
         return;
       }
 
-      const qList = (qRes.data ?? []) as PreOpQuestion[];
-      const initial: PreOpAnswers = {};
+      const qList = isEncarregado ? [] : (qRes.data ?? []) as ActivityQuestion[];
+      const initial: ActivityAnswers = {};
       for (const q of qList) initial[q.id] = null;
 
       const eligibleMapped = eligible.map((c) => ({
@@ -137,13 +140,11 @@ export default function ServicoScreen() {
         machine_id: c.machine_id,
       }));
 
-      // Auto-seleciona o equipamento (checklist liberado mais recente do dia).
-      // Determinístico a partir dos dados de hoje — nao reaproveita escolha anterior.
-      const autoChecklistId = eligibleMapped[0]?.id ?? null;
+      const autoChecklistId = isEncarregado ? null : (eligibleMapped[0]?.id ?? null);
 
       setActivityType(typeRes.data as ActivityType);
       setQuestions(qList);
-      setAvailableChecklists(eligibleMapped);
+      setAvailableChecklists(isEncarregado ? [] : eligibleMapped);
       setSelectedChecklistId(autoChecklistId);
       setPreopAnswers(initial);
       setLoading(false);
@@ -194,7 +195,7 @@ export default function ServicoScreen() {
   async function handleCreate() {
     if (saving) return;
     if (!user || !activityType) return;
-    if (!selectedChecklistId) {
+    if (!isEncarregado && !selectedChecklistId) {
       Alert.alert('Atencao', 'Selecione a maquina (checklist do dia) antes de iniciar.');
       return;
     }
@@ -206,7 +207,7 @@ export default function ServicoScreen() {
       Alert.alert('Atencao', 'Descreva a atividade.');
       return;
     }
-    if (!allPreopAnswered()) {
+    if (!isEncarregado && !allPreopAnswered()) {
       const hasNoWithoutPhoto = questions.some(
         (q) => preopAnswers[q.id] === false && !preopNcPhotos[q.id],
       );
@@ -228,7 +229,7 @@ export default function ServicoScreen() {
 
     // Activity ID gerado no cliente: permite subir as fotos pra um prefixo
     // estavel ANTES de inserir qualquer linha. Se algum upload falhar, abortamos
-    // sem deixar pre_operation_checks/pre_op_answers/activities orfaos.
+    // sem deixar activity_answers/activities orfaos.
     const activityId = Crypto.randomUUID();
     const uploadedPaths: string[] = [];
 
@@ -245,7 +246,7 @@ export default function ServicoScreen() {
           'activity-photos',
           `${user.id}/${activityId}/preop/${q.id}`,
         );
-        if (!path) throw new Error('Falha ao enviar foto da pre-operacao. Tente novamente.');
+        if (!path) throw new Error('Falha ao enviar foto da atividade. Tente novamente.');
         ncPhotoPaths[q.id] = path;
         uploadedPaths.push(path);
       }
@@ -272,42 +273,7 @@ export default function ServicoScreen() {
         uploadedPaths.push(startPath);
       }
 
-      // FASE 2 — pre_operation_checks
-      const { data: preop, error: preopErr } = await supabase
-        .from('pre_operation_checks')
-        .insert({ operator_id: user.id, date: today })
-        .select()
-        .single();
-      if (preopErr || !preop) throw new Error(preopErr?.message ?? 'Falha ao salvar pre-operacao.');
-
-      // FASE 3 — pre_op_answers (com rollback do preop em caso de falha)
-      // Monta o row sem incluir as chaves de NC quando a resposta for "Sim",
-      // protegendo contra falha em ambientes onde a migracao das colunas
-      // nc_* ainda nao foi aplicada.
-      const answerRows = questions.map((q) => {
-        const value = preopAnswers[q.id]!;
-        const row: {
-          check_id: string;
-          question_id: string;
-          value: boolean;
-          nc_description?: string | null;
-          nc_photo_url?: string | null;
-        } = { check_id: preop.id, question_id: q.id, value };
-        if (value === false) {
-          const desc = preopNcDescriptions[q.id]?.trim();
-          if (desc) row.nc_description = desc;
-          const photo = ncPhotoPaths[q.id];
-          if (photo) row.nc_photo_url = photo;
-        }
-        return row;
-      });
-      const { error: ansErr } = await supabase.from('pre_op_answers').insert(answerRows);
-      if (ansErr) {
-        await supabase.from('pre_operation_checks').delete().eq('id', preop.id);
-        throw new Error(ansErr.message);
-      }
-
-      // FASE 4 — activities (com URLs das fotos ja preenchidas no proprio insert)
+      // FASE 2 — activities
       const finalDescription = activityType.allow_custom
         ? `${activityType.code} - ${description.trim()}`
         : activityType.description;
@@ -315,7 +281,6 @@ export default function ServicoScreen() {
       const { error: actErr } = await supabase.from('activities').insert({
         id: activityId,
         operator_id: user.id,
-        pre_operation_id: preop.id,
         checklist_id: selectedChecklistId,
         machine_id: selectedChecklist?.machine_id ?? null,
         activity_type_id: activityType.id,
@@ -327,10 +292,32 @@ export default function ServicoScreen() {
         equipment_photo_url: equipmentPath,
         start_photo_url: startPath,
       });
-      if (actErr) {
-        await supabase.from('pre_op_answers').delete().eq('check_id', preop.id);
-        await supabase.from('pre_operation_checks').delete().eq('id', preop.id);
-        throw new Error(actErr.message);
+      if (actErr) throw new Error(actErr.message);
+
+      // FASE 3 — activity_answers
+      if (questions.length > 0) {
+        const answerRows = questions.map((q) => {
+          const value = preopAnswers[q.id]!;
+          const row: {
+            activity_id: string;
+            question_id: string;
+            value: boolean;
+            nc_description?: string | null;
+            nc_photo_url?: string | null;
+          } = { activity_id: activityId, question_id: q.id, value };
+          if (value === false) {
+            const desc = preopNcDescriptions[q.id]?.trim();
+            if (desc) row.nc_description = desc;
+            const photo = ncPhotoPaths[q.id];
+            if (photo) row.nc_photo_url = photo;
+          }
+          return row;
+        });
+        const { error: ansErr } = await supabase.from('activity_answers').insert(answerRows);
+        if (ansErr) {
+          await supabase.from('activities').delete().eq('id', activityId);
+          throw new Error(ansErr.message);
+        }
       }
 
       setSaving(false);
@@ -397,9 +384,9 @@ export default function ServicoScreen() {
             </>
           )}
 
-          {/* Maquina */}
-          <Text style={st.sectionLabel}>Equipamento</Text>
-          {availableChecklists.map((c) => {
+          {/* Maquina — apenas para operadores */}
+          {!isEncarregado && <Text style={st.sectionLabel}>Equipamento</Text>}
+          {!isEncarregado && availableChecklists.map((c) => {
             const isSel = c.id === selectedChecklistId;
             return (
               <TouchableOpacity
@@ -469,8 +456,8 @@ export default function ServicoScreen() {
             </>
           )}
 
-          {/* Pre-operacao: progress + perguntas */}
-          <View style={st.progressWrap}>
+          {/* Pre-operacao: apenas para operadores */}
+          {!isEncarregado && <View style={st.progressWrap}>
             <View style={st.progressTextRow}>
               <Text style={st.progressLabel}>Pré-operação</Text>
               <Text style={st.progressCount}>{answeredCount} de {questions.length}</Text>
@@ -485,7 +472,7 @@ export default function ServicoScreen() {
             </View>
           </View>
 
-          {questions.map((q, idx) => {
+          {!isEncarregado && questions.map((q, idx) => {
             const ans = preopAnswers[q.id];
             const isYes = ans === true;
             const isNo = ans === false;

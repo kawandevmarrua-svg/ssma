@@ -603,6 +603,46 @@ export default function ChecklistScreen() {
     ]);
   }
 
+  // Cria safety_alerts de NC para encarregado e supervisores
+  async function createNcAlerts(
+    checklistId: string,
+    machineName: string,
+    ncEntries: [string, ItemResponse][],
+    result: 'released' | 'not_released',
+  ) {
+    if (!user || !selectedEncarregadoId) return;
+    try {
+      const ncDescriptions = ncEntries.map(([itemId]) => {
+        return templateItems.find((i) => i.id === itemId)?.description ?? 'Item';
+      });
+      const title = `NC: ${machineName}`;
+      const ncList = ncDescriptions.map((d, i) => `${i + 1}. ${d}`).join('\n');
+      const message = `${ncEntries.length} não conformidade(s):\n${ncList}`;
+      const severity = result === 'not_released' ? 'high' : 'medium';
+
+      // Alerta para o encarregado responsavel
+      await supabase.from('safety_alerts').insert({
+        title,
+        message,
+        severity,
+        operator_id: selectedEncarregadoId,
+        created_by: user.id,
+      });
+
+      // Broadcast para supervisores (operator_id = null):
+      // a RLS permite que supervisor/encarregado leia alertas sem destinatario
+      await supabase.from('safety_alerts').insert({
+        title,
+        message,
+        severity,
+        operator_id: null,
+        created_by: user.id,
+      });
+    } catch (e) {
+      if (isDev()) console.log('[Checklist] createNcAlerts erro:', e);
+    }
+  }
+
   // --- Save ---
   async function handleSave() {
     if (saving) return;
@@ -705,6 +745,12 @@ export default function ChecklistScreen() {
         if (isDev()) console.log('[Checklist] Insert responses erro:', respErr.message);
         await supabase.from('checklists').delete().eq('id', checklistId);
         throw new Error('Nao foi possivel salvar as respostas. Tente novamente.');
+      }
+
+      // Notifica encarregado + supervisores quando ha NCs
+      const ncEntries = entries.filter(([_, resp]) => resp.status === 'NC');
+      if (ncEntries.length > 0) {
+        void createNcAlerts(checklistId, selectedMachine.name, ncEntries, result);
       }
 
       const msg = result === 'released'

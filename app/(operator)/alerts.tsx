@@ -61,8 +61,10 @@ function formatRelative(dateStr: string) {
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
 }
 
+type OperatorOption = { id: string; full_name: string | null; email: string };
+
 export default function OperatorAlertsScreen() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const insets = useSafeAreaInsets();
   const [alerts, setAlerts] = useState<AlertWithCreator[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,6 +75,16 @@ export default function OperatorAlertsScreen() {
   const [filter, setFilter] = useState<Filter>('all');
   const [search, setSearch] = useState('');
   const { errors, validate, clearErrors } = useFormValidation(alertResponseSchema);
+
+  // Criar alerta
+  const canCreate = profile?.role === 'encarregado' || profile?.role === 'supervisor';
+  const [showCreate, setShowCreate] = useState(false);
+  const [createTitle, setCreateTitle] = useState('');
+  const [createMessage, setCreateMessage] = useState('');
+  const [createSeverity, setCreateSeverity] = useState<SeverityKey>('medium');
+  const [createRecipientId, setCreateRecipientId] = useState<string | null>(null);
+  const [operators, setOperators] = useState<OperatorOption[]>([]);
+  const [submitting, setSubmitting] = useState(false);
 
   const loadAlerts = useCallback(async () => {
     if (!user) {
@@ -110,6 +122,48 @@ export default function OperatorAlertsScreen() {
     setRefreshing(true);
     await loadAlerts();
     setRefreshing(false);
+  }
+
+  async function loadOperators() {
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, full_name, email')
+      .eq('role', 'operator')
+      .eq('active', true)
+      .order('full_name', { ascending: true });
+    setOperators((data ?? []) as OperatorOption[]);
+  }
+
+  function openCreate() {
+    setCreateTitle('');
+    setCreateMessage('');
+    setCreateSeverity('medium');
+    setCreateRecipientId(null);
+    loadOperators();
+    setShowCreate(true);
+  }
+
+  async function handleCreate() {
+    if (!user) return;
+    if (!createTitle.trim() || !createMessage.trim()) {
+      Alert.alert('Atenção', 'Preencha título e mensagem.');
+      return;
+    }
+    setSubmitting(true);
+    const { error } = await supabase.from('safety_alerts').insert({
+      title: createTitle.trim(),
+      message: createMessage.trim(),
+      severity: createSeverity,
+      operator_id: createRecipientId,
+      created_by: user.id,
+    });
+    setSubmitting(false);
+    if (error) {
+      Alert.alert('Erro', 'Falha ao criar alerta.');
+      return;
+    }
+    setShowCreate(false);
+    loadAlerts();
   }
 
   async function markAsRead(id: string) {
@@ -170,6 +224,7 @@ export default function OperatorAlertsScreen() {
     const unread = !item.read;
     const responded = !!item.response;
     const creatorName = item.creator?.full_name || item.creator?.email || 'Sistema';
+    const isNcAlert = item.title.startsWith('NC: ');
 
     return (
       <Pressable
@@ -213,7 +268,7 @@ export default function OperatorAlertsScreen() {
               hitSlop={6}
               style={({ pressed }) => [styles.confirmBtn, pressed && { opacity: 0.8 }]}
             >
-              <Text style={styles.confirmBtnText}>Responder</Text>
+              <Text style={styles.confirmBtnText}>{isNcAlert ? 'Plano de ação' : 'Responder'}</Text>
               <Ionicons name="arrow-forward" size={12} color={colors.primary} />
             </Pressable>
           )}
@@ -230,18 +285,32 @@ export default function OperatorAlertsScreen() {
           <Image source={require('../../assets/icon.png')} style={styles.brandLogo} resizeMode="contain" />
           <Text style={styles.brandName}>MARRUÁ</Text>
         </View>
-        <Pressable
-          onPress={markAllAsRead}
-          disabled={unreadCount === 0}
-          style={({ pressed }) => [
-            styles.iconBtn,
-            unreadCount === 0 && { opacity: 0.4 },
-            pressed && { opacity: 0.85, transform: [{ scale: 0.96 }] },
-          ]}
-          hitSlop={8}
-        >
-          <Ionicons name="checkmark-done-outline" size={20} color={TECH_TEXT} />
-        </Pressable>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          {canCreate && (
+            <Pressable
+              onPress={openCreate}
+              style={({ pressed }) => [
+                styles.iconBtn,
+                pressed && { opacity: 0.85, transform: [{ scale: 0.96 }] },
+              ]}
+              hitSlop={8}
+            >
+              <Ionicons name="add" size={22} color={TECH_TEXT} />
+            </Pressable>
+          )}
+          <Pressable
+            onPress={markAllAsRead}
+            disabled={unreadCount === 0}
+            style={({ pressed }) => [
+              styles.iconBtn,
+              unreadCount === 0 && { opacity: 0.4 },
+              pressed && { opacity: 0.85, transform: [{ scale: 0.96 }] },
+            ]}
+            hitSlop={8}
+          >
+            <Ionicons name="checkmark-done-outline" size={20} color={TECH_TEXT} />
+          </Pressable>
+        </View>
       </View>
 
       {/* SEARCH */}
@@ -294,6 +363,118 @@ export default function OperatorAlertsScreen() {
         }
       />
 
+      {/* CREATE ALERT MODAL */}
+      <Modal visible={showCreate} animationType="slide" transparent>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={[styles.modalSheet, { paddingBottom: insets.bottom + 24 }]}>
+            <View style={styles.modalHandle} />
+
+            <View style={styles.modalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>Novo alerta</Text>
+              </View>
+              <Pressable
+                onPress={() => setShowCreate(false)}
+                hitSlop={8}
+                style={({ pressed }) => [styles.modalCloseBtn, pressed && { opacity: 0.7 }]}
+              >
+                <Ionicons name="close" size={18} color={TECH_TEXT} />
+              </Pressable>
+            </View>
+
+            {/* Título */}
+            <TextInput
+              style={[styles.input, { minHeight: 44 }]}
+              placeholder="Título do alerta"
+              placeholderTextColor={TECH_TEXT_MUTED}
+              value={createTitle}
+              onChangeText={setCreateTitle}
+              maxLength={120}
+            />
+
+            {/* Mensagem */}
+            <TextInput
+              style={styles.input}
+              placeholder="Descreva o alerta..."
+              placeholderTextColor={TECH_TEXT_MUTED}
+              value={createMessage}
+              onChangeText={setCreateMessage}
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+            />
+
+            {/* Severidade */}
+            <View style={styles.severitySelector}>
+              {(Object.keys(SEVERITY_CONFIG) as SeverityKey[]).map((key) => {
+                const cfg = SEVERITY_CONFIG[key];
+                const active = createSeverity === key;
+                return (
+                  <Pressable
+                    key={key}
+                    onPress={() => setCreateSeverity(key)}
+                    style={[
+                      styles.severityBtn,
+                      active && { backgroundColor: cfg.accent, borderColor: cfg.accent },
+                    ]}
+                  >
+                    <Text style={[styles.severityBtnText, active ? { color: '#fff' } : undefined]}>
+                      {cfg.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {/* Destinatário */}
+            <Text style={styles.recipientLabel}>Destinatário</Text>
+            <View style={styles.recipientList}>
+              <Pressable
+                onPress={() => setCreateRecipientId(null)}
+                style={[styles.recipientItem, createRecipientId === null && styles.recipientItemActive]}
+              >
+                <Ionicons name="people-outline" size={15} color={createRecipientId === null ? colors.primary : TECH_TEXT_MUTED} />
+                <Text style={[styles.recipientName, { color: createRecipientId === null ? colors.primary : undefined }]}>
+                  Sem destinatário específico
+                </Text>
+              </Pressable>
+              {operators.map((op) => {
+                const active = createRecipientId === op.id;
+                const name = op.full_name || op.email;
+                return (
+                  <Pressable
+                    key={op.id}
+                    onPress={() => setCreateRecipientId(op.id)}
+                    style={[styles.recipientItem, active && styles.recipientItemActive]}
+                  >
+                    <Ionicons name="person-outline" size={15} color={active ? colors.primary : TECH_TEXT_MUTED} />
+                    <Text style={[styles.recipientName, { color: active ? colors.primary : undefined }]} numberOfLines={1}>
+                      {name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Pressable
+              onPress={handleCreate}
+              disabled={submitting}
+              style={({ pressed }) => [
+                styles.submitBtn,
+                submitting && { opacity: 0.6 },
+                pressed && !submitting && { opacity: 0.92, transform: [{ scale: 0.99 }] },
+              ]}
+            >
+              {!submitting && <Ionicons name="send" size={15} color="#fff" />}
+              <Text style={styles.submitBtnText}>{submitting ? 'Enviando...' : 'Enviar alerta'}</Text>
+            </Pressable>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       {/* RESPONSE MODAL */}
       <Modal visible={!!respondingAlert} animationType="slide" transparent>
         <KeyboardAvoidingView
@@ -315,7 +496,9 @@ export default function OperatorAlertsScreen() {
                 <Text style={styles.modalSender}>
                   {respondingAlert?.creator?.full_name || respondingAlert?.creator?.email || 'Sistema'}
                 </Text>
-                <Text style={styles.modalTitle}>Responder alerta</Text>
+                <Text style={styles.modalTitle}>
+                  {respondingAlert?.title.startsWith('NC: ') ? 'Plano de ação' : 'Responder alerta'}
+                </Text>
               </View>
               <Pressable
                 onPress={() => { setRespondingAlert(null); clearErrors(); }}
@@ -344,7 +527,9 @@ export default function OperatorAlertsScreen() {
             {/* Input */}
             <TextInput
               style={[styles.input, errors.response && styles.inputError]}
-              placeholder="Descreva o que foi feito ou observado..."
+              placeholder={respondingAlert?.title.startsWith('NC: ')
+                ? 'Descreva como vai resolver esta não conformidade...'
+                : 'Descreva o que foi feito ou observado...'}
               placeholderTextColor={TECH_TEXT_MUTED}
               value={responseText}
               onChangeText={setResponseText}
@@ -717,5 +902,58 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     letterSpacing: -0.2,
+  },
+
+  severitySelector: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  severityBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: TECH_BORDER,
+    backgroundColor: TECH_BG_SOFT,
+  },
+  severityBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: TECH_TEXT_MUTED,
+  },
+
+  recipientLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.1,
+    color: TECH_TEXT_MUTED,
+    textTransform: 'uppercase',
+    marginBottom: -8,
+  },
+  recipientList: {
+    borderWidth: 1,
+    borderColor: TECH_BORDER,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  recipientItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderBottomWidth: 1,
+    borderBottomColor: TECH_BORDER,
+    backgroundColor: TECH_BG,
+  },
+  recipientItemActive: {
+    backgroundColor: '#EFF6FF',
+  },
+  recipientName: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: TECH_TEXT,
   },
 });

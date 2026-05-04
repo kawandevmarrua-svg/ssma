@@ -231,6 +231,72 @@ export type Database = {
           },
         ];
       };
+      activity_questions: {
+        Row: {
+          id: string;
+          key: string | null;
+          label: string;
+          critical: boolean;
+          order_index: number;
+          active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          key?: string | null;
+          label: string;
+          critical?: boolean;
+          order_index?: number;
+          active?: boolean;
+        };
+        Update: {
+          key?: string | null;
+          label?: string;
+          critical?: boolean;
+          order_index?: number;
+          active?: boolean;
+        };
+        Relationships: [];
+      };
+      activity_answers: {
+        Row: {
+          id: string;
+          activity_id: string;
+          question_id: string;
+          value: boolean | null;
+          nc_description: string | null;
+          nc_photo_url: string | null;
+          created_at: string;
+        };
+        Insert: {
+          activity_id: string;
+          question_id: string;
+          value: boolean | null;
+          nc_description?: string | null;
+          nc_photo_url?: string | null;
+        };
+        Update: {
+          value?: boolean | null;
+          nc_description?: string | null;
+          nc_photo_url?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'activity_answers_activity_id_fkey';
+            columns: ['activity_id'];
+            isOneToOne: false;
+            referencedRelation: 'activities';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'activity_answers_question_id_fkey';
+            columns: ['question_id'];
+            isOneToOne: false;
+            referencedRelation: 'activity_questions';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       machines: {
         Row: {
           id: string;
@@ -933,6 +999,8 @@ export type MachineChecklistItem = Database['public']['Tables']['machine_checkli
 export type PreOperationCheck = Database['public']['Tables']['pre_operation_checks']['Row'];
 export type PreOpQuestion = Database['public']['Tables']['pre_op_questions']['Row'];
 export type PreOpAnswer = Database['public']['Tables']['pre_op_answers']['Row'];
+export type ActivityQuestion = Database['public']['Tables']['activity_questions']['Row'];
+export type ActivityAnswer = Database['public']['Tables']['activity_answers']['Row'];
 export type ActivityType = Database['public']['Tables']['activity_types']['Row'];
 export type Checklist = Database['public']['Tables']['checklists']['Row'];
 export type ChecklistItem = Database['public']['Tables']['checklist_items']['Row'];

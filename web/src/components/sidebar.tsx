@@ -45,12 +45,11 @@ const navItems: NavItem[] = [
     children: [
       { href: '/atividades', label: 'Atividades', icon: Activity },
       { href: '/tipos-atividade', label: 'Tipos Atividade', icon: Tags },
-      { href: '/perguntas-pre-operacao', label: 'Pre-Operacao', icon: HelpCircle },
+      { href: '/perguntas-atividade', label: 'Perguntas Atividade', icon: HelpCircle },
       { href: '/localidades', label: 'Localidades', icon: MapPin },
     ],
   },
   { href: '/alertas', label: 'Alertas', icon: Bell },
-  { href: '/mapa', label: 'Mapa', icon: Map },
   {
     label: 'Analises',
     icon: Activity,
@@ -59,9 +58,13 @@ const navItems: NavItem[] = [
       { href: '/analise-maquinas', label: 'Analise Maquinas', icon: Wrench },
       { href: '/disponibilidade', label: 'DM & UF', icon: Gauge },
       { href: '/improdutividade', label: 'Improdutividade', icon: TrendingDown },
+      { href: '/mapa', label: 'Mapa', icon: Map },
     ],
   },
+  { href: '/perguntas-pre-operacao', label: 'Pre-Operacao', icon: HelpCircle },
+  { href: '/inspecao-comportamental', label: 'Inspeção Comportamental', icon: ShieldCheck },
   { href: '/organograma', label: 'Organograma', icon: Network },
+  { href: '/manutencao', label: 'Manutenção', icon: Wrench },
   { href: '/usuarios', label: 'Usuários', icon: UserCog },
 ];
 

@@ -117,17 +117,20 @@ export default function DashboardPage() {
     const [clRes, actRes] = await Promise.all([
       supabase
         .from('checklists')
-        .select('id, machine_name, date, status, result, had_interference, interference_notes, operator_id, profiles(full_name)')
+        .select('id, machine_name, date, status, result, had_interference, interference_notes, operator_id, profiles!operator_id(full_name)')
         .gte('date', dateFrom)
         .order('date', { ascending: false })
         .limit(2000),
       supabase
         .from('activities')
-        .select('id, date, description, equipment_tag, location, had_interference, interference_notes, operator_id, profiles(full_name)')
+        .select('id, date, description, equipment_tag, location, had_interference, interference_notes, operator_id, profiles!operator_id(full_name)')
         .gte('date', dateFrom)
         .order('date', { ascending: false })
         .limit(2000),
     ]);
+
+    if (clRes.error) console.error('[Dashboard] checklists error:', clRes.error);
+    if (actRes.error) console.error('[Dashboard] activities error:', actRes.error);
 
     const cls = (clRes.data as ChecklistRow[] | null) ?? [];
     setChecklists(cls);

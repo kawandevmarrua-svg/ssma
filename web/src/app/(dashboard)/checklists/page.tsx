@@ -71,7 +71,7 @@ export default function ChecklistsPage() {
   const [resolvedPhotos, setResolvedPhotos] = useState<Record<string, string>>({});
   const [deepLinked, setDeepLinked] = useState(false);
 
-  const CHECKLIST_SELECT = 'id, machine_name, date, status, result, brand, model, tag, shift, max_load_capacity, inspector_name, inspector_registration, notes, end_notes, ended_at, had_interference, interference_notes, created_at, operator_id, profiles(full_name), equipment_types(name), equipment_photo_1_url, equipment_photo_2_url, equipment_photo_3_url, equipment_photo_4_url, environment_photo_url';
+  const CHECKLIST_SELECT = 'id, machine_name, date, status, result, brand, model, tag, shift, max_load_capacity, inspector_name, inspector_registration, notes, end_notes, ended_at, had_interference, interference_notes, created_at, operator_id, profiles!operator_id(full_name), equipment_types(name), equipment_photo_1_url, equipment_photo_2_url, equipment_photo_3_url, equipment_photo_4_url, environment_photo_url';
 
   const loadChecklists = useCallback(async (term = '') => {
     let query = supabase
@@ -80,7 +80,8 @@ export default function ChecklistsPage() {
       .order('created_at', { ascending: false })
       .limit(PAGE_SIZE);
     if (term) query = query.or(`machine_name.ilike.%${term}%,tag.ilike.%${term}%`);
-    const { data } = await query;
+    const { data, error } = await query;
+    if (error) console.error('[Checklists] load error:', error);
     const rows = (data as ChecklistRow[] | null) ?? [];
     setChecklists(rows);
     setHasMore(rows.length === PAGE_SIZE);

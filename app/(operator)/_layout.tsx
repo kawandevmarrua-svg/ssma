@@ -162,6 +162,7 @@ export default function OperatorLayout() {
       <Tabs.Screen
         name="checklist"
         options={{
+          href: profile?.role === 'encarregado' ? null : undefined,
           title: 'Checklist',
           headerShown: false,
           tabBarIcon: ({ color, focused }) => (
@@ -175,6 +176,7 @@ export default function OperatorLayout() {
       <Tabs.Screen
         name="atividade"
         options={{
+          href: profile?.role === 'encarregado' ? null : undefined,
           title: 'Atividades',
           headerShown: false,
           tabBarIcon: ({ color, focused }) => (
@@ -193,6 +195,20 @@ export default function OperatorLayout() {
           tabBarIcon: ({ color, focused }) => (
             <View style={{ alignItems: 'center' }}>
               <Ionicons name={focused ? 'warning' : 'warning-outline'} size={24} color={color} />
+              {focused && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#F97316', marginTop: 4 }} />}
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="equipe"
+        options={{
+          href: profile?.role === 'encarregado' ? undefined : null,
+          title: 'Equipe',
+          headerShown: false,
+          tabBarIcon: ({ color, focused }) => (
+            <View style={{ alignItems: 'center' }}>
+              <Ionicons name={focused ? 'people' : 'people-outline'} size={24} color={color} />
               {focused && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#F97316', marginTop: 4 }} />}
             </View>
           ),

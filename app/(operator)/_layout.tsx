@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { Platform, View } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -112,19 +112,11 @@ export default function OperatorLayout() {
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: '#94A3B8',
-        tabBarLabelStyle: {
-          fontSize: 10,
-          fontWeight: '700',
-          letterSpacing: 0.5,
-          marginBottom: 4,
-        },
-        tabBarIconStyle: {
-          marginTop: 4,
-        },
+        tabBarInactiveTintColor: '#3C3C3C',
+        tabBarShowLabel: false,
         tabBarStyle: {
-          height: 70 + insets.bottom,
-          paddingTop: 8,
+          height: 76 + insets.bottom,
+          paddingTop: 10,
           paddingBottom: insets.bottom + 6,
           borderTopLeftRadius: 24,
           borderTopRightRadius: 24,
@@ -160,7 +152,10 @@ export default function OperatorLayout() {
           title: 'Início',
           headerShown: false,
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'home' : 'home-outline'} size={22} color={color} />
+            <View style={{ alignItems: 'center' }}>
+              <Ionicons name={focused ? 'home' : 'home-outline'} size={24} color={color} />
+              {focused && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#F97316', marginTop: 4 }} />}
+            </View>
           ),
         }}
       />
@@ -170,7 +165,10 @@ export default function OperatorLayout() {
           title: 'Checklist',
           headerShown: false,
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'checkbox' : 'checkbox-outline'} size={22} color={color} />
+            <View style={{ alignItems: 'center' }}>
+              <Ionicons name={focused ? 'checkbox' : 'checkbox-outline'} size={24} color={color} />
+              {focused && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#F97316', marginTop: 4 }} />}
+            </View>
           ),
         }}
       />
@@ -180,7 +178,10 @@ export default function OperatorLayout() {
           title: 'Atividades',
           headerShown: false,
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'construct' : 'construct-outline'} size={22} color={color} />
+            <View style={{ alignItems: 'center' }}>
+              <Ionicons name={focused ? 'construct' : 'construct-outline'} size={24} color={color} />
+              {focused && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#F97316', marginTop: 4 }} />}
+            </View>
           ),
         }}
       />
@@ -190,7 +191,10 @@ export default function OperatorLayout() {
           title: 'Alertas',
           headerShown: false,
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'warning' : 'warning-outline'} size={22} color={color} />
+            <View style={{ alignItems: 'center' }}>
+              <Ionicons name={focused ? 'warning' : 'warning-outline'} size={24} color={color} />
+              {focused && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#F97316', marginTop: 4 }} />}
+            </View>
           ),
         }}
       />
@@ -200,11 +204,14 @@ export default function OperatorLayout() {
           title: 'Perfil',
           headerShown: false,
           tabBarIcon: ({ focused }) => (
-            <Avatar
-              name={profile?.full_name || profile?.email || ''}
-              size="xs"
-              style={focused ? { borderWidth: 2, borderColor: colors.primary } : undefined}
-            />
+            <View style={{ alignItems: 'center' }}>
+              <Avatar
+                name={profile?.full_name || profile?.email || ''}
+                size="xs"
+                style={focused ? { borderWidth: 2, borderColor: '#F97316' } : undefined}
+              />
+              {focused && <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#F97316', marginTop: 4 }} />}
+            </View>
           ),
         }}
       />

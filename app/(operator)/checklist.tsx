@@ -788,12 +788,8 @@ export default function ChecklistScreen() {
 
     return (
       <View style={st.page}>
-        <AppHeader />
+        <AppHeader onBack={resetFlow} />
         <View style={st.pickHeader}>
-          <TouchableOpacity style={st.backRow} onPress={resetFlow}>
-            <Ionicons name="arrow-back" size={18} color={colors.textSecondary} />
-            <Text style={st.backText}>Voltar</Text>
-          </TouchableOpacity>
           <Text style={st.pickFieldLabel}>Selecionar máquina</Text>
           <View style={st.searchRow}>
             <Ionicons name="search" size={20} color={colors.textLight} style={st.searchIcon} />
@@ -877,12 +873,8 @@ export default function ChecklistScreen() {
 
     return (
       <KeyboardAvoidingView style={st.page} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <AppHeader />
+      <AppHeader onBack={() => setView('pick')} />
       <ScrollView contentContainerStyle={st.scroll} keyboardShouldPersistTaps="handled">
-        <TouchableOpacity style={st.backRow} onPress={() => setView('pick')} hitSlop={10} activeOpacity={0.7}>
-          <Ionicons name="arrow-back" size={20} color={colors.text} />
-          <Text style={st.backText}>Voltar</Text>
-        </TouchableOpacity>
         <View style={[st.encarregadoChoice, st.encarregadoChoiceSel]}>
           <View style={[st.encarregadoAvatar, st.encarregadoAvatarSel]}>
             <Ionicons name="image-outline" size={22} color={colors.primary} />
@@ -1182,12 +1174,8 @@ export default function ChecklistScreen() {
     return (
       <>
         <View style={st.page}>
-        <AppHeader />
+        <AppHeader onBack={() => setView('items')} />
         <ScrollView contentContainerStyle={st.scroll}>
-          <TouchableOpacity style={st.backRow} onPress={() => setView('items')}>
-            <Ionicons name="arrow-back" size={18} color={colors.textSecondary} />
-            <Text style={st.backText}>Voltar</Text>
-          </TouchableOpacity>
           <View style={st.photosHeader}>
             <Text style={st.stepTitle}>Registro do equipamento</Text>
           </View>

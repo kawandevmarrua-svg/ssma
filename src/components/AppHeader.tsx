@@ -9,11 +9,11 @@ import { colors, radius, spacing } from '../theme/colors';
 import { Text } from './ui';
 
 type Props = {
-  /** Subtitle shown below the brand row (optional). */
   subtitle?: string;
+  onBack?: () => void;
 };
 
-export function AppHeader({ subtitle }: Props) {
+export function AppHeader({ subtitle, onBack }: Props) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user } = useAuth();
@@ -40,14 +40,25 @@ export function AppHeader({ subtitle }: Props) {
   return (
     <View style={[styles.wrap, { paddingTop: insets.top + spacing.sm }]}>
       <View style={styles.row}>
-        <View style={styles.brandRow}>
-          <Image
-            source={require('../../assets/icon.png')}
-            style={styles.logo}
-            resizeMode="contain"
-          />
-          <Text style={styles.brand}>MARRUÁ</Text>
-        </View>
+        {onBack ? (
+          <Pressable
+            onPress={onBack}
+            hitSlop={8}
+            style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.7 }]}
+          >
+            <Ionicons name="arrow-back" size={20} color={colors.text} />
+            <Text style={styles.backLabel}>Voltar</Text>
+          </Pressable>
+        ) : (
+          <View style={styles.brandRow}>
+            <Image
+              source={require('../../assets/icon.png')}
+              style={styles.logo}
+              resizeMode="contain"
+            />
+            <Text style={styles.brand}>MARRUÁ</Text>
+          </View>
+        )}
 
         <Pressable
           onPress={() => router.push('/(operator)/alerts')}
@@ -92,6 +103,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  backLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
   },
   logo: {
     width: 28,

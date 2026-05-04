@@ -86,13 +86,9 @@ export default function SelecionarAtividadeScreen() {
 
   return (
     <View style={commonStyles.container}>
-      <AppHeader />
+      <AppHeader onBack={() => router.back()} />
 
       <View style={st.headerArea}>
-        <TouchableOpacity style={st.backRow} onPress={() => router.back()} activeOpacity={0.7}>
-          <Ionicons name="arrow-back" size={18} color={colors.textSecondary} />
-          <Text style={st.backText}>Voltar</Text>
-        </TouchableOpacity>
         <Text style={st.fieldLabel}>Selecionar atividade</Text>
         <View style={st.searchRow}>
           <Ionicons name="search" size={18} color={colors.textLight} style={{ paddingLeft: spacing.md }} />

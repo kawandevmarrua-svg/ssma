@@ -359,7 +359,7 @@ export default function ServicoScreen() {
   if (loading) {
     return (
       <View style={commonStyles.container}>
-        <AppHeader />
+        <AppHeader onBack={() => router.back()} />
         <View style={st.loadingWrap}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={st.loadingText}>Preparando atividade…</Text>
@@ -371,17 +371,13 @@ export default function ServicoScreen() {
 
   return (
     <View style={commonStyles.container}>
-      <AppHeader />
+      <AppHeader onBack={() => router.back()} />
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView contentContainerStyle={st.content} showsVerticalScrollIndicator={false}>
-          <TouchableOpacity style={st.backRow} onPress={() => router.back()} activeOpacity={0.7}>
-            <Ionicons name="arrow-back" size={18} color={colors.textSecondary} />
-            <Text style={st.backText}>Voltar</Text>
-          </TouchableOpacity>
           {activityType && (
             <>
               <Text style={st.eyebrow}>Tipo de atividade</Text>

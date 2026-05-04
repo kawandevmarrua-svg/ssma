@@ -20,7 +20,11 @@ import { alertResponseSchema } from '../../src/schemas';
 import { useFormValidation } from '../../src/hooks/useFormValidation';
 import { SafetyAlert } from '../../src/types/database';
 import { colors, radius, spacing } from '../../src/theme/colors';
-import { Text } from '../../src/components/ui';
+import { Avatar, Text } from '../../src/components/ui';
+
+type AlertWithCreator = SafetyAlert & {
+  creator?: { full_name: string | null; email: string } | null;
+};
 
 const TECH_BG = '#FFFFFF';
 const TECH_BG_SOFT = '#F8FAFC';
@@ -60,10 +64,10 @@ function formatRelative(dateStr: string) {
 export default function OperatorAlertsScreen() {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
-  const [alerts, setAlerts] = useState<SafetyAlert[]>([]);
+  const [alerts, setAlerts] = useState<AlertWithCreator[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [respondingAlert, setRespondingAlert] = useState<SafetyAlert | null>(null);
+  const [respondingAlert, setRespondingAlert] = useState<AlertWithCreator | null>(null);
   const [responseText, setResponseText] = useState('');
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState<Filter>('all');
@@ -77,7 +81,7 @@ export default function OperatorAlertsScreen() {
     }
     const { data, error } = await supabase
       .from('safety_alerts')
-      .select('*')
+      .select('*, creator:profiles!safety_alerts_created_by_fkey(full_name, email)')
       .or(`operator_id.eq.${user.id},operator_id.is.null`)
       .order('created_at', { ascending: false })
       .limit(50);
@@ -161,52 +165,59 @@ export default function OperatorAlertsScreen() {
     });
   }, [alerts, filter, search]);
 
-  function renderAlert({ item }: { item: SafetyAlert }) {
+  function renderAlert({ item }: { item: AlertWithCreator }) {
     const config = SEVERITY_CONFIG[item.severity as SeverityKey] ?? SEVERITY_CONFIG.low;
     const unread = !item.read;
     const responded = !!item.response;
+    const creatorName = item.creator?.full_name || item.creator?.email || 'Sistema';
 
     return (
       <Pressable
         onPress={() => { if (unread) markAsRead(item.id); }}
-        style={({ pressed }) => [
-          styles.card,
-          pressed && { opacity: 0.97 },
-        ]}
+        style={({ pressed }) => [styles.card, pressed && { opacity: 0.9 }]}
       >
-        <View style={styles.cardTopRow}>
-          <View style={styles.severityRow}>
+        {/* Linha topo: avatar + nome + meta */}
+        <View style={styles.cardHeader}>
+          <Avatar name={creatorName} size="xs" />
+          <Text style={styles.senderName}>{creatorName}</Text>
+          <View style={styles.cardHeaderRight}>
             <View style={[styles.severityDot, { backgroundColor: config.accent }]} />
-            <Text style={styles.severityLabel}>{config.label}</Text>
-            <Text style={styles.metaDot}>·</Text>
-            <Text style={styles.metaText}>{formatRelative(item.created_at)}</Text>
+            <Text style={[styles.severityLabel, { color: config.accent }]}>{config.label}</Text>
+            <Text style={styles.metaSep}>|</Text>
+            <Text style={styles.metaTime}>{formatRelative(item.created_at)}</Text>
+            {unread && <View style={[styles.unreadDot, { backgroundColor: config.accent }]} />}
           </View>
-          {unread && <View style={[styles.unreadDot, { backgroundColor: config.accent }]} />}
         </View>
 
+        {/* Divisor full-width */}
+        <View style={styles.divider} />
+
+        {/* Conteúdo abaixo */}
         <Text style={styles.cardTitle}>{item.title}</Text>
         <Text style={styles.cardMessage} numberOfLines={3}>{item.message}</Text>
 
-        {responded ? (
-          <View style={styles.responseBox}>
-            <Text style={styles.responseLabel}>Respondido</Text>
-            <Text style={styles.responseText} numberOfLines={2}>{item.response}</Text>
-          </View>
-        ) : (
-          <Pressable
-            onPress={(e) => {
-              e.stopPropagation?.();
-              setRespondingAlert(item);
-              setResponseText('');
-              clearErrors();
-            }}
-            hitSlop={6}
-            style={({ pressed }) => [styles.respondLink, pressed && { opacity: 0.6 }]}
-          >
-            <Text style={styles.respondLinkText}>Responder</Text>
-            <Ionicons name="arrow-forward" size={13} color={colors.primary} />
-          </Pressable>
-        )}
+        <View style={styles.cardFooter}>
+          {responded ? (
+            <View style={styles.confirmedBadge}>
+              <Ionicons name="checkmark-circle" size={14} color="#10B981" />
+              <Text style={styles.confirmedText}>Confirmado</Text>
+            </View>
+          ) : (
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation?.();
+                setRespondingAlert(item);
+                setResponseText('');
+                clearErrors();
+              }}
+              hitSlop={6}
+              style={({ pressed }) => [styles.confirmBtn, pressed && { opacity: 0.8 }]}
+            >
+              <Text style={styles.confirmBtnText}>Responder</Text>
+              <Ionicons name="arrow-forward" size={12} color={colors.primary} />
+            </Pressable>
+          )}
+        </View>
       </Pressable>
     );
   }
@@ -289,38 +300,51 @@ export default function OperatorAlertsScreen() {
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          <View style={[styles.modalSheet, { paddingBottom: insets.bottom + spacing.lg }]}>
+          <View style={[styles.modalSheet, { paddingBottom: insets.bottom + 24 }]}>
             <View style={styles.modalHandle} />
+
+            {/* Header: avatar + sender + título + fechar */}
             <View style={styles.modalHeader}>
-              <View>
-                <Text style={styles.modalEyebrow}>RESPONDER</Text>
-                <Text style={styles.modalTitle}>Sua resposta</Text>
+              {respondingAlert && (
+                <Avatar
+                  name={respondingAlert.creator?.full_name || respondingAlert.creator?.email || 'Sistema'}
+                  size="sm"
+                />
+              )}
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalSender}>
+                  {respondingAlert?.creator?.full_name || respondingAlert?.creator?.email || 'Sistema'}
+                </Text>
+                <Text style={styles.modalTitle}>Responder alerta</Text>
               </View>
               <Pressable
                 onPress={() => { setRespondingAlert(null); clearErrors(); }}
                 hitSlop={8}
-                style={({ pressed }) => [styles.iconBtn, pressed && { opacity: 0.85 }]}
+                style={({ pressed }) => [styles.modalCloseBtn, pressed && { opacity: 0.7 }]}
               >
-                <Ionicons name="close" size={20} color={TECH_TEXT} />
+                <Ionicons name="close" size={18} color={TECH_TEXT} />
               </Pressable>
             </View>
 
+            {/* Preview do alerta */}
             {respondingAlert && (
               <View style={styles.alertPreview}>
-                <View style={styles.alertPreviewBar} />
+                <View style={[styles.alertPreviewBar, {
+                  backgroundColor: SEVERITY_CONFIG[respondingAlert.severity as SeverityKey]?.accent ?? colors.primary,
+                }]} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.alertPreviewTitle}>{respondingAlert.title}</Text>
-                  <Text style={styles.alertPreviewMsg} numberOfLines={3}>
+                  <Text style={styles.alertPreviewMsg} numberOfLines={2}>
                     {respondingAlert.message}
                   </Text>
                 </View>
               </View>
             )}
 
-            <Text style={styles.inputLabel}>SUA RESPOSTA</Text>
+            {/* Input */}
             <TextInput
               style={[styles.input, errors.response && styles.inputError]}
-              placeholder="Escreva o que foi feito ou observado..."
+              placeholder="Descreva o que foi feito ou observado..."
               placeholderTextColor={TECH_TEXT_MUTED}
               value={responseText}
               onChangeText={setResponseText}
@@ -332,6 +356,7 @@ export default function OperatorAlertsScreen() {
               <Text style={styles.inputErrorText}>{errors.response}</Text>
             )}
 
+            {/* Botão enviar */}
             <Pressable
               onPress={handleRespond}
               disabled={saving}
@@ -341,10 +366,10 @@ export default function OperatorAlertsScreen() {
                 pressed && !saving && { opacity: 0.92, transform: [{ scale: 0.99 }] },
               ]}
             >
+              {!saving && <Ionicons name="send" size={15} color="#fff" />}
               <Text style={styles.submitBtnText}>
-                {saving ? 'ENVIANDO...' : 'ENVIAR RESPOSTA'}
+                {saving ? 'Enviando...' : 'Enviar resposta'}
               </Text>
-              {!saving && <Ionicons name="arrow-forward" size={16} color="#fff" />}
             </Pressable>
           </View>
         </KeyboardAvoidingView>
@@ -474,87 +499,96 @@ const styles = StyleSheet.create({
 
   // CARD
   card: {
-    backgroundColor: TECH_BG,
-    borderRadius: radius.lg,
-    borderWidth: 1.5,
-    borderColor: '#CBD5E1',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 13,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'column',
+    gap: 0,
+    borderWidth: 1,
+    borderColor: TECH_BORDER,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  cardTopRow: {
+  cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.sm,
+    gap: 10,
+    paddingBottom: 10,
   },
-  severityRow: {
+  cardHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 5,
+    marginLeft: 'auto' as any,
   },
-  severityDot: { width: 7, height: 7, borderRadius: 4 },
-  severityLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: TECH_TEXT_MUTED,
-    letterSpacing: -0.1,
+  divider: {
+    height: 1,
+    backgroundColor: TECH_BORDER,
+    marginHorizontal: -12,
+    marginBottom: 10,
   },
-  metaDot: { color: TECH_TEXT_MUTED, fontSize: 12 },
-  metaText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: TECH_TEXT_MUTED,
-  },
-  unreadDot: { width: 8, height: 8, borderRadius: 4 },
-
-  cardTitle: {
-    fontSize: 16,
+  senderName: {
+    fontSize: 13,
     fontWeight: '700',
     color: TECH_TEXT,
-    letterSpacing: -0.3,
-    lineHeight: 22,
-    marginBottom: 6,
+    flexShrink: 1,
+  },
+  metaSep: {
+    fontSize: 11,
+    color: '#CBD5E1',
+    fontWeight: '400',
+  },
+  metaTime: {
+    fontSize: 10.5,
+    fontWeight: '500',
+    color: '#777777',
+  },
+  unreadDot: { width: 7, height: 7, borderRadius: 4 },
+  cardTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: TECH_TEXT,
+    lineHeight: 18,
+    letterSpacing: -0.2,
+    marginBottom: 3,
   },
   cardMessage: {
-    fontSize: 13,
-    lineHeight: 20,
-    color: TECH_TEXT_MUTED,
-    marginBottom: spacing.sm,
-  },
-
-  // RESPONDED
-  responseBox: {
-    backgroundColor: '#ECFDF5',
-    borderRadius: radius.md,
-    padding: spacing.sm,
-    marginTop: 4,
-  },
-  responseLabel: {
-    fontSize: 10,
-    letterSpacing: 1.2,
-    fontWeight: '700',
-    color: '#059669',
-    marginBottom: 2,
-    textTransform: 'uppercase',
-  },
-  responseText: {
     fontSize: 12,
     lineHeight: 17,
     color: TECH_TEXT_MUTED,
+    marginBottom: 8,
   },
-
-  // RESPOND LINK
-  respondLink: {
+  cardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  severityRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  severityDot: { width: 6, height: 6, borderRadius: 3 },
+  severityLabel: { fontSize: 11, fontWeight: '600' },
+  confirmBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    alignSelf: 'flex-start',
   },
-  respondLinkText: {
-    color: colors.primary,
+  confirmBtnText: {
     fontSize: 13,
     fontWeight: '700',
-    letterSpacing: -0.1,
+    color: colors.primary,
+  },
+  confirmedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  confirmedText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#10B981',
   },
 
   // EMPTY
@@ -587,106 +621,101 @@ const styles = StyleSheet.create({
   // MODAL
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
     justifyContent: 'flex-end',
   },
   modalSheet: {
-    backgroundColor: TECH_BG,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    gap: 16,
   },
   modalHandle: {
-    width: 40, height: 4, borderRadius: 2,
-    backgroundColor: '#CBD5E1',
+    width: 36, height: 4, borderRadius: 2,
+    backgroundColor: '#E2E8F0',
     alignSelf: 'center',
-    marginBottom: spacing.md,
+    marginBottom: 4,
   },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
+    gap: 12,
   },
-  modalEyebrow: {
-    fontSize: 10,
-    letterSpacing: 1.8,
-    fontWeight: '800',
-    color: colors.primary,
-    marginBottom: 2,
+  modalSender: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: TECH_TEXT_MUTED,
+    marginBottom: 1,
   },
   modalTitle: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: '800',
     color: TECH_TEXT,
     letterSpacing: -0.4,
   },
+  modalCloseBtn: {
+    width: 34, height: 34, borderRadius: 17,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   alertPreview: {
     flexDirection: 'row',
-    gap: spacing.sm,
+    gap: 10,
     backgroundColor: TECH_BG_SOFT,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginBottom: spacing.md,
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: TECH_BORDER,
   },
   alertPreviewBar: {
     width: 3,
-    backgroundColor: colors.primary,
     borderRadius: 2,
+    minHeight: 20,
   },
   alertPreviewTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     color: TECH_TEXT,
-    marginBottom: 4,
+    marginBottom: 3,
   },
   alertPreviewMsg: {
     fontSize: 12,
     color: TECH_TEXT_MUTED,
     lineHeight: 17,
   },
-
-  inputLabel: {
-    fontSize: 10,
-    letterSpacing: 1.4,
-    fontWeight: '800',
-    color: TECH_TEXT_MUTED,
-    marginBottom: 8,
-  },
   input: {
     backgroundColor: TECH_BG_SOFT,
-    borderRadius: radius.md,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: TECH_BORDER,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     fontSize: 14,
     color: TECH_TEXT,
-    minHeight: 110,
-    marginBottom: spacing.md,
+    minHeight: 120,
   },
   inputError: { borderColor: '#DC2626' },
   inputErrorText: {
     fontSize: 12,
     color: '#DC2626',
-    marginTop: -spacing.sm,
-    marginBottom: spacing.sm,
+    marginTop: -8,
   },
-
   submitBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
     paddingVertical: 16,
-    borderRadius: radius.md,
+    borderRadius: 14,
     backgroundColor: colors.primary,
   },
   submitBtnText: {
     color: '#fff',
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 1.2,
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: -0.2,
   },
 });

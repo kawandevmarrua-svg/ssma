@@ -1,35 +1,32 @@
-'use client';
+"use client";
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import Link from 'next/link';
+import { AppDownloadSection } from "@/components/ui/app-download-section";
+import { Button } from "@/components/ui/button";
 import {
+  AlertTriangle,
   ArrowRight,
-  CheckCircle2,
-  ClipboardCheck,
-  Eye,
-  QrCode,
-  ShieldCheck,
-  Menu,
-  X,
+  Bell,
   Camera,
   Check,
-  AlertTriangle,
-  Bell,
   ChevronLeft,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { AppDownloadSection } from '@/components/ui/app-download-section';
-import {
-  Wifi,
+  ClipboardCheck,
+  Eye,
   MapPin,
+  Menu,
+  QrCode,
   Shield,
+  ShieldCheck,
   Smartphone,
-} from 'lucide-react';
+  Wifi,
+  X,
+} from "lucide-react";
+import Link from "next/link";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 /* ── Scroll-reveal ─────────────────────────────────────────── */
 function Reveal({
   children,
-  className = '',
+  className = "",
   delay = 0,
 }: {
   children: ReactNode;
@@ -59,7 +56,7 @@ function Reveal({
     <div
       ref={ref}
       className={`transition-all duration-700 ease-out ${
-        visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
+        visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
       } ${className}`}
       style={{ transitionDelay: `${delay}ms` }}
     >
@@ -69,7 +66,7 @@ function Reveal({
 }
 
 /* ── Animated counter ──────────────────────────────────────── */
-function Counter({ target, suffix = '' }: { target: number; suffix?: string }) {
+function Counter({ target, suffix = "" }: { target: number; suffix?: string }) {
   const ref = useRef<HTMLSpanElement>(null);
   const [count, setCount] = useState(0);
   const ran = useRef(false);
@@ -121,28 +118,30 @@ function PhoneShell({ children }: { children: ReactNode }) {
 
 /* ── Status bar (inside phone) ─────────────────────────────── */
 function StatusBar({ light = false }: { light?: boolean }) {
-  const c = light ? 'text-white/70' : 'text-slate-500';
+  const c = light ? "text-white/70" : "text-slate-500";
   return (
-    <div className={`flex items-center justify-between px-5 pt-3 pb-1 text-[9px] font-semibold ${c}`}>
+    <div
+      className={`flex items-center justify-between px-5 pt-3 pb-1 text-[9px] font-semibold ${c}`}
+    >
       <span>9:41</span>
       <div className="flex items-center gap-1">
         <div className="flex gap-px">
           {[8, 10, 12, 14].map((h) => (
             <div
               key={h}
-              className={`w-[3px] rounded-sm ${light ? 'bg-white/60' : 'bg-slate-400'}`}
+              className={`w-[3px] rounded-sm ${light ? "bg-white/60" : "bg-slate-400"}`}
               style={{ height: `${h}px` }}
             />
           ))}
         </div>
         <div
           className={`ml-1 h-[10px] w-[18px] rounded-sm border ${
-            light ? 'border-white/50' : 'border-slate-400'
+            light ? "border-white/50" : "border-slate-400"
           }`}
         >
           <div
             className={`m-px h-[6px] w-[12px] rounded-[1px] ${
-              light ? 'bg-white/60' : 'bg-slate-400'
+              light ? "bg-white/60" : "bg-slate-400"
             }`}
           />
         </div>
@@ -173,9 +172,27 @@ function HeroPhone() {
   }, []);
 
   const activities = [
-    { icon: Check, label: 'ESC-204', sub: 'Inspecao concluida', color: 'text-emerald-500', bg: 'bg-emerald-50' },
-    { icon: AlertTriangle, label: 'CAM-108', sub: 'Alerta pendente', color: 'text-amber-500', bg: 'bg-amber-50' },
-    { icon: Check, label: 'RET-042', sub: 'Checklist OK', color: 'text-emerald-500', bg: 'bg-emerald-50' },
+    {
+      icon: Check,
+      label: "ESC-204",
+      sub: "Inspecao concluida",
+      color: "text-emerald-500",
+      bg: "bg-emerald-50",
+    },
+    {
+      icon: AlertTriangle,
+      label: "CAM-108",
+      sub: "Alerta pendente",
+      color: "text-amber-500",
+      bg: "bg-amber-50",
+    },
+    {
+      icon: Check,
+      label: "RET-042",
+      sub: "Checklist OK",
+      color: "text-emerald-500",
+      bg: "bg-emerald-50",
+    },
   ];
 
   return (
@@ -200,7 +217,9 @@ function HeroPhone() {
           <div className="mx-3 mt-1 flex items-center justify-between rounded-2xl bg-slate-900 px-3 py-2.5">
             <div className="flex items-center gap-2">
               <ShieldCheck className="h-3.5 w-3.5 text-primary" />
-              <span className="text-[11px] font-semibold text-white">Dashboard</span>
+              <span className="text-[11px] font-semibold text-white">
+                Dashboard
+              </span>
             </div>
             <div className="relative">
               <Bell className="h-3.5 w-3.5 text-white/70" />
@@ -213,14 +232,14 @@ function HeroPhone() {
           {/* Stats row */}
           <div className="mx-3 mt-2.5 grid grid-cols-3 gap-1.5">
             {[
-              { n: '12', l: 'Inspecoes', c: 'text-slate-900' },
-              { n: '3', l: 'Alertas', c: 'text-amber-600' },
-              { n: '98%', l: 'Conforme', c: 'text-emerald-600' },
+              { n: "12", l: "Inspecoes", c: "text-slate-900" },
+              { n: "3", l: "Alertas", c: "text-amber-600" },
+              { n: "98%", l: "Conforme", c: "text-emerald-600" },
             ].map((s, i) => (
               <div
                 key={s.l}
                 className={`rounded-xl bg-white p-2 text-center shadow-sm ${
-                  active ? 'animate-slide-item' : 'opacity-0'
+                  active ? "animate-slide-item" : "opacity-0"
                 }`}
                 style={{ animationDelay: `${300 + i * 100}ms` }}
               >
@@ -233,15 +252,17 @@ function HeroPhone() {
           {/* Progress bar */}
           <div className="mx-3 mt-2.5 rounded-xl bg-white p-2.5 shadow-sm">
             <div className="flex items-center justify-between">
-              <span className="text-[9px] font-medium text-slate-600">Conformidade</span>
+              <span className="text-[9px] font-medium text-slate-600">
+                Conformidade
+              </span>
               <span className="text-[9px] font-bold text-emerald-600">98%</span>
             </div>
             <div className="mt-1.5 h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
               <div
                 className={`h-full rounded-full bg-gradient-to-r from-primary to-emerald-500 ${
-                  active ? 'animate-progress-fill' : 'w-0'
+                  active ? "animate-progress-fill" : "w-0"
                 }`}
-                style={{ animationDelay: '600ms' }}
+                style={{ animationDelay: "600ms" }}
               />
             </div>
           </div>
@@ -256,15 +277,19 @@ function HeroPhone() {
                 <div
                   key={a.label}
                   className={`flex items-center gap-2 rounded-xl bg-white p-2 shadow-sm ${
-                    active ? 'animate-slide-item' : 'opacity-0'
+                    active ? "animate-slide-item" : "opacity-0"
                   }`}
                   style={{ animationDelay: `${800 + i * 200}ms` }}
                 >
-                  <div className={`flex h-6 w-6 items-center justify-center rounded-lg ${a.bg}`}>
+                  <div
+                    className={`flex h-6 w-6 items-center justify-center rounded-lg ${a.bg}`}
+                  >
                     <a.icon className={`h-3 w-3 ${a.color}`} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[10px] font-semibold text-slate-800">{a.label}</p>
+                    <p className="text-[10px] font-semibold text-slate-800">
+                      {a.label}
+                    </p>
                     <p className="text-[8px] text-slate-400">{a.sub}</p>
                   </div>
                   <div className="h-1.5 w-1.5 rounded-full bg-slate-200" />
@@ -284,12 +309,12 @@ function HeroPhone() {
               <div
                 key={i}
                 className={`flex h-7 w-7 items-center justify-center rounded-xl ${
-                  isActive ? 'bg-primary/10' : ''
+                  isActive ? "bg-primary/10" : ""
                 }`}
               >
                 <Icon
                   className={`h-3.5 w-3.5 ${
-                    isActive ? 'text-primary' : 'text-slate-300'
+                    isActive ? "text-primary" : "text-slate-300"
                   }`}
                 />
               </div>
@@ -323,10 +348,10 @@ function FieldPhone() {
   }, []);
 
   const checks = [
-    { label: 'Freios verificados', done: true },
-    { label: 'Extintor presente', done: true },
-    { label: 'Farois funcionando', done: true },
-    { label: 'Pneus em condicao', done: false },
+    { label: "Freios verificados", done: true },
+    { label: "Extintor presente", done: true },
+    { label: "Farois funcionando", done: true },
+    { label: "Pneus em condicao", done: false },
   ];
 
   return (
@@ -355,7 +380,9 @@ function FieldPhone() {
               <ChevronLeft className="h-3 w-3" />
               <span className="text-[9px]">Voltar</span>
             </div>
-            <p className="mt-1 text-[12px] font-bold text-slate-900">Pre-operacao</p>
+            <p className="mt-1 text-[12px] font-bold text-slate-900">
+              Pre-operacao
+            </p>
             <div className="mt-1 flex items-center gap-2">
               <span className="rounded-md bg-slate-900 px-1.5 py-0.5 text-[8px] font-bold text-white">
                 ESC-204
@@ -373,7 +400,9 @@ function FieldPhone() {
                   <div
                     key={i}
                     className={`h-3 w-3 rounded-sm ${
-                      [0, 2, 3, 5, 6, 8].includes(i) ? 'bg-white' : 'bg-transparent'
+                      [0, 2, 3, 5, 6, 8].includes(i)
+                        ? "bg-white"
+                        : "bg-transparent"
                     }`}
                   />
                 ))}
@@ -405,15 +434,15 @@ function FieldPhone() {
                 <div
                   key={c.label}
                   className={`flex items-center gap-2 rounded-xl bg-white p-2 shadow-sm ${
-                    active ? 'animate-slide-item' : 'opacity-0'
+                    active ? "animate-slide-item" : "opacity-0"
                   }`}
                   style={{ animationDelay: `${500 + i * 200}ms` }}
                 >
                   <div
                     className={`flex h-5 w-5 items-center justify-center rounded-md ${
                       c.done
-                        ? 'bg-emerald-500'
-                        : 'border-2 border-slate-200 bg-white'
+                        ? "bg-emerald-500"
+                        : "border-2 border-slate-200 bg-white"
                     }`}
                   >
                     {c.done && active && (
@@ -425,9 +454,7 @@ function FieldPhone() {
                   </div>
                   <span
                     className={`text-[10px] ${
-                      c.done
-                        ? 'text-slate-600'
-                        : 'font-medium text-slate-900'
+                      c.done ? "text-slate-600" : "font-medium text-slate-900"
                     }`}
                   >
                     {c.label}
@@ -443,7 +470,9 @@ function FieldPhone() {
               <Camera className="h-4 w-4 text-slate-400" />
             </button>
             <div className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary px-3 py-2 shadow-md shadow-primary/25">
-              <span className="text-[10px] font-semibold text-white">Enviar</span>
+              <span className="text-[10px] font-semibold text-white">
+                Enviar
+              </span>
               <ArrowRight className="h-3 w-3 text-white" />
             </div>
           </div>
@@ -457,34 +486,38 @@ function FieldPhone() {
 const features = [
   {
     icon: Eye,
-    title: 'Visao em tempo real',
+    title: "Visao em tempo real",
     description:
-      'Painel limpo com alertas, indicadores e status da operacao. Tudo o que importa, nada que distrai.',
+      "Painel limpo com alertas, indicadores e status da operacao. Tudo o que importa, nada que distrai.",
   },
   {
     icon: ClipboardCheck,
-    title: 'Execucao digital',
+    title: "Execucao digital",
     description:
-      'Checklist com evidencias fotograficas, rastreabilidade completa e envio instantaneo.',
+      "Checklist com evidencias fotograficas, rastreabilidade completa e envio instantaneo.",
   },
   {
     icon: QrCode,
-    title: 'Fluxo por QR Code',
+    title: "Fluxo por QR Code",
     description:
-      'Leitura rapida para identificar maquinas e iniciar inspecoes sem digitacao.',
+      "Leitura rapida para identificar maquinas e iniciar inspecoes sem digitacao.",
   },
 ];
 
 const metrics = [
-  { value: 98, suffix: '%', label: 'Conformidade alcancada' },
-  { value: 3, suffix: 'x', label: 'Mais rapido que planilha' },
-  { value: 100, suffix: '%', label: 'Digital e rastreavel' },
+  { value: 98, suffix: "%", label: "Conformidade alcancada" },
+  { value: 3, suffix: "x", label: "Mais rapido que planilha" },
+  { value: 100, suffix: "%", label: "Digital e rastreavel" },
 ];
 
 const steps = [
-  { num: '01', title: 'Escaneie', desc: 'Aponte para o QR Code da maquina.' },
-  { num: '02', title: 'Preencha', desc: 'Responda o checklist e registre fotos.' },
-  { num: '03', title: 'Envie', desc: 'A gestao recebe tudo em tempo real.' },
+  { num: "01", title: "Escaneie", desc: "Aponte para o QR Code da maquina." },
+  {
+    num: "02",
+    title: "Preencha",
+    desc: "Responda o checklist e registre fotos.",
+  },
+  { num: "03", title: "Envie", desc: "A gestao recebe tudo em tempo real." },
 ];
 
 /* ── Page ──────────────────────────────────────────────────── */
@@ -506,10 +539,16 @@ export default function LandingPage() {
           </Link>
 
           <nav className="hidden items-center gap-8 text-sm text-muted-foreground md:flex">
-            <a href="#recursos" className="transition-colors hover:text-foreground">
+            <a
+              href="#recursos"
+              className="transition-colors hover:text-foreground"
+            >
               Recursos
             </a>
-            <a href="#como-funciona" className="transition-colors hover:text-foreground">
+            <a
+              href="#como-funciona"
+              className="transition-colors hover:text-foreground"
+            >
               Como funciona
             </a>
             <a href="#app" className="transition-colors hover:text-foreground">
@@ -540,17 +579,31 @@ export default function LandingPage() {
         {mobileNav && (
           <div className="animate-in fade-in slide-in-from-top-2 border-t border-border/40 bg-white px-6 py-4 duration-200 md:hidden">
             <nav className="flex flex-col gap-4 text-sm">
-              <a href="#recursos" onClick={() => setMobileNav(false)} className="text-muted-foreground hover:text-foreground">
+              <a
+                href="#recursos"
+                onClick={() => setMobileNav(false)}
+                className="text-muted-foreground hover:text-foreground"
+              >
                 Recursos
               </a>
-              <a href="#como-funciona" onClick={() => setMobileNav(false)} className="text-muted-foreground hover:text-foreground">
+              <a
+                href="#como-funciona"
+                onClick={() => setMobileNav(false)}
+                className="text-muted-foreground hover:text-foreground"
+              >
                 Como funciona
               </a>
-              <a href="#app" onClick={() => setMobileNav(false)} className="text-muted-foreground hover:text-foreground">
+              <a
+                href="#app"
+                onClick={() => setMobileNav(false)}
+                className="text-muted-foreground hover:text-foreground"
+              >
                 App
               </a>
               <Link href="/login" onClick={() => setMobileNav(false)}>
-                <Button size="sm" className="w-full rounded-full">Entrar</Button>
+                <Button size="sm" className="w-full rounded-full">
+                  Entrar
+                </Button>
               </Link>
             </nav>
           </div>
@@ -565,7 +618,7 @@ export default function LandingPage() {
             <div className="max-w-2xl">
               <Reveal>
                 <h1 className="text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl lg:text-7xl">
-                  Seguranca que se ve.{' '}
+                  Seguranca que se ve.{" "}
                   <span className="bg-gradient-to-r from-primary to-orange-400 bg-clip-text text-transparent">
                     Resultado que se mede.
                   </span>
@@ -620,7 +673,9 @@ export default function LandingPage() {
                     <p className="text-4xl font-bold tracking-tight md:text-5xl">
                       <Counter target={m.value} suffix={m.suffix} />
                     </p>
-                    <p className="mt-2 text-sm text-muted-foreground">{m.label}</p>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      {m.label}
+                    </p>
                   </div>
                 </Reveal>
               ))}
@@ -702,17 +757,20 @@ export default function LandingPage() {
           title="Baixe o app Seguranca em 360"
           subtitle="Leve a seguranca para o campo — inspecoes, checklists e alertas na palma da mao"
           features={[
-            { icon: <QrCode size={24} />, title: 'Leitura QR Code' },
-            { icon: <ClipboardCheck size={24} />, title: 'Checklists digitais' },
-            { icon: <Wifi size={24} />, title: 'Funciona offline' },
-            { icon: <MapPin size={24} />, title: 'Geolocalizacao' },
+            { icon: <QrCode size={24} />, title: "Leitura QR Code" },
+            {
+              icon: <ClipboardCheck size={24} />,
+              title: "Checklists digitais",
+            },
+            { icon: <Wifi size={24} />, title: "Funciona offline" },
+            { icon: <MapPin size={24} />, title: "Geolocalizacao" },
           ]}
           benefits={[
-            { icon: <Smartphone size={20} />, title: 'Android e iOS' },
-            { icon: <Shield size={20} />, title: 'Dados protegidos' },
-            { icon: <ShieldCheck size={20} />, title: 'Uso simplificado' },
+            { icon: <Smartphone size={20} />, title: "Android e iOS" },
+            { icon: <Shield size={20} />, title: "Dados protegidos" },
+            { icon: <ShieldCheck size={20} />, title: "Uso simplificado" },
           ]}
-          appLink="https://github.com/kawandevmarrua-svg/ssma/releases/tag/v1.0.4"
+          appLink="https://github.com/kawandevmarrua-svg/ssma/releases/tag/v1.0.5"
           appLinkLabel="Acessar o app"
           phoneContent={<FieldPhone />}
           className="py-24 md:py-32"

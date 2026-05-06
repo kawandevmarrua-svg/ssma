@@ -16,6 +16,7 @@ import { colors, spacing, radius, fontSize } from '../theme/colors';
 import { commonStyles } from '../theme/commonStyles';
 import { Button, Text } from './ui';
 import { enqueueOrExecute } from '../lib/offlineQueue';
+import { recordTrackingEvent } from '../lib/trackingEvents';
 
 interface PendingChecklist {
   id: string;
@@ -85,6 +86,11 @@ export function FinishChecklistModal({ checklist, userId, onClose, onFinished }:
     } else {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     }
+
+    if (userId && checklist) {
+      void recordTrackingEvent(userId, 'checklist_end', { checklistId: checklist.id });
+    }
+
     reset();
     onFinished();
   }

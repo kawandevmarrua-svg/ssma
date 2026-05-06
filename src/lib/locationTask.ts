@@ -68,16 +68,17 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
       console.log('[LocationTask] upsert falhou:', upsertError.message);
     }
 
-    // Breadcrumb para historico de deslocamento (somente com atividade ativa)
-    if (derived.currentActivityId) {
+    // Breadcrumb para historico de deslocamento (atividade ativa ou ocioso)
+    if (derived.currentActivityId || derived.status === 'idle') {
       await supabase.from('location_history').insert({
         operator_id: operatorId,
-        activity_id: derived.currentActivityId,
+        activity_id: derived.currentActivityId ?? null,
         latitude: loc.coords.latitude,
         longitude: loc.coords.longitude,
         accuracy: loc.coords.accuracy ?? null,
         speed: loc.coords.speed ?? null,
         heading: loc.coords.heading ?? null,
+        event_type: derived.currentActivityId ? 'breadcrumb' : 'idle_breadcrumb',
         recorded_at: new Date(loc.timestamp || Date.now()).toISOString(),
       }).then(({ error: histErr }) => {
         if (histErr) console.log('[LocationTask] breadcrumb falhou:', histErr.message);

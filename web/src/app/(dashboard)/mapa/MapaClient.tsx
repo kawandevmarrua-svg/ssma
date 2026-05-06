@@ -57,6 +57,16 @@ function createSmallIcon(color: string, label: string) {
   });
 }
 
+function createEventIcon(color: string, label: string) {
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:26px;height:26px;border-radius:50%;background:${color};border:2.5px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:bold;color:white;line-height:1">${label}</div>`,
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
+    popupAnchor: [0, -13],
+  });
+}
+
 const STATUS_ICONS: Record<string, L.DivIcon> = {
   online: createColorIcon('#10b981'),
   in_activity: createColorIcon('#3b82f6'),
@@ -66,7 +76,15 @@ const STATUS_ICONS: Record<string, L.DivIcon> = {
 };
 
 const ROUTE_START_ICON = createSmallIcon('#6366f1', 'A');
-const ROUTE_END_ICON = createSmallIcon('#059669', 'B');
+
+const EVENT_MAP_ICONS: Record<string, L.DivIcon> = {
+  pre_op_start: createEventIcon('#f97316', 'P'),
+  checklist_start: createEventIcon('#f59e0b', 'CL'),
+  checklist_end: createEventIcon('#10b981', 'C✓'),
+  activity_start: createEventIcon('#3b82f6', 'AT'),
+  activity_end: createEventIcon('#6366f1', 'A✓'),
+  parada: createEventIcon('#ef4444', 'D'),
+};
 
 // ══════════════════════════════════════════════════════════════
 // Types
@@ -111,17 +129,30 @@ interface OperatorMetrics {
   productivityIndex: number | null;
 }
 
+interface HistoryRow {
+  operator_id: string;
+  latitude: number;
+  longitude: number;
+  recorded_at: string;
+  event_type: string | null;
+  activity_id: string | null;
+  checklist_id: string | null;
+}
+
 interface RoutePoint {
   lat: number;
   lng: number;
   label: string;
   time: string;
+  eventType: string;
 }
 
 interface OperatorRoute {
   operatorId: string;
   points: RoutePoint[];
   distanceKm: number;
+  distanceActivityKm: number;
+  distanceIdleKm: number;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -186,48 +217,49 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function totalRouteDistance(points: RoutePoint[]): number {
-  let total = 0;
-  for (let i = 1; i < points.length; i++) {
-    total += haversineKm(points[i - 1].lat, points[i - 1].lng, points[i].lat, points[i].lng);
+
+const EVENT_LABELS: Record<string, string> = {
+  pre_op_start: 'Pre-operacao',
+  checklist_start: 'Inicio checklist',
+  checklist_end: 'Fim checklist',
+  activity_start: 'Inicio atividade',
+  activity_end: 'Fim atividade',
+  parada: 'Parada',
+  breadcrumb: 'Em atividade',
+  idle_breadcrumb: 'Ocioso',
+};
+
+const KEY_EVENTS = new Set(['pre_op_start', 'checklist_start', 'checklist_end', 'activity_start', 'activity_end', 'parada']);
+
+function buildRouteFromHistory(operatorId: string, rows: HistoryRow[]): OperatorRoute {
+  if (rows.length === 0) {
+    return { operatorId, points: [], distanceKm: 0, distanceActivityKm: 0, distanceIdleKm: 0 };
   }
-  return total;
-}
 
-/** Gera rota mocada para demonstracao: ponto de inicio, intermediarios e posicao atual */
-function generateMockRoute(op: OperatorLocation): OperatorRoute {
-  // Seed determinístico por operator_id
-  const seed = op.operator_id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
-  const rng = (i: number) => {
-    const x = Math.sin(seed * 9301 + i * 49297) * 49297;
-    return x - Math.floor(x);
-  };
+  const points: RoutePoint[] = rows.map((r) => ({
+    lat: r.latitude,
+    lng: r.longitude,
+    label: EVENT_LABELS[r.event_type ?? 'breadcrumb'] ?? 'Ponto',
+    time: new Date(r.recorded_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+    eventType: r.event_type ?? 'breadcrumb',
+  }));
 
-  // Ponto de inicio: 2-8km de distancia da posicao atual
-  const angle1 = rng(1) * 2 * Math.PI;
-  const dist1 = 0.02 + rng(2) * 0.05; // ~2-7km em graus
-  const startLat = op.latitude + Math.cos(angle1) * dist1;
-  const startLng = op.longitude + Math.sin(angle1) * dist1;
+  let distanceKm = 0;
+  let distanceActivityKm = 0;
+  let distanceIdleKm = 0;
 
-  // Ponto intermediario
-  const midLat = (startLat + op.latitude) / 2 + (rng(3) - 0.5) * 0.01;
-  const midLng = (startLng + op.longitude) / 2 + (rng(4) - 0.5) * 0.01;
+  for (let i = 1; i < points.length; i++) {
+    const d = haversineKm(points[i - 1].lat, points[i - 1].lng, points[i].lat, points[i].lng);
+    distanceKm += d;
+    const prevType = rows[i - 1].event_type ?? 'breadcrumb';
+    if (prevType === 'breadcrumb' || prevType === 'activity_start') {
+      distanceActivityKm += d;
+    } else if (prevType === 'idle_breadcrumb' || prevType === 'activity_end' || prevType === 'parada' || prevType === 'checklist_end') {
+      distanceIdleKm += d;
+    }
+  }
 
-  const now = new Date();
-  const startTime = new Date(now.getTime() - (2 + rng(5) * 4) * 3600000); // 2-6h atras
-  const midTime = new Date((startTime.getTime() + now.getTime()) / 2);
-
-  const points: RoutePoint[] = [
-    { lat: startLat, lng: startLng, label: 'Inicio do turno', time: startTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) },
-    { lat: midLat, lng: midLng, label: 'Ponto intermediario', time: midTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) },
-    { lat: op.latitude, lng: op.longitude, label: 'Posicao atual', time: now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) },
-  ];
-
-  return {
-    operatorId: op.operator_id,
-    points,
-    distanceKm: totalRouteDistance(points),
-  };
+  return { operatorId, points, distanceKm, distanceActivityKm, distanceIdleKm };
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -309,6 +341,8 @@ function OperatorRouteMap({ route, status }: { route: OperatorRoute; status: str
     if (mapInstanceRef.current) return;
 
     const pts = route.points;
+    if (pts.length === 0) return;
+
     const map = L.map(containerRef.current, {
       zoomControl: false,
       attributionControl: false,
@@ -320,31 +354,40 @@ function OperatorRouteMap({ route, status }: { route: OperatorRoute; status: str
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-    // Polyline (rota)
+    // Polyline
     const latlngs: L.LatLngExpression[] = pts.map((p) => [p.lat, p.lng]);
     L.polyline(latlngs, { color: '#6366f1', weight: 4, opacity: 0.8, dashArray: '8 6' }).addTo(map);
 
-    // Start marker
-    L.marker([pts[0].lat, pts[0].lng], { icon: ROUTE_START_ICON })
-      .bindPopup(`<strong>${pts[0].label}</strong><br/><span style="font-size:11px">${pts[0].time}</span>`)
-      .addTo(map);
+    // Render each point: key events as labeled icons, breadcrumbs as small dots
+    pts.forEach((p, i) => {
+      const isLast = i === pts.length - 1;
+      const isKeyEvent = KEY_EVENTS.has(p.eventType);
+      const popup = `<strong>${p.label}</strong><br/><span style="font-size:11px">${p.time}</span>`;
 
-    // Intermediary markers
-    for (let i = 1; i < pts.length - 1; i++) {
-      const p = pts[i];
-      L.circleMarker([p.lat, p.lng], { radius: 5, color: '#6366f1', fillColor: '#6366f1', fillOpacity: 1, weight: 2 })
-        .bindPopup(`<strong>${p.label}</strong><br/><span style="font-size:11px">${p.time}</span>`)
-        .addTo(map);
-    }
-
-    // End marker (posicao atual)
-    const last = pts[pts.length - 1];
-    L.marker([last.lat, last.lng], { icon: STATUS_ICONS[status] || STATUS_ICONS.online })
-      .bindPopup(`<strong>${last.label}</strong><br/><span style="font-size:11px">${last.time}</span>`)
-      .addTo(map);
+      if (isLast) {
+        L.marker([p.lat, p.lng], { icon: STATUS_ICONS[status] || STATUS_ICONS.online })
+          .bindPopup(popup).addTo(map);
+      } else if (isKeyEvent) {
+        const icon = EVENT_MAP_ICONS[p.eventType] ?? ROUTE_START_ICON;
+        L.marker([p.lat, p.lng], { icon }).bindPopup(popup).addTo(map);
+      } else {
+        const isIdle = p.eventType === 'idle_breadcrumb';
+        L.circleMarker([p.lat, p.lng], {
+          radius: 3,
+          color: isIdle ? '#9ca3af' : '#3b82f6',
+          fillColor: isIdle ? '#9ca3af' : '#3b82f6',
+          fillOpacity: 0.7,
+          weight: 1,
+        }).bindPopup(popup).addTo(map);
+      }
+    });
 
     // Fit bounds
-    map.fitBounds(latlngs as L.LatLngBoundsExpression, { padding: [30, 30] });
+    if (pts.length === 1) {
+      map.setView([pts[0].lat, pts[0].lng], 15);
+    } else {
+      map.fitBounds(latlngs as L.LatLngBoundsExpression, { padding: [30, 30] });
+    }
 
     mapInstanceRef.current = map;
 
@@ -421,31 +464,23 @@ function GlobalMap({
           dashArray: '6 4',
         }).addTo(layer);
 
-        // All waypoints along the route
+        // Waypoints: key events as icons, breadcrumbs as tiny dots
         route.points.forEach((p, i) => {
           bounds.push([p.lat, p.lng]);
-          if (i === 0) {
-            // Start marker
+          if (i === route.points.length - 1) return; // current pos drawn below
+          const popup = `<span style="font-size:11px"><strong>${name}</strong> — ${p.label} (${p.time})</span>`;
+          if (!dimmed && KEY_EVENTS.has(p.eventType)) {
+            const icon = EVENT_MAP_ICONS[p.eventType];
+            if (icon) L.marker([p.lat, p.lng], { icon }).bindPopup(popup).addTo(layer);
+          } else {
+            const isIdle = p.eventType === 'idle_breadcrumb';
             L.circleMarker([p.lat, p.lng], {
-              radius: dimmed ? 3 : 5,
-              color,
-              fillColor: color,
-              fillOpacity: dimmed ? 0.3 : 1,
+              radius: dimmed ? 2 : 3,
+              color: isIdle ? '#9ca3af' : color,
+              fillColor: isIdle ? '#9ca3af' : color,
+              fillOpacity: dimmed ? 0.2 : 0.7,
               weight: 1,
-            })
-              .bindPopup(`<span style="font-size:11px"><strong>${name}</strong> — ${p.label} (${p.time})</span>`)
-              .addTo(layer);
-          } else if (i < route.points.length - 1) {
-            // Intermediate waypoints
-            L.circleMarker([p.lat, p.lng], {
-              radius: dimmed ? 2 : 4,
-              color,
-              fillColor: color,
-              fillOpacity: dimmed ? 0.2 : 0.8,
-              weight: 1,
-            })
-              .bindPopup(`<span style="font-size:11px"><strong>${name}</strong> — ${p.label} (${p.time})</span>`)
-              .addTo(layer);
+            }).bindPopup(popup).addTo(layer);
           }
         });
       }
@@ -517,24 +552,27 @@ function GlobalMap({
       // Main highlighted line
       L.polyline(latlngs, { color, weight: 5, opacity: 1, dashArray: '8 5' }).addTo(hLayer);
 
-      // Highlighted waypoints with labels
+      // Highlighted waypoints: event icons for key events, dots for breadcrumbs
       route.points.forEach((p, i) => {
-        const isStart = i === 0;
         const isEnd = i === route.points.length - 1;
-        const label = isStart ? 'A' : isEnd ? 'B' : String(i);
-        const bgColor = isStart ? '#6366f1' : isEnd ? '#059669' : color;
+        const popup = `<div style="font-size:12px"><strong>${name}</strong><br/>${p.label}<br/><span style="font-family:monospace;font-size:10px">${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</span><br/>${p.time}</div>`;
 
-        L.marker([p.lat, p.lng], {
-          icon: L.divIcon({
-            className: '',
-            html: `<div style="width:24px;height:24px;border-radius:50%;background:${bgColor};border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;color:white">${label}</div>`,
-            iconSize: [24, 24],
-            iconAnchor: [12, 12],
-            popupAnchor: [0, -12],
-          }),
-        })
-          .bindPopup(`<div style="font-size:12px"><strong>${name}</strong><br/>${p.label}<br/><span style="font-family:monospace;font-size:10px">${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</span><br/>${p.time}</div>`)
-          .addTo(hLayer);
+        if (isEnd) {
+          L.marker([p.lat, p.lng], { icon: STATUS_ICONS[op.current_status] || STATUS_ICONS.online })
+            .bindPopup(popup).addTo(hLayer);
+        } else if (KEY_EVENTS.has(p.eventType)) {
+          const icon = EVENT_MAP_ICONS[p.eventType] ?? createSmallIcon(color, String(i + 1));
+          L.marker([p.lat, p.lng], { icon }).bindPopup(popup).addTo(hLayer);
+        } else {
+          const isIdle = p.eventType === 'idle_breadcrumb';
+          L.circleMarker([p.lat, p.lng], {
+            radius: 4,
+            color: isIdle ? '#9ca3af' : color,
+            fillColor: isIdle ? '#9ca3af' : color,
+            fillOpacity: 0.8,
+            weight: 1,
+          }).bindPopup(popup).addTo(hLayer);
+        }
       });
 
       // Fit map to selected route
@@ -564,12 +602,13 @@ export default function MapaClient() {
   const [selectedOperatorId, setSelectedOperatorId] = useState<string | null>(null);
   const [realtimeStatus, setRealtimeStatus] = useState<'connecting' | 'live' | 'disconnected'>('connecting');
   const [viewMode, setViewMode] = useState<'live' | 'analysis'>('live');
+  const [routeHistory, setRouteHistory] = useState<Map<string, HistoryRow[]>>(new Map());
 
   const today = new Date().toISOString().split('T')[0];
   const monthStart = today.slice(0, 7) + '-01';
 
   const loadData = useCallback(async () => {
-    const [opLocRes, locRes, checklistsRes, activitiesRes, ncRes, inspectionsRes, deviationsRes, scoresRes] = await Promise.all([
+    const [opLocRes, locRes, checklistsRes, activitiesRes, ncRes, inspectionsRes, deviationsRes, scoresRes, historyRes] = await Promise.all([
       supabase.from('operator_locations').select('*, profiles!operator_id(full_name)').order('updated_at', { ascending: false }),
       supabase.from('locations').select('id, name, code, latitude, longitude').eq('active', true),
       supabase.from('checklists').select('id, operator_id, date, result, had_interference, profiles(full_name)').gte('date', monthStart),
@@ -578,6 +617,11 @@ export default function MapaClient() {
       supabase.from('behavioral_inspections').select('id, operator_id').gte('date', monthStart),
       supabase.from('behavioral_deviations').select('id, status, inspection_id, behavioral_inspections!inner(operator_id)').gte('behavioral_inspections.date', monthStart),
       supabase.from('operator_scores').select('operator_id, score, productivity_index, period').eq('period', today.slice(0, 7)),
+      supabase.from('location_history')
+        .select('operator_id, latitude, longitude, recorded_at, event_type, activity_id, checklist_id')
+        .gte('recorded_at', today + 'T00:00:00.000Z')
+        .order('recorded_at', { ascending: true })
+        .limit(2000),
     ]);
 
     setOperatorLocations((opLocRes.data as OperatorLocation[] | null) ?? []);
@@ -638,6 +682,16 @@ export default function MapaClient() {
     }
 
     setMetrics(mMap);
+
+    const hMap = new Map<string, HistoryRow[]>();
+    if (historyRes.error) console.warn('[Mapa] location_history error:', historyRes.error.message);
+    for (const row of (historyRes.data as HistoryRow[] | null) ?? []) {
+      const rows = hMap.get(row.operator_id) ?? [];
+      rows.push(row);
+      hMap.set(row.operator_id, rows);
+    }
+    setRouteHistory(hMap);
+
     setLoading(false);
   }, [supabase, today, monthStart]);
 
@@ -655,14 +709,30 @@ export default function MapaClient() {
     return () => { supabase.removeChannel(channel); };
   }, [supabase, loadData]);
 
-  // Generate mock routes
   const operatorRoutes = useMemo(() => {
     const map = new Map<string, OperatorRoute>();
     for (const op of operatorLocations) {
-      map.set(op.operator_id, generateMockRoute(op));
+      const history = routeHistory.get(op.operator_id) ?? [];
+      if (history.length > 0) {
+        map.set(op.operator_id, buildRouteFromHistory(op.operator_id, history));
+      } else {
+        map.set(op.operator_id, {
+          operatorId: op.operator_id,
+          points: [{
+            lat: op.latitude,
+            lng: op.longitude,
+            label: 'Posicao atual',
+            time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+            eventType: 'breadcrumb',
+          }],
+          distanceKm: 0,
+          distanceActivityKm: 0,
+          distanceIdleKm: 0,
+        });
+      }
     }
     return map;
-  }, [operatorLocations]);
+  }, [operatorLocations, routeHistory]);
 
   const filtered = useMemo(
     () => filterStatus ? operatorLocations.filter((o) => o.current_status === filterStatus) : operatorLocations,
@@ -973,25 +1043,46 @@ export default function MapaClient() {
                               <span className="text-xs font-semibold text-indigo-700 flex items-center gap-1"><Navigation className="h-3 w-3" />Distancia total</span>
                               <span className="text-sm font-bold text-indigo-700">{route.distanceKm.toFixed(2)} km</span>
                             </div>
-                            <div className="divide-y text-xs">
-                              {route.points.map((p, i) => (
-                                <div key={i} className="flex items-center gap-2 py-1.5">
-                                  <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white ${i === 0 ? 'bg-indigo-500' : i === route.points.length - 1 ? 'bg-emerald-500' : 'bg-gray-400'}`}>
-                                    {i === 0 ? 'A' : i === route.points.length - 1 ? 'B' : String(i)}
-                                  </span>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="font-medium">{p.label}</p>
-                                    <p className="text-muted-foreground font-mono text-[10px]">{p.lat.toFixed(5)}, {p.lng.toFixed(5)}</p>
+                            {(route.distanceActivityKm > 0 || route.distanceIdleKm > 0) && (
+                              <div className="flex gap-3 text-[10px]">
+                                <span className="text-blue-600 font-medium">Em atividade: {route.distanceActivityKm.toFixed(2)} km</span>
+                                <span className="text-gray-500 font-medium">Ocioso: {route.distanceIdleKm.toFixed(2)} km</span>
+                              </div>
+                            )}
+                            <div className="divide-y text-xs max-h-48 overflow-y-auto">
+                              {route.points.filter((_, i) => KEY_EVENTS.has(route.points[i].eventType) || i === 0 || i === route.points.length - 1).map((p, i) => {
+                                const eventColors: Record<string, string> = {
+                                  pre_op_start: 'bg-orange-500',
+                                  checklist_start: 'bg-yellow-500',
+                                  checklist_end: 'bg-emerald-500',
+                                  activity_start: 'bg-blue-500',
+                                  activity_end: 'bg-indigo-500',
+                                  parada: 'bg-red-500',
+                                  breadcrumb: 'bg-gray-400',
+                                  idle_breadcrumb: 'bg-gray-300',
+                                };
+                                const shortLabel: Record<string, string> = {
+                                  pre_op_start: 'P', checklist_start: 'CL', checklist_end: 'C✓',
+                                  activity_start: 'AT', activity_end: 'A✓', parada: 'D',
+                                };
+                                return (
+                                  <div key={i} className="flex items-center gap-2 py-1.5">
+                                    <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white ${eventColors[p.eventType] ?? 'bg-gray-400'}`}>
+                                      {shortLabel[p.eventType] ?? String(i + 1)}
+                                    </span>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="font-medium">{p.label}</p>
+                                      <p className="text-muted-foreground font-mono text-[10px]">{p.lat.toFixed(5)}, {p.lng.toFixed(5)}</p>
+                                    </div>
+                                    <span className="text-muted-foreground shrink-0">{p.time}</span>
                                   </div>
-                                  <span className="text-muted-foreground shrink-0">{p.time}</span>
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
-                            {route.points.length >= 2 && (
+                            {route.points.length > 0 && (
                               <div className="pt-1 text-[10px] text-muted-foreground">
                                 <Flag className="h-3 w-3 inline mr-1" />
-                                De <span className="font-mono">{route.points[0].lat.toFixed(4)},{route.points[0].lng.toFixed(4)}</span> ate{' '}
-                                <span className="font-mono">{route.points[route.points.length - 1].lat.toFixed(4)},{route.points[route.points.length - 1].lng.toFixed(4)}</span>
+                                {route.points.length} pontos registrados
                               </div>
                             )}
                           </div>

@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { supabase } from '../../src/lib/supabase';
 import { todayLocal } from '../../src/lib/dates';
+import { recordTrackingEvent } from '../../src/lib/trackingEvents';
 import { PreOperationCheck, PreOpQuestion } from '../../src/types/database';
 import { colors, spacing, radius, fontSize } from '../../src/theme/colors';
 
@@ -79,6 +80,7 @@ export default function PreOperacaoScreen() {
   async function handleSave() {
     if (saving) return;
     if (!user) return;
+    if (existingCheck) return;
 
     const unanswered = questions.filter((q) => answers[q.id] === null || answers[q.id] === undefined);
     if (unanswered.length > 0) {
@@ -113,6 +115,9 @@ export default function PreOperacaoScreen() {
       Alert.alert('Erro', ansErr.message);
       return;
     }
+
+    setExistingCheck(check);
+    void recordTrackingEvent(user.id, 'pre_op_start');
 
     const criticalFailed = questions.filter(
       (q) => q.critical && answers[q.id] === false

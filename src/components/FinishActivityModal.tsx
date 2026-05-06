@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { pickPhoto, persistPhotoForQueue } from '../lib/imageUtils';
 import { enqueueOrExecute } from '../lib/offlineQueue';
+import { recordTrackingEvent } from '../lib/trackingEvents';
 import { Activity } from '../types/database';
 import { colors, spacing, radius, fontSize } from '../theme/colors';
 import { commonStyles } from '../theme/commonStyles';
@@ -102,6 +103,11 @@ export function FinishActivityModal({ activity, userId, onClose, onFinished }: P
     } else {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     }
+
+    if (userId && activity) {
+      void recordTrackingEvent(userId, 'activity_end', { activityId: activity.id });
+    }
+
     reset();
     onFinished();
   }

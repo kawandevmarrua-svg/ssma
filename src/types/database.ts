@@ -901,21 +901,25 @@ export type Database = {
           id: string;
           operator_id: string;
           activity_id: string | null;
+          checklist_id: string | null;
           latitude: number;
           longitude: number;
           accuracy: number | null;
           speed: number | null;
           heading: number | null;
+          event_type: 'breadcrumb' | 'idle_breadcrumb' | 'pre_op_start' | 'checklist_start' | 'checklist_end' | 'activity_start' | 'activity_end' | 'parada';
           recorded_at: string;
         };
         Insert: {
           operator_id: string;
           activity_id?: string | null;
+          checklist_id?: string | null;
           latitude: number;
           longitude: number;
           accuracy?: number | null;
           speed?: number | null;
           heading?: number | null;
+          event_type?: 'breadcrumb' | 'idle_breadcrumb' | 'pre_op_start' | 'checklist_start' | 'checklist_end' | 'activity_start' | 'activity_end' | 'parada';
           recorded_at?: string;
         };
         Update: {};

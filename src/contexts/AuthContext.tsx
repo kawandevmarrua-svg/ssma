@@ -2,7 +2,6 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { AppState, AppStateStatus } from 'react-native';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import { registerPushTokenForUser } from '../lib/pushNotifications';
 import { bindOfflineQueueToUser } from '../lib/offlineQueue';
 import { markOperatorOffline } from '../lib/operatorPresence';
 import { Profile } from '../types/database';
@@ -133,9 +132,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       setProfile(data);
-      registerPushTokenForUser(userId).catch((err) => {
-        console.error('[Push] registerPushTokenForUser falhou:', err);
-      });
     } catch (e) {
       console.log('[Auth] fetchProfile excecao:', e);
     } finally {

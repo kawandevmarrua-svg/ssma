@@ -190,11 +190,11 @@ export default function AlertasPage() {
     } else {
       const count = (pushData as { tokens_count?: number } | null)?.tokens_count ?? 0;
       setFeedback({
-        type: count > 0 ? 'ok' : 'err',
+        type: 'ok',
         text:
           count > 0
             ? `Alerta enviado por push para ${count} dispositivo(s).`
-            : 'Alerta criado, mas nenhum dispositivo com push token cadastrado.',
+            : 'Alerta criado. Operadores serão notificados via Realtime quando o app estiver aberto.',
       });
     }
 
@@ -226,11 +226,11 @@ export default function AlertasPage() {
     } else {
       const count = (data as { tokens_count?: number } | null)?.tokens_count ?? 0;
       setFeedback({
-        type: count > 0 ? 'ok' : 'err',
+        type: 'ok',
         text:
           count > 0
             ? `Push reenviado para ${count} dispositivo(s).`
-            : 'Nenhum dispositivo com push token cadastrado para esse destinatário.',
+            : 'Alerta reenviado. Operadores serão notificados via Realtime quando o app estiver aberto.',
       });
     }
 

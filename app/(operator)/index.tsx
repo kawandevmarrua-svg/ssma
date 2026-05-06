@@ -12,7 +12,6 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import Constants from 'expo-constants';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { supabase } from '../../src/lib/supabase';
 import { todayLocal } from '../../src/lib/dates';
@@ -47,13 +46,12 @@ const DEFAULT_SAFETY_MESSAGES: { title: string; message: string }[] = [
 const { width: WINDOW_WIDTH, height: WINDOW_HEIGHT } = Dimensions.get('window');
 const HERO_HEIGHT = Math.round(WINDOW_HEIGHT * 0.36);
 
-const APP_VERSION = (Constants.expoConfig?.version as string | undefined) ?? '1.0.0';
-
 export default function OperatorHomeScreen() {
   const { user } = useAuth();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
-  const [stats, setStats] = useState({ checklistsToday: 0, activitiesToday: 0, unreadAlerts: 0 });
+  const [stats, setStats] = useState({ checklistsToday: 0, activitiesToday: 0, unreadAlerts: 0, remindersToday: 0 });
+  const [remindersPreview, setRemindersPreview] = useState<{ id: string; title: string; reminder_time: string }[]>([]);
   const [safetyMessages, setSafetyMessages] = useState(DEFAULT_SAFETY_MESSAGES);
   const [currentMsgIndex, setCurrentMsgIndex] = useState(0);
 
@@ -63,13 +61,12 @@ export default function OperatorHomeScreen() {
   const headerAnim = useRef(new Animated.Value(0)).current;
   const heroAnim = useRef(new Animated.Value(0)).current;
   const statsAnim = useRef(new Animated.Value(0)).current;
-  const pulseAnim = useRef(new Animated.Value(0)).current;
 
   const today = todayLocal();
 
   const loadData = useCallback(async () => {
     if (!user) return;
-    const [checklistsRes, activitiesRes, alertsRes, messagesRes] = await Promise.all([
+    const [checklistsRes, activitiesRes, alertsRes, messagesRes, remindersRes] = await Promise.all([
       supabase.from('checklists').select('id', { count: 'exact', head: true })
         .eq('operator_id', user.id).eq('date', today),
       supabase.from('activities').select('id', { count: 'exact', head: true })
@@ -79,11 +76,27 @@ export default function OperatorHomeScreen() {
       supabase.from('safety_alerts').select('title, message')
         .or(`operator_id.eq.${user.id},operator_id.is.null`)
         .order('created_at', { ascending: false }).limit(10),
+      supabase.from('reminders')
+        .select('id, title, reminder_time, recurrence, days_of_week, specific_date')
+        .eq('user_id', user.id).eq('is_active', true)
+        .order('reminder_time', { ascending: true }),
     ]);
+
+    const todayDow = new Date().getDay();
+    const todayReminders = (remindersRes.data ?? []).filter((r) => {
+      if (r.recurrence === 'daily') return true;
+      if (r.recurrence === 'weekly') return (r.days_of_week as number[] | null)?.includes(todayDow) ?? false;
+      if (r.recurrence === 'once') return r.specific_date === today;
+      return false;
+    });
+    const remindersToday = todayReminders.length;
+    setRemindersPreview(todayReminders.map((r) => ({ id: r.id, title: r.title, reminder_time: r.reminder_time })));
+
     setStats({
       checklistsToday: checklistsRes.count ?? 0,
       activitiesToday: activitiesRes.count ?? 0,
       unreadAlerts: alertsRes.count ?? 0,
+      remindersToday,
     });
     if (messagesRes.data && messagesRes.data.length > 0) {
       setSafetyMessages(messagesRes.data);
@@ -104,18 +117,6 @@ export default function OperatorHomeScreen() {
       Animated.timing(statsAnim, { toValue: 1, duration: 500, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
     ]).start();
   }, [headerAnim, heroAnim, statsAnim]);
-
-  // Pulse for the live status indicator
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1, duration: 1100, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 0, duration: 0, useNativeDriver: true }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [pulseAnim]);
 
   // Cross-fade + slide for messages
   useEffect(() => {
@@ -174,11 +175,6 @@ export default function OperatorHomeScreen() {
     transform: [{ translateY: statsAnim.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
   };
 
-  const pulseRingStyle = {
-    opacity: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0.55, 0] }),
-    transform: [{ scale: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 2.4] }) }],
-  };
-
   const current = safetyMessages[currentMsgIndex];
 
   return (
@@ -194,21 +190,6 @@ export default function OperatorHomeScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
         showsVerticalScrollIndicator={false}
       >
-      {/* LIVE STATUS BAR */}
-      <Animated.View style={[styles.statusBar, headerStyle]}>
-        <View style={styles.statusLeft}>
-          <View style={styles.pulseWrap}>
-            <Animated.View style={[styles.pulseRing, pulseRingStyle]} />
-            <View style={styles.pulseDot} />
-          </View>
-          <Text style={styles.statusText}>SISTEMA OPERANTE</Text>
-        </View>
-        <View style={styles.statusDivider} />
-        <Text style={styles.statusMono}>v{APP_VERSION}</Text>
-        <View style={styles.statusDivider} />
-        <Text style={styles.statusMono}>ID·{user?.id ? user.id.slice(0, 6).toUpperCase() : '------'}</Text>
-      </Animated.View>
-
       {/* HERO SAFETY CARD — white tech */}
       <Animated.View style={heroStyle}>
         <Pressable
@@ -308,6 +289,21 @@ export default function OperatorHomeScreen() {
 
       {/* STATS — 3 cards estilo HUD */}
       <Animated.View style={statsStyle}>
+        {/* LEMBRETES DO DIA */}
+        {remindersPreview.length > 0 && (
+          <>
+            <View style={styles.sectionHeaderRow}>
+              <View style={styles.sectionHeaderLine} />
+              <Text style={styles.sectionLabel}>LEMBRETES</Text>
+              <View style={styles.sectionHeaderLine} />
+            </View>
+            <ReminderPreviewCard
+              reminders={remindersPreview}
+              onPress={() => router.push('/(operator)/lembretes')}
+            />
+          </>
+        )}
+
         <View style={styles.sectionHeaderRow}>
           <View style={styles.sectionHeaderLine} />
           <Text style={styles.sectionLabel}>HOJE</Text>
@@ -327,12 +323,21 @@ export default function OperatorHomeScreen() {
             label="Atividades"
             onPress={() => router.push('/(operator)/atividade')}
           />
+        </View>
+        <View style={[styles.statsRow, { marginTop: spacing.sm }]}>
           <TechStat
             icon="notifications-outline"
             value={stats.unreadAlerts}
             label="Alertas"
             highlight={stats.unreadAlerts > 0}
             onPress={() => router.push('/(operator)/alerts')}
+          />
+          <TechStat
+            icon="alarm-outline"
+            value={stats.remindersToday}
+            label="Lembretes"
+            accentColor={colors.primary}
+            onPress={() => router.push('/(operator)/lembretes')}
           />
         </View>
 
@@ -363,26 +368,30 @@ function TechStat({
   label,
   onPress,
   highlight,
+  accentColor,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   value: number;
   label: string;
   onPress?: () => void;
   highlight?: boolean;
+  accentColor?: string;
 }) {
+  const accent = accentColor ?? colors.primary;
+  const active = highlight || !!accentColor;
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [
         statStyles.card,
-        highlight && statStyles.cardHighlight,
+        active && { borderColor: accent, backgroundColor: accent + '0D' },
         pressed && { opacity: 0.95, transform: [{ scale: 0.99 }] },
       ]}
     >
       <View style={statStyles.iconWrap}>
-        <Ionicons name={icon} size={14} color={highlight ? colors.primary : colors.textSecondary} />
+        <Ionicons name={icon} size={14} color={active ? accent : colors.textSecondary} />
       </View>
-      <Text style={[statStyles.value, ...(highlight ? [{ color: colors.primary }] : [])]}>
+      <Text style={[statStyles.value, active && { color: accent }]}>
         {String(value).padStart(2, '0')}
       </Text>
       <Text style={statStyles.label}>{label}</Text>
@@ -391,7 +400,7 @@ function TechStat({
         <View style={[statStyles.tick, statStyles.tickTall]} />
         <View style={statStyles.tick} />
         <View style={statStyles.tick} />
-        <View style={[statStyles.tick, statStyles.tickTall, highlight && { backgroundColor: colors.primary }]} />
+        <View style={[statStyles.tick, statStyles.tickTall, active && { backgroundColor: accent }]} />
         <View style={statStyles.tick} />
         <View style={statStyles.tick} />
       </View>
@@ -424,6 +433,138 @@ function Shortcut({
   );
 }
 
+function ReminderPreviewCard({
+  reminders,
+  onPress,
+}: {
+  reminders: { id: string; title: string; reminder_time: string }[];
+  onPress: () => void;
+}) {
+  const nowHHMM = new Date().toTimeString().slice(0, 5);
+  const visible = reminders.slice(0, 5);
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [reminderCardStyles.card, pressed && { opacity: 0.95 }]}
+    >
+      {visible.map((r, idx) => {
+        const notified = r.reminder_time <= nowHHMM;
+        return (
+          <View key={r.id} style={[reminderCardStyles.row, idx > 0 && reminderCardStyles.rowBorder]}>
+            <View style={[reminderCardStyles.timeBadge, notified && reminderCardStyles.timeBadgeDone]}>
+              <Text style={[reminderCardStyles.timeText, notified && reminderCardStyles.timeTextDone]}>
+                {r.reminder_time}
+              </Text>
+            </View>
+            <Text style={[reminderCardStyles.title, notified && { color: '#94A3B8' }]} numberOfLines={1}>
+              {r.title}
+            </Text>
+            <View style={[reminderCardStyles.statusDot, { backgroundColor: notified ? '#10B981' : colors.primary }]}>
+              <Ionicons
+                name={notified ? 'checkmark' : 'alarm-outline'}
+                size={10}
+                color="#fff"
+              />
+            </View>
+          </View>
+        );
+      })}
+      {reminders.length > 5 && (
+        <Text style={reminderCardStyles.more}>+{reminders.length - 5} mais</Text>
+      )}
+      <View style={reminderCardStyles.footer}>
+        <Text style={reminderCardStyles.footerText}>Ver todos os lembretes</Text>
+        <Ionicons name="arrow-forward" size={12} color={colors.primary} />
+      </View>
+    </Pressable>
+  );
+}
+
+const reminderCardStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    overflow: 'hidden',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+  },
+  rowBorder: {
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  timeBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: colors.primarySurface,
+    minWidth: 50,
+    alignItems: 'center',
+  },
+  timeBadgeDone: {
+    backgroundColor: '#F0FDF4',
+  },
+  timeText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.primary,
+    letterSpacing: 0.3,
+  },
+  timeTextDone: {
+    color: '#10B981',
+  },
+  title: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0F172A',
+  },
+  statusDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  more: {
+    fontSize: 11,
+    color: '#94A3B8',
+    fontWeight: '600',
+    textAlign: 'center',
+    paddingVertical: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    backgroundColor: '#F8FAFC',
+  },
+  footerText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+});
+
 /* --------------------------------- styles -------------------------------- */
 
 const TECH_BORDER = '#E5E7EB';
@@ -438,54 +579,6 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing['3xl'],
-  },
-
-  // STATUS BAR
-  statusBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: TECH_BORDER,
-    backgroundColor: TECH_BG_SOFT,
-    marginBottom: spacing.md,
-  },
-  statusLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  pulseWrap: {
-    width: 10, height: 10,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  pulseRing: {
-    position: 'absolute',
-    width: 10, height: 10, borderRadius: 5,
-    backgroundColor: '#10B981',
-  },
-  pulseDot: {
-    width: 6, height: 6, borderRadius: 3,
-    backgroundColor: '#10B981',
-  },
-  statusText: {
-    fontSize: 10,
-    letterSpacing: 1.4,
-    fontWeight: '800',
-    color: TECH_TEXT,
-  },
-  statusDivider: {
-    width: 1, height: 12,
-    backgroundColor: TECH_BORDER,
-  },
-  statusMono: {
-    fontSize: 10,
-    letterSpacing: 1,
-    fontWeight: '700',
-    color: TECH_TEXT_MUTED,
   },
 
   // HERO
@@ -685,7 +778,6 @@ const styles = StyleSheet.create({
   // SHORTCUTS
   shortcuts: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: spacing.sm,
   },
 });
@@ -750,28 +842,27 @@ const statStyles = StyleSheet.create({
 
 const shortcutStyles = StyleSheet.create({
   item: {
-    width: (WINDOW_WIDTH - spacing.md * 2 - spacing.sm) / 2,
+    width: (WINDOW_WIDTH - spacing.lg * 2 - spacing.sm * 3) / 4,
     backgroundColor: TECH_BG,
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: TECH_BORDER,
     paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    flexDirection: 'row',
+    paddingHorizontal: spacing.xs,
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: spacing.xs,
   },
   iconWrap: {
-    width: 36, height: 36, borderRadius: radius.md,
+    width: 44, height: 44, borderRadius: radius.md,
     backgroundColor: TECH_BG_SOFT,
     borderWidth: 1, borderColor: TECH_BORDER,
     alignItems: 'center', justifyContent: 'center',
   },
   label: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '700',
     color: TECH_TEXT,
-    letterSpacing: 0.2,
-    flex: 1,
+    letterSpacing: 0.1,
+    textAlign: 'center',
   },
 });

@@ -26,6 +26,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { supabase } from '../../src/lib/supabase';
 import { todayLocal } from '../../src/lib/dates';
+import { recordTrackingEvent } from '../../src/lib/trackingEvents';
 import { Machine, MachineChecklistItem } from '../../src/types/database';
 import { colors, elevation, spacing, radius, fontSize } from '../../src/theme/colors';
 import { commonStyles } from '../../src/theme/commonStyles';
@@ -746,6 +747,8 @@ export default function ChecklistScreen() {
         await supabase.from('checklists').delete().eq('id', checklistId);
         throw new Error('Nao foi possivel salvar as respostas. Tente novamente.');
       }
+
+      void recordTrackingEvent(user.id, 'checklist_start', { checklistId });
 
       // Notifica encarregado + supervisores quando ha NCs
       const ncEntries = entries.filter(([_, resp]) => resp.status === 'NC');

@@ -39,14 +39,14 @@ const navItems: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/maquinas', label: 'Maquinas', icon: HardHat },
   { href: '/checklists', label: 'Checklists', icon: ListChecks },
+  { href: '/atividades', label: 'Atividades', icon: Activity },
   {
     label: 'Gestão de Atividades',
-    icon: Activity,
+    icon: Tags,
     children: [
-      { href: '/atividades', label: 'Atividades', icon: Activity },
       { href: '/tipos-atividade', label: 'Tipos Atividade', icon: Tags },
       { href: '/perguntas-atividade', label: 'Perguntas Atividade', icon: HelpCircle },
-      { href: '/localidades', label: 'Localidades', icon: MapPin },
+      { href: '/localidades', label: 'Locais de Operação', icon: MapPin },
     ],
   },
   { href: '/alertas', label: 'Alertas', icon: Bell },

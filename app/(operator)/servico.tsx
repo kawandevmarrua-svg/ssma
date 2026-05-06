@@ -18,6 +18,7 @@ import { useAuth } from '../../src/contexts/AuthContext';
 import { supabase } from '../../src/lib/supabase';
 import { todayLocal } from '../../src/lib/dates';
 import { pickPhoto, uploadPhoto } from '../../src/lib/imageUtils';
+import { recordTrackingEvent } from '../../src/lib/trackingEvents';
 import { ActivityType, ActivityQuestion, Location } from '../../src/types/database';
 import { colors, spacing, radius, fontSize } from '../../src/theme/colors';
 import { commonStyles } from '../../src/theme/commonStyles';
@@ -320,6 +321,11 @@ export default function ServicoScreen() {
         }
       }
 
+      void recordTrackingEvent(user.id, 'activity_start', {
+        activityId,
+        checklistId: selectedChecklistId ?? undefined,
+      });
+
       setSaving(false);
       router.replace('/(operator)/atividade');
     } catch (e: any) {
@@ -470,7 +476,7 @@ export default function ServicoScreen() {
                 ]}
               />
             </View>
-          </View>
+          </View>}
 
           {!isEncarregado && questions.map((q, idx) => {
             const ans = preopAnswers[q.id];

@@ -14,6 +14,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { supabase } from '../../src/lib/supabase';
 import { todayLocal } from '../../src/lib/dates';
+import { recordTrackingEvent } from '../../src/lib/trackingEvents';
 import { ActivityType } from '../../src/types/database';
 import { colors, spacing, radius, fontSize } from '../../src/theme/colors';
 import { commonStyles } from '../../src/theme/commonStyles';
@@ -107,20 +108,22 @@ export default function ParadaScreen() {
 
     setSaving(true);
     const today = todayLocal();
-    const { error } = await supabase.from('activities').insert({
+    const { data: actData, error } = await supabase.from('activities').insert({
       operator_id: user.id,
       activity_type_id: activityType.id,
       date: today,
       description: finalDescription,
       start_time: startISO,
       end_time: endISO,
-    });
+    }).select('id').single();
 
     if (error) {
       setSaving(false);
       Alert.alert('Erro', error.message);
       return;
     }
+
+    void recordTrackingEvent(user.id, 'parada', { activityId: actData?.id });
 
     setSaving(false);
     router.replace('/(operator)/atividade');

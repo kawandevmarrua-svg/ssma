@@ -1,64 +1,87 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { Ionicons } from "@expo/vector-icons";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  View,
-  StyleSheet,
-  FlatList,
-  TextInput,
-  Modal,
   Alert,
-  RefreshControl,
+  FlatList,
+  Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
-  Image,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAuth } from '../../src/contexts/AuthContext';
-import { supabase } from '../../src/lib/supabase';
-import { alertResponseSchema } from '../../src/schemas';
-import { useFormValidation } from '../../src/hooks/useFormValidation';
-import { SafetyAlert } from '../../src/types/database';
-import { colors, radius, spacing } from '../../src/theme/colors';
-import { Avatar, Text } from '../../src/components/ui';
+  RefreshControl,
+  StyleSheet,
+  TextInput,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Avatar, Text } from "../../src/components/ui";
+import { useAuth } from "../../src/contexts/AuthContext";
+import { useFormValidation } from "../../src/hooks/useFormValidation";
+import { supabase } from "../../src/lib/supabase";
+import { alertResponseSchema } from "../../src/schemas";
+import { colors, radius, spacing } from "../../src/theme/colors";
+import { SafetyAlert } from "../../src/types/database";
 
 type AlertWithCreator = SafetyAlert & {
   creator?: { full_name: string | null; email: string } | null;
 };
 
-const TECH_BG = '#FFFFFF';
-const TECH_BG_SOFT = '#F8FAFC';
-const TECH_BORDER = '#E5E7EB';
-const TECH_TEXT = '#0F172A';
-const TECH_TEXT_MUTED = '#64748B';
+const TECH_BG = "#FFFFFF";
+const TECH_BG_SOFT = "#F8FAFC";
+const TECH_BORDER = "#E5E7EB";
+const TECH_TEXT = "#0F172A";
+const TECH_TEXT_MUTED = "#64748B";
 
-type SeverityKey = 'low' | 'medium' | 'high' | 'critical';
+type SeverityKey = "low" | "medium" | "high" | "critical";
 
-const SEVERITY_CONFIG: Record<SeverityKey, {
-  label: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  accent: string;
-  surface: string;
-}> = {
-  low: { label: 'Baixo', icon: 'information-circle-outline', accent: '#3B82F6', surface: '#EFF6FF' },
-  medium: { label: 'Médio', icon: 'alert-circle-outline', accent: '#F59E0B', surface: '#FFFBEB' },
-  high: { label: 'Alto', icon: 'warning-outline', accent: colors.primary, surface: colors.primarySurface },
-  critical: { label: 'Crítico', icon: 'alert-outline', accent: '#DC2626', surface: '#FEF2F2' },
+const SEVERITY_CONFIG: Record<
+  SeverityKey,
+  {
+    label: string;
+    icon: keyof typeof Ionicons.glyphMap;
+    accent: string;
+    surface: string;
+  }
+> = {
+  low: {
+    label: "Baixo",
+    icon: "information-circle-outline",
+    accent: "#3B82F6",
+    surface: "#EFF6FF",
+  },
+  medium: {
+    label: "Médio",
+    icon: "alert-circle-outline",
+    accent: "#F59E0B",
+    surface: "#FFFBEB",
+  },
+  high: {
+    label: "Alto",
+    icon: "warning-outline",
+    accent: colors.primary,
+    surface: colors.primarySurface,
+  },
+  critical: {
+    label: "Crítico",
+    icon: "alert-outline",
+    accent: "#DC2626",
+    surface: "#FEF2F2",
+  },
 };
 
-type Filter = 'all' | 'unread';
+type Filter = "all" | "unread";
 
 function formatRelative(dateStr: string) {
   const d = new Date(dateStr);
   const diffMs = Date.now() - d.getTime();
   const min = Math.floor(diffMs / 60000);
-  if (min < 1) return 'agora';
+  if (min < 1) return "agora";
   if (min < 60) return `${min}m`;
   const h = Math.floor(min / 60);
   if (h < 24) return `${h}h`;
   const days = Math.floor(h / 24);
   if (days < 7) return `${days}d`;
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
 }
 
 type OperatorOption = { id: string; full_name: string | null; email: string };
@@ -69,20 +92,25 @@ export default function OperatorAlertsScreen() {
   const [alerts, setAlerts] = useState<AlertWithCreator[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [respondingAlert, setRespondingAlert] = useState<AlertWithCreator | null>(null);
-  const [responseText, setResponseText] = useState('');
+  const [respondingAlert, setRespondingAlert] =
+    useState<AlertWithCreator | null>(null);
+  const [responseText, setResponseText] = useState("");
   const [saving, setSaving] = useState(false);
-  const [filter, setFilter] = useState<Filter>('all');
-  const [search, setSearch] = useState('');
-  const { errors, validate, clearErrors } = useFormValidation(alertResponseSchema);
+  const [filter, setFilter] = useState<Filter>("all");
+  const [search, setSearch] = useState("");
+  const { errors, validate, clearErrors } =
+    useFormValidation(alertResponseSchema);
 
   // Criar alerta
-  const canCreate = profile?.role === 'encarregado' || profile?.role === 'supervisor';
+  const canCreate =
+    profile?.role === "encarregado" || profile?.role === "supervisor";
   const [showCreate, setShowCreate] = useState(false);
-  const [createTitle, setCreateTitle] = useState('');
-  const [createMessage, setCreateMessage] = useState('');
-  const [createSeverity, setCreateSeverity] = useState<SeverityKey>('medium');
-  const [createRecipientId, setCreateRecipientId] = useState<string | null>(null);
+  const [createTitle, setCreateTitle] = useState("");
+  const [createMessage, setCreateMessage] = useState("");
+  const [createSeverity, setCreateSeverity] = useState<SeverityKey>("medium");
+  const [createRecipientId, setCreateRecipientId] = useState<string | null>(
+    null,
+  );
   const [operators, setOperators] = useState<OperatorOption[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
@@ -92,30 +120,40 @@ export default function OperatorAlertsScreen() {
       return;
     }
     const { data, error } = await supabase
-      .from('safety_alerts')
-      .select('*, creator:profiles!safety_alerts_created_by_fkey(full_name, email)')
+      .from("safety_alerts")
+      .select(
+        "*, creator:profiles!safety_alerts_created_by_fkey(full_name, email)",
+      )
       .or(`operator_id.eq.${user.id},operator_id.is.null`)
-      .order('created_at', { ascending: false })
+      .order("created_at", { ascending: false })
       .limit(50);
 
     if (error) {
-      Alert.alert('Erro', 'Falha ao carregar alertas.');
+      Alert.alert("Erro", "Falha ao carregar alertas.");
     }
     setAlerts(data ?? []);
     setLoading(false);
   }, [user]);
 
-  useEffect(() => { loadAlerts(); }, [loadAlerts]);
+  useEffect(() => {
+    loadAlerts();
+  }, [loadAlerts]);
 
   useEffect(() => {
     if (!user) return;
     const channel = supabase
-      .channel('operator-alerts-refresh')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'safety_alerts' }, () => {
-        loadAlerts();
-      })
+      .channel("operator-alerts-refresh")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "safety_alerts" },
+        () => {
+          loadAlerts();
+        },
+      )
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user, loadAlerts]);
 
   async function onRefresh() {
@@ -126,18 +164,18 @@ export default function OperatorAlertsScreen() {
 
   async function loadOperators() {
     const { data } = await supabase
-      .from('profiles')
-      .select('id, full_name, email')
-      .eq('role', 'operator')
-      .eq('active', true)
-      .order('full_name', { ascending: true });
+      .from("profiles")
+      .select("id, full_name, email")
+      .eq("role", "operator")
+      .eq("active", true)
+      .order("full_name", { ascending: true });
     setOperators((data ?? []) as OperatorOption[]);
   }
 
   function openCreate() {
-    setCreateTitle('');
-    setCreateMessage('');
-    setCreateSeverity('medium');
+    setCreateTitle("");
+    setCreateMessage("");
+    setCreateSeverity("medium");
     setCreateRecipientId(null);
     loadOperators();
     setShowCreate(true);
@@ -146,11 +184,11 @@ export default function OperatorAlertsScreen() {
   async function handleCreate() {
     if (!user) return;
     if (!createTitle.trim() || !createMessage.trim()) {
-      Alert.alert('Atenção', 'Preencha título e mensagem.');
+      Alert.alert("Atenção", "Preencha título e mensagem.");
       return;
     }
     setSubmitting(true);
-    const { error } = await supabase.from('safety_alerts').insert({
+    const { error } = await supabase.from("safety_alerts").insert({
       title: createTitle.trim(),
       message: createMessage.trim(),
       severity: createSeverity,
@@ -159,7 +197,7 @@ export default function OperatorAlertsScreen() {
     });
     setSubmitting(false);
     if (error) {
-      Alert.alert('Erro', 'Falha ao criar alerta.');
+      Alert.alert("Erro", "Falha ao criar alerta.");
       return;
     }
     setShowCreate(false);
@@ -167,15 +205,15 @@ export default function OperatorAlertsScreen() {
   }
 
   async function markAsRead(id: string) {
-    await supabase.from('safety_alerts').update({ read: true }).eq('id', id);
+    await supabase.from("safety_alerts").update({ read: true }).eq("id", id);
     loadAlerts();
   }
 
   async function markAllAsRead() {
     if (!user) return;
-    const ids = alerts.filter(a => !a.read).map(a => a.id);
+    const ids = alerts.filter((a) => !a.read).map((a) => a.id);
     if (ids.length === 0) return;
-    await supabase.from('safety_alerts').update({ read: true }).in('id', ids);
+    await supabase.from("safety_alerts").update({ read: true }).in("id", ids);
     loadAlerts();
   }
 
@@ -186,31 +224,34 @@ export default function OperatorAlertsScreen() {
 
     setSaving(true);
     const { error } = await supabase
-      .from('safety_alerts')
+      .from("safety_alerts")
       .update({
         response: responseText,
         responded_at: new Date().toISOString(),
         read: true,
       })
-      .eq('id', respondingAlert.id);
+      .eq("id", respondingAlert.id);
     setSaving(false);
 
     if (error) {
-      Alert.alert('Erro', 'Falha ao enviar resposta.');
+      Alert.alert("Erro", "Falha ao enviar resposta.");
       return;
     }
 
     setRespondingAlert(null);
-    setResponseText('');
+    setResponseText("");
     clearErrors();
     loadAlerts();
   }
 
-  const unreadCount = useMemo(() => alerts.filter(a => !a.read).length, [alerts]);
+  const unreadCount = useMemo(
+    () => alerts.filter((a) => !a.read).length,
+    [alerts],
+  );
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return alerts.filter(a => {
-      if (filter === 'unread' && a.read) return false;
+    return alerts.filter((a) => {
+      if (filter === "unread" && a.read) return false;
       if (q.length === 0) return true;
       return (
         a.title?.toLowerCase().includes(q) ||
@@ -220,15 +261,19 @@ export default function OperatorAlertsScreen() {
   }, [alerts, filter, search]);
 
   function renderAlert({ item }: { item: AlertWithCreator }) {
-    const config = SEVERITY_CONFIG[item.severity as SeverityKey] ?? SEVERITY_CONFIG.low;
+    const config =
+      SEVERITY_CONFIG[item.severity as SeverityKey] ?? SEVERITY_CONFIG.low;
     const unread = !item.read;
     const responded = !!item.response;
-    const creatorName = item.creator?.full_name || item.creator?.email || 'Sistema';
-    const isNcAlert = item.title.startsWith('NC: ');
+    const creatorName =
+      item.creator?.full_name || item.creator?.email || "Sistema";
+    const isNcAlert = item.title.startsWith("NC: ");
 
     return (
       <Pressable
-        onPress={() => { if (unread) markAsRead(item.id); }}
+        onPress={() => {
+          if (unread) markAsRead(item.id);
+        }}
         style={({ pressed }) => [styles.card, pressed && { opacity: 0.9 }]}
       >
         {/* Linha topo: avatar + nome + meta */}
@@ -236,11 +281,21 @@ export default function OperatorAlertsScreen() {
           <Avatar name={creatorName} size="xs" />
           <Text style={styles.senderName}>{creatorName}</Text>
           <View style={styles.cardHeaderRight}>
-            <View style={[styles.severityDot, { backgroundColor: config.accent }]} />
-            <Text style={[styles.severityLabel, { color: config.accent }]}>{config.label}</Text>
+            <View
+              style={[styles.severityDot, { backgroundColor: config.accent }]}
+            />
+            <Text style={[styles.severityLabel, { color: config.accent }]}>
+              {config.label}
+            </Text>
             <Text style={styles.metaSep}>|</Text>
-            <Text style={styles.metaTime}>{formatRelative(item.created_at)}</Text>
-            {unread && <View style={[styles.unreadDot, { backgroundColor: config.accent }]} />}
+            <Text style={styles.metaTime}>
+              {formatRelative(item.created_at)}
+            </Text>
+            {unread && (
+              <View
+                style={[styles.unreadDot, { backgroundColor: config.accent }]}
+              />
+            )}
           </View>
         </View>
 
@@ -249,7 +304,9 @@ export default function OperatorAlertsScreen() {
 
         {/* Conteúdo abaixo */}
         <Text style={styles.cardTitle}>{item.title}</Text>
-        <Text style={styles.cardMessage} numberOfLines={3}>{item.message}</Text>
+        <Text style={styles.cardMessage} numberOfLines={3}>
+          {item.message}
+        </Text>
 
         <View style={styles.cardFooter}>
           {responded ? (
@@ -262,13 +319,18 @@ export default function OperatorAlertsScreen() {
               onPress={(e) => {
                 e.stopPropagation?.();
                 setRespondingAlert(item);
-                setResponseText('');
+                setResponseText("");
                 clearErrors();
               }}
               hitSlop={6}
-              style={({ pressed }) => [styles.confirmBtn, pressed && { opacity: 0.8 }]}
+              style={({ pressed }) => [
+                styles.confirmBtn,
+                pressed && { opacity: 0.8 },
+              ]}
             >
-              <Text style={styles.confirmBtnText}>{isNcAlert ? 'Plano de ação' : 'Responder'}</Text>
+              <Text style={styles.confirmBtnText}>
+                {isNcAlert ? "Plano de ação" : "Responder"}
+              </Text>
               <Ionicons name="arrow-forward" size={12} color={colors.primary} />
             </Pressable>
           )}
@@ -282,10 +344,22 @@ export default function OperatorAlertsScreen() {
       {/* HEADER */}
       <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
         <View style={styles.brandRow}>
-          <Image source={require('../../assets/icon.png')} style={styles.brandLogo} resizeMode="contain" />
+          <Image
+            source={require("../../assets/icon.png")}
+            style={styles.brandLogo}
+            resizeMode="contain"
+          />
           <Text style={styles.brandName}>MARRUÁ</Text>
         </View>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+          <View style={styles.bellDisplay}>
+            <Ionicons name="notifications-outline" size={20} color={TECH_TEXT} />
+            {unreadCount > 0 && (
+              <View style={styles.bellBadge}>
+                <Text style={styles.bellBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+              </View>
+            )}
+          </View>
           {canCreate && (
             <Pressable
               onPress={openCreate}
@@ -308,7 +382,11 @@ export default function OperatorAlertsScreen() {
             ]}
             hitSlop={8}
           >
-            <Ionicons name="checkmark-done-outline" size={20} color={TECH_TEXT} />
+            <Ionicons
+              name="checkmark-done-outline"
+              size={20}
+              color={TECH_TEXT}
+            />
           </Pressable>
         </View>
       </View>
@@ -325,7 +403,7 @@ export default function OperatorAlertsScreen() {
           returnKeyType="search"
         />
         {search.length > 0 && (
-          <Pressable onPress={() => setSearch('')} hitSlop={8}>
+          <Pressable onPress={() => setSearch("")} hitSlop={8}>
             <Ionicons name="close-circle" size={18} color={TECH_TEXT_MUTED} />
           </Pressable>
         )}
@@ -333,30 +411,53 @@ export default function OperatorAlertsScreen() {
 
       {/* FILTERS */}
       <View style={styles.filterRow}>
-        <FilterPill label="Todos" active={filter === 'all'} count={alerts.length} onPress={() => setFilter('all')} />
-        <FilterPill label="Não lidos" active={filter === 'unread'} count={unreadCount} onPress={() => setFilter('unread')} />
+        <FilterPill
+          label="Todos"
+          active={filter === "all"}
+          count={alerts.length}
+          onPress={() => setFilter("all")}
+        />
+        <FilterPill
+          label="Não lidos"
+          active={filter === "unread"}
+          count={unreadCount}
+          onPress={() => setFilter("unread")}
+        />
       </View>
 
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.id}
         renderItem={renderAlert}
-        contentContainerStyle={[styles.listContent, { paddingBottom: spacing['3xl'] }]}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: spacing["3xl"] },
+        ]}
         ItemSeparatorComponent={() => <View style={{ height: spacing.md }} />}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        }
         ListEmptyComponent={
           !loading ? (
             <View style={styles.empty}>
               <View style={styles.emptyIcon}>
-                <Ionicons name="shield-checkmark-outline" size={28} color={TECH_TEXT_MUTED} />
+                <Ionicons
+                  name="shield-checkmark-outline"
+                  size={28}
+                  color={TECH_TEXT_MUTED}
+                />
               </View>
               <Text style={styles.emptyTitle}>
-                {filter === 'unread' ? 'Tudo em ordem' : 'Nenhum alerta'}
+                {filter === "unread" ? "Tudo em ordem" : "Nenhum alerta"}
               </Text>
               <Text style={styles.emptyMessage}>
-                {filter === 'unread'
-                  ? 'Você leu todas as notificações.'
-                  : 'Quando houver um alerta de segurança, ele aparece aqui.'}
+                {filter === "unread"
+                  ? "Você leu todas as notificações."
+                  : "Quando houver um alerta de segurança, ele aparece aqui."}
               </Text>
             </View>
           ) : null
@@ -367,9 +468,11 @@ export default function OperatorAlertsScreen() {
       <Modal visible={showCreate} animationType="slide" transparent>
         <KeyboardAvoidingView
           style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
-          <View style={[styles.modalSheet, { paddingBottom: insets.bottom + 24 }]}>
+          <View
+            style={[styles.modalSheet, { paddingBottom: insets.bottom + 24 }]}
+          >
             <View style={styles.modalHandle} />
 
             <View style={styles.modalHeader}>
@@ -379,7 +482,10 @@ export default function OperatorAlertsScreen() {
               <Pressable
                 onPress={() => setShowCreate(false)}
                 hitSlop={8}
-                style={({ pressed }) => [styles.modalCloseBtn, pressed && { opacity: 0.7 }]}
+                style={({ pressed }) => [
+                  styles.modalCloseBtn,
+                  pressed && { opacity: 0.7 },
+                ]}
               >
                 <Ionicons name="close" size={18} color={TECH_TEXT} />
               </Pressable>
@@ -418,10 +524,18 @@ export default function OperatorAlertsScreen() {
                     onPress={() => setCreateSeverity(key)}
                     style={[
                       styles.severityBtn,
-                      active && { backgroundColor: cfg.accent, borderColor: cfg.accent },
+                      active && {
+                        backgroundColor: cfg.accent,
+                        borderColor: cfg.accent,
+                      },
                     ]}
                   >
-                    <Text style={[styles.severityBtnText, active ? { color: '#fff' } : undefined]}>
+                    <Text
+                      style={[
+                        styles.severityBtnText,
+                        active ? { color: "#fff" } : undefined,
+                      ]}
+                    >
                       {cfg.label}
                     </Text>
                   </Pressable>
@@ -434,10 +548,29 @@ export default function OperatorAlertsScreen() {
             <View style={styles.recipientList}>
               <Pressable
                 onPress={() => setCreateRecipientId(null)}
-                style={[styles.recipientItem, createRecipientId === null && styles.recipientItemActive]}
+                style={[
+                  styles.recipientItem,
+                  createRecipientId === null && styles.recipientItemActive,
+                ]}
               >
-                <Ionicons name="people-outline" size={15} color={createRecipientId === null ? colors.primary : TECH_TEXT_MUTED} />
-                <Text style={[styles.recipientName, { color: createRecipientId === null ? colors.primary : undefined }]}>
+                <Ionicons
+                  name="people-outline"
+                  size={15}
+                  color={
+                    createRecipientId === null
+                      ? colors.primary
+                      : TECH_TEXT_MUTED
+                  }
+                />
+                <Text
+                  style={[
+                    styles.recipientName,
+                    {
+                      color:
+                        createRecipientId === null ? colors.primary : undefined,
+                    },
+                  ]}
+                >
                   Sem destinatário específico
                 </Text>
               </Pressable>
@@ -448,10 +581,23 @@ export default function OperatorAlertsScreen() {
                   <Pressable
                     key={op.id}
                     onPress={() => setCreateRecipientId(op.id)}
-                    style={[styles.recipientItem, active && styles.recipientItemActive]}
+                    style={[
+                      styles.recipientItem,
+                      active && styles.recipientItemActive,
+                    ]}
                   >
-                    <Ionicons name="person-outline" size={15} color={active ? colors.primary : TECH_TEXT_MUTED} />
-                    <Text style={[styles.recipientName, { color: active ? colors.primary : undefined }]} numberOfLines={1}>
+                    <Ionicons
+                      name="person-outline"
+                      size={15}
+                      color={active ? colors.primary : TECH_TEXT_MUTED}
+                    />
+                    <Text
+                      style={[
+                        styles.recipientName,
+                        { color: active ? colors.primary : undefined },
+                      ]}
+                      numberOfLines={1}
+                    >
                       {name}
                     </Text>
                   </Pressable>
@@ -465,11 +611,17 @@ export default function OperatorAlertsScreen() {
               style={({ pressed }) => [
                 styles.submitBtn,
                 submitting && { opacity: 0.6 },
-                pressed && !submitting && { opacity: 0.92, transform: [{ scale: 0.99 }] },
+                pressed &&
+                  !submitting && {
+                    opacity: 0.92,
+                    transform: [{ scale: 0.99 }],
+                  },
               ]}
             >
               {!submitting && <Ionicons name="send" size={15} color="#fff" />}
-              <Text style={styles.submitBtnText}>{submitting ? 'Enviando...' : 'Enviar alerta'}</Text>
+              <Text style={styles.submitBtnText}>
+                {submitting ? "Enviando..." : "Enviar alerta"}
+              </Text>
             </Pressable>
           </View>
         </KeyboardAvoidingView>
@@ -479,31 +631,47 @@ export default function OperatorAlertsScreen() {
       <Modal visible={!!respondingAlert} animationType="slide" transparent>
         <KeyboardAvoidingView
           style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
-          <View style={[styles.modalSheet, { paddingBottom: insets.bottom + 24 }]}>
+          <View
+            style={[styles.modalSheet, { paddingBottom: insets.bottom + 24 }]}
+          >
             <View style={styles.modalHandle} />
 
             {/* Header: avatar + sender + título + fechar */}
             <View style={styles.modalHeader}>
               {respondingAlert && (
                 <Avatar
-                  name={respondingAlert.creator?.full_name || respondingAlert.creator?.email || 'Sistema'}
+                  name={
+                    respondingAlert.creator?.full_name ||
+                    respondingAlert.creator?.email ||
+                    "Sistema"
+                  }
                   size="sm"
                 />
               )}
               <View style={{ flex: 1 }}>
                 <Text style={styles.modalSender}>
-                  {respondingAlert?.creator?.full_name || respondingAlert?.creator?.email || 'Sistema'}
+                  {respondingAlert?.creator?.full_name ||
+                    respondingAlert?.creator?.email ||
+                    "Sistema"}
                 </Text>
                 <Text style={styles.modalTitle}>
-                  {respondingAlert?.title.startsWith('NC: ') ? 'Plano de ação' : 'Responder alerta'}
+                  {respondingAlert?.title.startsWith("NC: ")
+                    ? "Plano de ação"
+                    : "Responder alerta"}
                 </Text>
               </View>
               <Pressable
-                onPress={() => { setRespondingAlert(null); clearErrors(); }}
+                onPress={() => {
+                  setRespondingAlert(null);
+                  clearErrors();
+                }}
                 hitSlop={8}
-                style={({ pressed }) => [styles.modalCloseBtn, pressed && { opacity: 0.7 }]}
+                style={({ pressed }) => [
+                  styles.modalCloseBtn,
+                  pressed && { opacity: 0.7 },
+                ]}
               >
                 <Ionicons name="close" size={18} color={TECH_TEXT} />
               </Pressable>
@@ -512,11 +680,20 @@ export default function OperatorAlertsScreen() {
             {/* Preview do alerta */}
             {respondingAlert && (
               <View style={styles.alertPreview}>
-                <View style={[styles.alertPreviewBar, {
-                  backgroundColor: SEVERITY_CONFIG[respondingAlert.severity as SeverityKey]?.accent ?? colors.primary,
-                }]} />
+                <View
+                  style={[
+                    styles.alertPreviewBar,
+                    {
+                      backgroundColor:
+                        SEVERITY_CONFIG[respondingAlert.severity as SeverityKey]
+                          ?.accent ?? colors.primary,
+                    },
+                  ]}
+                />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.alertPreviewTitle}>{respondingAlert.title}</Text>
+                  <Text style={styles.alertPreviewTitle}>
+                    {respondingAlert.title}
+                  </Text>
                   <Text style={styles.alertPreviewMsg} numberOfLines={2}>
                     {respondingAlert.message}
                   </Text>
@@ -527,9 +704,11 @@ export default function OperatorAlertsScreen() {
             {/* Input */}
             <TextInput
               style={[styles.input, errors.response && styles.inputError]}
-              placeholder={respondingAlert?.title.startsWith('NC: ')
-                ? 'Descreva como vai resolver esta não conformidade...'
-                : 'Descreva o que foi feito ou observado...'}
+              placeholder={
+                respondingAlert?.title.startsWith("NC: ")
+                  ? "Descreva como vai resolver esta não conformidade..."
+                  : "Descreva o que foi feito ou observado..."
+              }
               placeholderTextColor={TECH_TEXT_MUTED}
               value={responseText}
               onChangeText={setResponseText}
@@ -548,12 +727,13 @@ export default function OperatorAlertsScreen() {
               style={({ pressed }) => [
                 styles.submitBtn,
                 saving && { opacity: 0.6 },
-                pressed && !saving && { opacity: 0.92, transform: [{ scale: 0.99 }] },
+                pressed &&
+                  !saving && { opacity: 0.92, transform: [{ scale: 0.99 }] },
               ]}
             >
               {!saving && <Ionicons name="send" size={15} color="#fff" />}
               <Text style={styles.submitBtnText}>
-                {saving ? 'Enviando...' : 'Enviar resposta'}
+                {saving ? "Enviando..." : "Enviar resposta"}
               </Text>
             </Pressable>
           </View>
@@ -580,7 +760,12 @@ function FilterPill({
       hitSlop={6}
       style={({ pressed }) => [styles.filterTab, pressed && { opacity: 0.6 }]}
     >
-      <Text style={[styles.filterText, ...(active ? [styles.filterTextActive] : [])]}>
+      <Text
+        style={[
+          styles.filterText,
+          ...(active ? [styles.filterTextActive] : []),
+        ]}
+      >
         {label} <Text style={styles.filterCountInline}>{count}</Text>
       </Text>
       {active && <View style={styles.filterUnderline} />}
@@ -593,9 +778,9 @@ const styles = StyleSheet.create({
 
   // HEADER
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm + 2,
     borderBottomWidth: 1,
@@ -603,28 +788,64 @@ const styles = StyleSheet.create({
     backgroundColor: TECH_BG,
   },
   brandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
   brandLogo: { width: 28, height: 28, borderRadius: 6 },
   brandName: {
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 2,
     color: TECH_TEXT,
   },
   iconBtn: {
-    width: 40, height: 40, borderRadius: radius.full,
-    borderWidth: 1, borderColor: TECH_BORDER,
-    alignItems: 'center', justifyContent: 'center',
+    width: 40,
+    height: 40,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: TECH_BORDER,
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: TECH_BG,
+  },
+  bellDisplay: {
+    width: 40,
+    height: 40,
+    borderRadius: 9999,
+    borderWidth: 1,
+    borderColor: TECH_BORDER,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: TECH_BG,
+  },
+  bellBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 5,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: TECH_BG,
+  },
+  bellBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: "800" as const,
+    textAlign: "center" as const,
+    includeFontPadding: false,
   },
 
   // SEARCH
   searchWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 10,
     marginHorizontal: spacing.lg,
     marginTop: spacing.md,
@@ -645,32 +866,32 @@ const styles = StyleSheet.create({
 
   // FILTERS
   filterRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: spacing.lg,
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.sm,
   },
   filterTab: {
     paddingVertical: 10,
-    alignItems: 'center',
+    alignItems: "center",
   },
   filterText: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: "600",
     color: TECH_TEXT_MUTED,
     letterSpacing: -0.1,
   },
   filterTextActive: {
     color: TECH_TEXT,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   filterCountInline: {
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: "500",
     color: TECH_TEXT_MUTED,
   },
   filterUnderline: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
@@ -684,31 +905,31 @@ const styles = StyleSheet.create({
 
   // CARD
   card: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 13,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    flexDirection: 'column',
+    flexDirection: "column",
     gap: 0,
     borderWidth: 1,
     borderColor: TECH_BORDER,
-    shadowColor: '#0F172A',
+    shadowColor: "#0F172A",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 6,
     elevation: 2,
   },
   cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 10,
     paddingBottom: 10,
   },
   cardHeaderRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 5,
-    marginLeft: 'auto' as any,
+    marginLeft: "auto" as any,
   },
   divider: {
     height: 1,
@@ -718,24 +939,24 @@ const styles = StyleSheet.create({
   },
   senderName: {
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: "700",
     color: TECH_TEXT,
     flexShrink: 1,
   },
   metaSep: {
     fontSize: 11,
-    color: '#CBD5E1',
-    fontWeight: '400',
+    color: "#CBD5E1",
+    fontWeight: "400",
   },
   metaTime: {
     fontSize: 10.5,
-    fontWeight: '500',
-    color: '#777777',
+    fontWeight: "500",
+    color: "#777777",
   },
   unreadDot: { width: 7, height: 7, borderRadius: 4 },
   cardTitle: {
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: "700",
     color: TECH_TEXT,
     lineHeight: 18,
     letterSpacing: -0.2,
@@ -748,50 +969,54 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   cardFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
   },
-  severityRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  severityRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   severityDot: { width: 6, height: 6, borderRadius: 3 },
-  severityLabel: { fontSize: 11, fontWeight: '600' },
+  severityLabel: { fontSize: 11, fontWeight: "600" },
   confirmBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
   },
   confirmBtnText: {
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: "700",
     color: colors.primary,
   },
   confirmedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
   },
   confirmedText: {
     fontSize: 12,
-    fontWeight: '600',
-    color: '#10B981',
+    fontWeight: "600",
+    color: "#10B981",
   },
 
   // EMPTY
   empty: {
-    alignItems: 'center',
-    paddingVertical: spacing['3xl'],
+    alignItems: "center",
+    paddingVertical: spacing["3xl"],
     paddingHorizontal: spacing.lg,
   },
   emptyIcon: {
-    width: 64, height: 64, borderRadius: 32,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: TECH_BG_SOFT,
-    borderWidth: 1, borderColor: TECH_BORDER,
-    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: TECH_BORDER,
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: spacing.md,
   },
   emptyTitle: {
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: "800",
     color: TECH_TEXT,
     letterSpacing: -0.2,
     marginBottom: 6,
@@ -799,18 +1024,18 @@ const styles = StyleSheet.create({
   emptyMessage: {
     fontSize: 13,
     color: TECH_TEXT_MUTED,
-    textAlign: 'center',
+    textAlign: "center",
     lineHeight: 20,
   },
 
   // MODAL
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
-    justifyContent: 'flex-end',
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
+    justifyContent: "flex-end",
   },
   modalSheet: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 20,
@@ -818,36 +1043,40 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   modalHandle: {
-    width: 36, height: 4, borderRadius: 2,
-    backgroundColor: '#E2E8F0',
-    alignSelf: 'center',
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#E2E8F0",
+    alignSelf: "center",
     marginBottom: 4,
   },
   modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
   },
   modalSender: {
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: "500",
     color: TECH_TEXT_MUTED,
     marginBottom: 1,
   },
   modalTitle: {
     fontSize: 18,
-    fontWeight: '800',
+    fontWeight: "800",
     color: TECH_TEXT,
     letterSpacing: -0.4,
   },
   modalCloseBtn: {
-    width: 34, height: 34, borderRadius: 17,
-    backgroundColor: '#F1F5F9',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#F1F5F9",
+    alignItems: "center",
+    justifyContent: "center",
   },
   alertPreview: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 10,
     backgroundColor: TECH_BG_SOFT,
     borderRadius: 12,
@@ -862,7 +1091,7 @@ const styles = StyleSheet.create({
   },
   alertPreviewTitle: {
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: "700",
     color: TECH_TEXT,
     marginBottom: 3,
   },
@@ -882,64 +1111,64 @@ const styles = StyleSheet.create({
     color: TECH_TEXT,
     minHeight: 120,
   },
-  inputError: { borderColor: '#DC2626' },
+  inputError: { borderColor: "#DC2626" },
   inputErrorText: {
     fontSize: 12,
-    color: '#DC2626',
+    color: "#DC2626",
     marginTop: -8,
   },
   submitBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 8,
     paddingVertical: 16,
     borderRadius: 14,
     backgroundColor: colors.primary,
   },
   submitBtnText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: "700",
     letterSpacing: -0.2,
   },
 
   severitySelector: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 8,
   },
   severityBtn: {
     flex: 1,
     paddingVertical: 8,
     borderRadius: 10,
-    alignItems: 'center',
+    alignItems: "center",
     borderWidth: 1,
     borderColor: TECH_BORDER,
     backgroundColor: TECH_BG_SOFT,
   },
   severityBtnText: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: "700",
     color: TECH_TEXT_MUTED,
   },
 
   recipientLabel: {
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: "700",
     letterSpacing: 1.1,
     color: TECH_TEXT_MUTED,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
     marginBottom: -8,
   },
   recipientList: {
     borderWidth: 1,
     borderColor: TECH_BORDER,
     borderRadius: 12,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   recipientItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 10,
     paddingHorizontal: 14,
     paddingVertical: 11,
@@ -948,12 +1177,12 @@ const styles = StyleSheet.create({
     backgroundColor: TECH_BG,
   },
   recipientItemActive: {
-    backgroundColor: '#EFF6FF',
+    backgroundColor: "#EFF6FF",
   },
   recipientName: {
     flex: 1,
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: "600",
     color: TECH_TEXT,
   },
 });

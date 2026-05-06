@@ -8,10 +8,11 @@ import {
   RefreshControl,
   ActivityIndicator,
   Image,
+  Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { supabase } from '../../src/lib/supabase';
 import { todayLocal } from '../../src/lib/dates';
@@ -77,6 +78,24 @@ export default function EquipeScreen() {
   const [expandedChecklist, setExpandedChecklist] = useState<string | null>(null);
   const [ncDetails, setNcDetails] = useState<Record<string, NcItem[]>>({});
   const [ncLoading, setNcLoading] = useState<Record<string, boolean>>({});
+  const router = useRouter();
+  const [unreadAlerts, setUnreadAlerts] = useState(0);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!user) return;
+      let cancelled = false;
+      (async () => {
+        const { count } = await supabase
+          .from('safety_alerts')
+          .select('id', { count: 'exact', head: true })
+          .or(`operator_id.eq.${user.id},operator_id.is.null`)
+          .eq('read', false);
+        if (!cancelled) setUnreadAlerts(count ?? 0);
+      })();
+      return () => { cancelled = true; };
+    }, [user]),
+  );
 
   const loadData = useCallback(async (date: string) => {
     if (!user) { setLoading(false); return; }
@@ -330,11 +349,25 @@ export default function EquipeScreen() {
           <Image source={require('../../assets/icon.png')} style={st.brandLogo} resizeMode="contain" />
           <Text style={st.brandName}>MARRUÁ</Text>
         </View>
-        {totalNc > 0 && (
-          <View style={st.headerBadge}>
-            <Text style={st.headerBadgeText}>{totalNc} NC</Text>
-          </View>
-        )}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          {totalNc > 0 && (
+            <View style={st.headerBadge}>
+              <Text style={st.headerBadgeText}>{totalNc} NC</Text>
+            </View>
+          )}
+          <Pressable
+            onPress={() => router.push('/(operator)/alerts')}
+            style={({ pressed }) => [st.bellBtn, pressed && { opacity: 0.8 }]}
+            hitSlop={8}
+          >
+            <Ionicons name="notifications-outline" size={20} color="#0F172A" />
+            {unreadAlerts > 0 && (
+              <View style={st.bellBadge}>
+                <Text style={st.bellBadgeText}>{unreadAlerts > 9 ? '9+' : unreadAlerts}</Text>
+              </View>
+            )}
+          </Pressable>
+        </View>
       </View>
 
       {/* Date nav */}
@@ -405,6 +438,37 @@ const st = StyleSheet.create({
     borderRadius: radius.full,
   },
   headerBadgeText: { fontSize: 12, fontWeight: '700', color: '#fff' },
+  bellBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 9999,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  bellBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 5,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  bellBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
 
   dateNav: {
     flexDirection: 'row',

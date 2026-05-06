@@ -137,22 +137,9 @@ export function useLocationTracking({ operatorId }: Options) {
         return;
       }
       lastSentRef.current = { lat, lng, sentAt: now };
-
-      // Breadcrumb para historico de deslocamento (somente com atividade ativa)
-      if (currentActivityId) {
-        supabase.from('location_history').insert({
-          operator_id: opIdAtMount,
-          activity_id: currentActivityId,
-          latitude: lat,
-          longitude: lng,
-          accuracy: loc.coords.accuracy ?? null,
-          speed: loc.coords.speed ?? null,
-          heading: loc.coords.heading ?? null,
-          recorded_at: payload.recorded_at,
-        }).then(({ error: histErr }) => {
-          if (histErr) console.log('[Location] breadcrumb falhou:', histErr.message);
-        });
-      }
+      // Breadcrumbs em location_history sao responsabilidade exclusiva do
+      // locationTask (background). Inserir aqui causaria duplicatas quando
+      // foreground e background rodam em paralelo.
     }
 
     async function startBackgroundUpdates(promptIfNeeded = true): Promise<boolean> {

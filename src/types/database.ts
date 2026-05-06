@@ -938,6 +938,52 @@ export type Database = {
           },
         ];
       };
+      reminders: {
+        Row: {
+          id: string;
+          user_id: string;
+          title: string;
+          description: string | null;
+          reminder_time: string;
+          recurrence: 'daily' | 'weekly' | 'once';
+          days_of_week: number[] | null;
+          specific_date: string | null;
+          is_active: boolean;
+          notification_ids: string[] | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          title: string;
+          description?: string | null;
+          reminder_time: string;
+          recurrence?: 'daily' | 'weekly' | 'once';
+          days_of_week?: number[] | null;
+          specific_date?: string | null;
+          is_active?: boolean;
+          notification_ids?: string[] | null;
+        };
+        Update: {
+          title?: string;
+          description?: string | null;
+          reminder_time?: string;
+          recurrence?: 'daily' | 'weekly' | 'once';
+          days_of_week?: number[] | null;
+          specific_date?: string | null;
+          is_active?: boolean;
+          notification_ids?: string[] | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'reminders_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       operator_locations: {
         Row: {
           operator_id: string;
@@ -1018,3 +1064,4 @@ export type OperatorScore = Database['public']['Tables']['operator_scores']['Row
 export type ReviewComment = Database['public']['Tables']['review_comments']['Row'];
 export type OperatorLocation = Database['public']['Tables']['operator_locations']['Row'];
 export type Location = Database['public']['Tables']['locations']['Row'];
+export type Reminder = Database['public']['Tables']['reminders']['Row'];

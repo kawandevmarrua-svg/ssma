@@ -1,4 +1,4 @@
-import { Text as RNText, TextProps as RNTextProps, StyleSheet, TextStyle } from 'react-native';
+import { Text as RNText, TextProps as RNTextProps, StyleSheet, StyleProp, TextStyle } from 'react-native';
 import { colors, typography } from '../../theme/colors';
 
 type Variant = keyof typeof typography;
@@ -9,7 +9,7 @@ interface TextProps extends RNTextProps {
   tone?: Tone;
   weight?: '400' | '500' | '600' | '700' | '800';
   align?: 'left' | 'center' | 'right';
-  style?: TextStyle | TextStyle[];
+  style?: StyleProp<TextStyle>;
 }
 
 const toneColor: Record<Tone, string> = {

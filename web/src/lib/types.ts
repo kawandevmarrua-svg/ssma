@@ -82,6 +82,9 @@ export interface ChecklistRow {
   equipment_photo_3_url: string | null;
   equipment_photo_4_url: string | null;
   environment_photo_url: string | null;
+  encarregado_confirmed: boolean;
+  encarregado_confirmed_at: string | null;
+  encarregado_confirmed_notes: string | null;
 }
 
 export interface ChecklistResponseRow {

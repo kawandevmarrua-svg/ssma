@@ -403,6 +403,9 @@ export type Database = {
           transit_end: string | null;
           end_notes: string | null;
           created_at: string;
+          encarregado_confirmed: boolean;
+          encarregado_confirmed_at: string | null;
+          encarregado_confirmed_notes: string | null;
         };
         Insert: {
           id?: string;
@@ -448,6 +451,9 @@ export type Database = {
           transit_start?: string | null;
           transit_end?: string | null;
           end_notes?: string | null;
+          encarregado_confirmed?: boolean;
+          encarregado_confirmed_at?: string | null;
+          encarregado_confirmed_notes?: string | null;
         };
         Relationships: [
           {

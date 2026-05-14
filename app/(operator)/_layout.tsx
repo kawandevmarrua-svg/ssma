@@ -1,8 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import Constants from "expo-constants";
 import * as Device from "expo-device";
-import { Tabs } from "expo-router";
-import { useEffect } from "react";
+import { Tabs, useRouter } from "expo-router";
+import { useEffect, useRef } from "react";
 import { Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Avatar } from "../../src/components/ui";
@@ -12,7 +12,7 @@ import { supabase } from "../../src/lib/supabase";
 import { colors } from "../../src/theme/colors";
 import { SafetyAlert } from "../../src/types/database";
 
-const isExpoGo = Constants.appOwnership === "expo";
+const isExpoGo = Constants.executionEnvironment === "storeClient";
 let Notifications: typeof import("expo-notifications") | null = null;
 if (!isExpoGo) {
   Notifications = require("expo-notifications");
@@ -29,15 +29,30 @@ if (Notifications) {
   });
 }
 
+const PROJECT_ID = Constants.expoConfig?.extra?.eas?.projectId as string | undefined;
+
 export default function OperatorLayout() {
   const insets = useSafeAreaInsets();
   const { user, profile } = useAuth();
+  const router = useRouter();
+  const tokenSaved = useRef(false);
 
   useLocationTracking({ operatorId: user?.id ?? null });
 
+  // Registra push token uma vez por sessão
   useEffect(() => {
+    if (!user || tokenSaved.current) return;
     setupNotificationChannel();
-  }, []);
+  }, [user]);
+
+  // Abre tela de alertas ao tocar na notificação
+  useEffect(() => {
+    if (!Notifications) return;
+    const sub = Notifications.addNotificationResponseReceivedListener(() => {
+      router.push("/(operator)/alerts");
+    });
+    return () => sub.remove();
+  }, [router]);
 
   useEffect(() => {
     if (!user) return;
@@ -99,6 +114,26 @@ export default function OperatorLayout() {
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
       });
+    }
+
+    // Salva o push token no banco para notificações remotas (app fechado)
+    try {
+      const tokenData = await Notifications.getExpoPushTokenAsync(
+        PROJECT_ID ? { projectId: PROJECT_ID } : undefined,
+      );
+      if (tokenData?.data && user) {
+        await supabase.from("user_push_tokens").upsert(
+          {
+            user_id: user.id,
+            push_token: tokenData.data,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id" },
+        );
+        tokenSaved.current = true;
+      }
+    } catch {
+      // best-effort
     }
   }
 

@@ -80,6 +80,8 @@ interface ChecklistRow {
   equipment_photo_1_url: string | null;
   environment_photo_url: string | null;
   photo_signed_url?: string | null;
+  encarregado_confirmed: boolean;
+  encarregado_confirmed_notes: string | null;
 }
 
 type RequiredSlot = 'equipment_1' | 'equipment_2' | 'equipment_3' | 'equipment_4' | 'environment';
@@ -219,7 +221,7 @@ export default function ChecklistScreen() {
     if (!user) { setListLoading(false); return; }
     const { data } = await supabase
       .from('checklists')
-      .select('id, machine_name, tag, date, status, result, ended_at, created_at, equipment_photo_1_url, environment_photo_url')
+      .select('id, machine_name, tag, date, status, result, ended_at, created_at, equipment_photo_1_url, environment_photo_url, encarregado_confirmed, encarregado_confirmed_notes')
       .eq('operator_id', user.id)
       .order('created_at', { ascending: false })
       .limit(50);
@@ -1432,6 +1434,21 @@ export default function ChecklistScreen() {
                   </View>
                 </View>
               </View>
+
+              {item.encarregado_confirmed && item.encarregado_confirmed_notes ? (
+                <View style={st.encarregadoNotesBanner}>
+                  <Ionicons name="shield-checkmark" size={14} color="#059669" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.encarregadoNotesLabel}>Resposta do encarregado</Text>
+                    <Text style={st.encarregadoNotesText}>{item.encarregado_confirmed_notes}</Text>
+                  </View>
+                </View>
+              ) : item.result === 'not_released' && !item.encarregado_confirmed ? (
+                <View style={st.encarregadoPendingBanner}>
+                  <Ionicons name="time-outline" size={14} color="#D97706" />
+                  <Text style={st.encarregadoPendingText}>Aguardando resposta do encarregado</Text>
+                </View>
+              ) : null}
             </View>
           );
         }}
@@ -2086,6 +2103,50 @@ const st = StyleSheet.create({
     borderRadius: radius.full, gap: spacing.xs, marginTop: spacing.md,
   },
   finishBtnText: { fontSize: 12, fontWeight: '700', color: colors.white, letterSpacing: 0.2 },
+  encarregadoNotesBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 10,
+    marginHorizontal: 12,
+    marginBottom: 10,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  encarregadoNotesLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#059669',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  encarregadoNotesText: {
+    fontSize: 13,
+    color: '#065F46',
+    lineHeight: 18,
+  },
+  encarregadoPendingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    marginHorizontal: 12,
+    marginBottom: 10,
+    padding: 8,
+    borderRadius: 10,
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  encarregadoPendingText: {
+    fontSize: 12,
+    color: '#92400E',
+    fontWeight: '600',
+  },
 
   // ============ NEW LIST (refatorado) ============
   listContent: {

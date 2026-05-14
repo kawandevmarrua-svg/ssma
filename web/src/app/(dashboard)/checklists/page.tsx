@@ -27,6 +27,7 @@ import {
   AlertTriangle,
   X,
   FileDown,
+  ShieldCheck,
 } from 'lucide-react';
 import { exportChecklistPDF, exportChecklistListPDF } from '@/lib/pdf';
 
@@ -71,7 +72,7 @@ export default function ChecklistsPage() {
   const [resolvedPhotos, setResolvedPhotos] = useState<Record<string, string>>({});
   const [deepLinked, setDeepLinked] = useState(false);
 
-  const CHECKLIST_SELECT = 'id, machine_name, date, status, result, brand, model, tag, shift, max_load_capacity, inspector_name, inspector_registration, notes, end_notes, ended_at, had_interference, interference_notes, created_at, operator_id, profiles!operator_id(full_name), equipment_types(name), equipment_photo_1_url, equipment_photo_2_url, equipment_photo_3_url, equipment_photo_4_url, environment_photo_url';
+  const CHECKLIST_SELECT = 'id, machine_name, date, status, result, brand, model, tag, shift, max_load_capacity, inspector_name, inspector_registration, notes, end_notes, ended_at, had_interference, interference_notes, created_at, operator_id, profiles!operator_id(full_name), equipment_types(name), equipment_photo_1_url, equipment_photo_2_url, equipment_photo_3_url, equipment_photo_4_url, environment_photo_url, encarregado_confirmed, encarregado_confirmed_at, encarregado_confirmed_notes';
 
   const loadChecklists = useCallback(async (term = '') => {
     let query = supabase
@@ -337,6 +338,31 @@ export default function ChecklistsPage() {
           )}
         </div>
 
+        {selected.encarregado_confirmed ? (
+          <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm flex items-start gap-2">
+            <ShieldCheck className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <p className="font-semibold text-emerald-800">Confirmado pelo encarregado</p>
+              {selected.encarregado_confirmed_at && (
+                <p className="text-emerald-700 text-xs mt-0.5">
+                  {new Date(selected.encarregado_confirmed_at).toLocaleString('pt-BR')}
+                </p>
+              )}
+              {selected.encarregado_confirmed_notes && (
+                <div className="mt-2 pt-2 border-t border-emerald-200">
+                  <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-1">Resolução da NC</p>
+                  <p className="text-emerald-800 whitespace-pre-wrap">{selected.encarregado_confirmed_notes}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-md border border-yellow-200 bg-yellow-50 p-3 text-sm flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-yellow-600 shrink-0" />
+            <p className="text-yellow-800 font-medium">Aguardando confirmação do encarregado</p>
+          </div>
+        )}
+
         {/* Fotos do equipamento e ambiente */}
         {(() => {
           const photos = [
@@ -591,10 +617,18 @@ export default function ChecklistsPage() {
                             )}
                           </div>
                         </div>
-                        <span className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${cfg.bg} ${cfg.color}`}>
-                          <Icon className="h-3 w-3" />
-                          {cfg.label}
-                        </span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {checklist.encarregado_confirmed && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                              <ShieldCheck className="h-3 w-3" />
+                              Confirmado
+                            </span>
+                          )}
+                          <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${cfg.bg} ${cfg.color}`}>
+                            <Icon className="h-3 w-3" />
+                            {cfg.label}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>

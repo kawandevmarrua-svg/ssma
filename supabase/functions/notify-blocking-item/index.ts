@@ -163,7 +163,7 @@ Deno.serve(async (req) => {
         if (alert.operator_id) {
           pushTokens = await tokenForOperator(supabase, alert.operator_id);
         } else {
-          pushTokens = await tokensForRoles(supabase, ["operator"]);
+          pushTokens = await tokensForRoles(supabase, ["operator", "encarregado"]);
         }
 
         pushPayload = {

@@ -9,6 +9,10 @@ import {
   ActivityIndicator,
   Image,
   Pressable,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,6 +30,14 @@ type ChecklistRow = {
   result: 'released' | 'not_released' | null;
   status: 'pending' | 'completed';
   created_at: string;
+  encarregado_confirmed: boolean;
+  encarregado_confirmed_at: string | null;
+};
+
+type ActivityNcAnswer = {
+  id: string;
+  label: string | null;
+  nc_description: string | null;
 };
 
 type ActivityRow = {
@@ -35,6 +47,7 @@ type ActivityRow = {
   end_time: string | null;
   location: string | null;
   activity_type: { description: string } | null;
+  nc_answers: ActivityNcAnswer[];
 };
 
 type OperatorGroup = {
@@ -78,6 +91,10 @@ export default function EquipeScreen() {
   const [expandedChecklist, setExpandedChecklist] = useState<string | null>(null);
   const [ncDetails, setNcDetails] = useState<Record<string, NcItem[]>>({});
   const [ncLoading, setNcLoading] = useState<Record<string, boolean>>({});
+  const [expandedActivity, setExpandedActivity] = useState<string | null>(null);
+  const [confirmingChecklist, setConfirmingChecklist] = useState<{ id: string; isNc: boolean } | null>(null);
+  const [confirmNotes, setConfirmNotes] = useState('');
+  const [confirmSubmitting, setConfirmSubmitting] = useState(false);
   const router = useRouter();
   const [unreadAlerts, setUnreadAlerts] = useState(0);
 
@@ -101,7 +118,7 @@ export default function EquipeScreen() {
     if (!user) { setLoading(false); return; }
     const { data, error } = await supabase
       .from('checklists')
-      .select('id, machine_name, tag, result, status, created_at, operator_id, operator:profiles!checklists_operator_id_fkey(full_name, email)')
+      .select('id, machine_name, tag, result, status, created_at, encarregado_confirmed, encarregado_confirmed_at, operator_id, operator:profiles!checklists_operator_id_fkey(full_name, email)')
       .eq('encarregado_id', user.id)
       .eq('date', date)
       .order('created_at', { ascending: false });
@@ -131,6 +148,8 @@ export default function EquipeScreen() {
         result: row.result,
         status: row.status,
         created_at: row.created_at,
+        encarregado_confirmed: row.encarregado_confirmed ?? false,
+        encarregado_confirmed_at: row.encarregado_confirmed_at ?? null,
       });
     }
 
@@ -143,7 +162,29 @@ export default function EquipeScreen() {
         .in('operator_id', operatorIds)
         .eq('date', date)
         .order('start_time', { ascending: true, nullsFirst: false });
-      for (const a of (acts ?? []) as any[]) {
+
+      const actList = (acts ?? []) as any[];
+
+      // Busca respostas NC das atividades (value = false)
+      const actIds = actList.map((a) => a.id);
+      let ncByActivity: Record<string, ActivityNcAnswer[]> = {};
+      if (actIds.length > 0) {
+        const { data: ncAnswers } = await supabase
+          .from('activity_answers')
+          .select('id, activity_id, nc_description, question:activity_questions(label)')
+          .in('activity_id', actIds)
+          .eq('value', false);
+        for (const ans of (ncAnswers ?? []) as any[]) {
+          if (!ncByActivity[ans.activity_id]) ncByActivity[ans.activity_id] = [];
+          ncByActivity[ans.activity_id].push({
+            id: ans.id,
+            label: ans.question?.label ?? null,
+            nc_description: ans.nc_description ?? null,
+          });
+        }
+      }
+
+      for (const a of actList) {
         if (groupMap[a.operator_id]) {
           groupMap[a.operator_id].activities.push({
             id: a.id,
@@ -152,6 +193,7 @@ export default function EquipeScreen() {
             end_time: a.end_time,
             location: a.location,
             activity_type: a.activity_type ?? null,
+            nc_answers: ncByActivity[a.id] ?? [],
           });
         }
       }
@@ -179,8 +221,44 @@ export default function EquipeScreen() {
     if (newDate > today) return;
     setSelectedDate(newDate);
     setExpandedChecklist(null);
+    setExpandedActivity(null);
     setNcDetails({});
     setLoading(true);
+  }
+
+  function confirmChecklist(c: ChecklistRow) {
+    const isNc = c.result === 'not_released';
+    if (isNc) {
+      setConfirmNotes('');
+      setConfirmingChecklist({ id: c.id, isNc: true });
+    } else {
+      Alert.alert(
+        'Confirmar checklist',
+        'Confirmar que você revisou e aprovou este checklist?',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Confirmar', onPress: () => doConfirm(c.id, null) },
+        ],
+      );
+    }
+  }
+
+  async function doConfirm(checklistId: string, notes: string | null) {
+    const { error } = await supabase
+      .from('checklists')
+      .update({
+        encarregado_confirmed: true,
+        encarregado_confirmed_at: new Date().toISOString(),
+        encarregado_confirmed_notes: notes || null,
+      })
+      .eq('id', checklistId);
+    if (error) {
+      Alert.alert('Erro', 'Falha ao confirmar checklist.');
+      return;
+    }
+    setConfirmingChecklist(null);
+    setConfirmNotes('');
+    loadData(selectedDate);
   }
 
   async function toggleNcDetails(checklistId: string) {
@@ -201,7 +279,11 @@ export default function EquipeScreen() {
   }
 
   const totalNc = useMemo(() =>
-    operators.reduce((acc, op) => acc + op.checklists.filter(c => c.result === 'not_released').length, 0),
+    operators.reduce((acc, op) => {
+      const checklistNc = op.checklists.filter(c => c.result === 'not_released').length;
+      const activityNc = op.activities.reduce((s, a) => s + a.nc_answers.length, 0);
+      return acc + checklistNc + activityNc;
+    }, 0),
     [operators],
   );
 
@@ -212,13 +294,12 @@ export default function EquipeScreen() {
     const time = new Date(c.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
     return (
-      <TouchableOpacity
-        key={c.id}
-        style={[st.checklistRow, isNc && st.checklistRowNc]}
-        onPress={() => isNc ? toggleNcDetails(c.id) : undefined}
-        activeOpacity={isNc ? 0.7 : 1}
-      >
-        <View style={st.checklistRowLeft}>
+      <View key={c.id} style={[st.checklistRow, isNc && st.checklistRowNc]}>
+        {/* Header da row — toque aqui expande NC */}
+        <Pressable
+          style={st.checklistRowLeft}
+          onPress={() => isNc ? toggleNcDetails(c.id) : undefined}
+        >
           <Ionicons
             name={isPending ? 'time-outline' : isNc ? 'alert-circle' : 'checkmark-circle'}
             size={16}
@@ -238,7 +319,7 @@ export default function EquipeScreen() {
               color={colors.danger}
             />
           )}
-        </View>
+        </Pressable>
 
         {isExpanded && (
           <View style={st.ncDetails}>
@@ -259,12 +340,37 @@ export default function EquipeScreen() {
             )}
           </View>
         )}
-      </TouchableOpacity>
+
+        {isPending && (
+          c.encarregado_confirmed ? (
+            <View style={st.confirmedBadge}>
+              <Ionicons name="checkmark-circle" size={13} color={colors.success} />
+              <Text style={st.confirmedBadgeText}>
+                Confirmado
+                {c.encarregado_confirmed_at
+                  ? ` · ${new Date(c.encarregado_confirmed_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+                  : ''}
+              </Text>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={st.confirmBtn}
+              onPress={() => confirmChecklist(c)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="checkmark-circle-outline" size={14} color={colors.primary} />
+              <Text style={st.confirmBtnText}>Confirmar</Text>
+            </TouchableOpacity>
+          )
+        )}
+      </View>
     );
   }
 
   function renderActivity(a: ActivityRow) {
     const isDone = !!a.end_time;
+    const hasNc = a.nc_answers.length > 0;
+    const isExpanded = expandedActivity === a.id;
     const formatTime = (t: string | null) =>
       t ? new Date(t).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : null;
     const start = formatTime(a.start_time);
@@ -275,25 +381,50 @@ export default function EquipeScreen() {
     const label = a.activity_type?.description || a.description || 'Atividade';
 
     return (
-      <View key={a.id} style={st.activityRow}>
-        <Ionicons
-          name={isDone ? 'checkmark-circle' : 'time-outline'}
-          size={15}
-          color={isDone ? colors.success : colors.warning}
-        />
-        <View style={{ flex: 1 }}>
-          <Text style={st.activityLabel} numberOfLines={1}>{label}</Text>
-          <Text style={st.activityMeta}>
-            {timeStr}{a.location ? ` · ${a.location}` : ''}
-          </Text>
-        </View>
+      <View key={a.id} style={[st.activityRow, hasNc && st.activityRowNc]}>
+        <Pressable
+          style={st.activityRowLeft}
+          onPress={() => hasNc ? setExpandedActivity(isExpanded ? null : a.id) : undefined}
+        >
+          <Ionicons
+            name={hasNc ? 'alert-circle' : isDone ? 'checkmark-circle' : 'time-outline'}
+            size={15}
+            color={hasNc ? colors.danger : isDone ? colors.success : colors.warning}
+          />
+          <View style={{ flex: 1 }}>
+            <Text style={st.activityLabel} numberOfLines={1}>{label}</Text>
+            <Text style={st.activityMeta}>
+              {timeStr}{a.location ? ` · ${a.location}` : ''}
+            </Text>
+          </View>
+          {hasNc && (
+            <View style={st.activityNcBadge}>
+              <Text style={st.activityNcBadgeText}>{a.nc_answers.length} NC</Text>
+              <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={12} color={colors.danger} />
+            </View>
+          )}
+        </Pressable>
+        {isExpanded && (
+          <View style={st.ncDetails}>
+            {a.nc_answers.map((nc) => (
+              <View key={nc.id} style={st.ncItem}>
+                <Ionicons name="close-circle" size={13} color={colors.danger} />
+                <Text style={st.ncItemText} numberOfLines={3}>
+                  {nc.label ?? 'Item não identificado'}
+                  {nc.nc_description ? ` — ${nc.nc_description}` : ''}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
       </View>
     );
   }
 
   function renderOperator({ item }: { item: OperatorGroup }) {
     const name = item.full_name || item.email;
-    const ncCount = item.checklists.filter(c => c.result === 'not_released').length;
+    const ncCount = item.checklists.filter(c => c.result === 'not_released').length
+      + item.activities.reduce((s, a) => s + a.nc_answers.length, 0);
     const totalChecklists = item.checklists.length;
     const totalActivities = item.activities.length;
     const metaParts: string[] = [];
@@ -411,6 +542,56 @@ export default function EquipeScreen() {
           }
         />
       )}
+
+      {/* Modal: resolução de não conformidade */}
+      <Modal visible={!!confirmingChecklist} animationType="slide" transparent>
+        <KeyboardAvoidingView
+          style={st.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={st.modalSheet}>
+            <View style={st.modalHandle} />
+            <Text style={st.modalTitle}>Resolução da não conformidade</Text>
+            <Text style={st.modalSubtitle}>
+              Este checklist possui itens NC. Descreva como a pendência foi resolvida ou tratada antes de confirmar.
+            </Text>
+            <TextInput
+              style={st.modalInput}
+              placeholder="Ex: Item X foi reparado, máquina liberada pelo responsável de manutenção..."
+              placeholderTextColor="#94A3B8"
+              value={confirmNotes}
+              onChangeText={setConfirmNotes}
+              multiline
+              numberOfLines={5}
+              textAlignVertical="top"
+            />
+            <TouchableOpacity
+              style={[st.modalConfirmBtn, confirmSubmitting && { opacity: 0.6 }]}
+              activeOpacity={0.8}
+              disabled={confirmSubmitting}
+              onPress={async () => {
+                if (!confirmNotes.trim()) {
+                  Alert.alert('Atenção', 'Informe como a não conformidade foi resolvida.');
+                  return;
+                }
+                setConfirmSubmitting(true);
+                await doConfirm(confirmingChecklist!.id, confirmNotes.trim());
+                setConfirmSubmitting(false);
+              }}
+            >
+              <Text style={st.modalConfirmBtnText}>
+                {confirmSubmitting ? 'Confirmando...' : 'Confirmar e registrar'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={st.modalCancelBtn}
+              onPress={() => setConfirmingChecklist(null)}
+            >
+              <Text style={st.modalCancelBtnText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -544,14 +725,24 @@ const st = StyleSheet.create({
   },
 
   activityRow: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm + 2,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
+  activityRowNc: { backgroundColor: '#FEF2F2' },
+  activityRowLeft: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm,
+  },
   activityLabel: { fontSize: 13, fontWeight: '600', color: '#0F172A' },
   activityMeta: { fontSize: 11, color: '#64748B', marginTop: 1 },
+  activityNcBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 7, paddingVertical: 2,
+    borderRadius: radius.full,
+  },
+  activityNcBadgeText: { fontSize: 11, fontWeight: '700', color: colors.danger },
 
   checklistRow: {
     paddingHorizontal: spacing.md,
@@ -576,6 +767,103 @@ const st = StyleSheet.create({
     flexDirection: 'row', alignItems: 'flex-start', gap: 4,
   },
   ncItemText: { flex: 1, fontSize: 12, color: '#7F1D1D', lineHeight: 16 },
+
+  confirmBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: spacing.sm,
+    marginLeft: 24,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    alignSelf: 'flex-start',
+  },
+  confirmBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  confirmedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: spacing.sm,
+    marginLeft: 24,
+  },
+  confirmedBadgeText: {
+    fontSize: 11,
+    color: colors.success,
+    fontWeight: '600',
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 32,
+    gap: 14,
+  },
+  modalHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#E2E8F0',
+    alignSelf: 'center',
+    marginBottom: 4,
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#0F172A',
+    letterSpacing: -0.3,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: '#64748B',
+    lineHeight: 19,
+    marginTop: -6,
+  },
+  modalInput: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: '#0F172A',
+    minHeight: 110,
+  },
+  modalConfirmBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: 14,
+    paddingVertical: 15,
+    alignItems: 'center',
+  },
+  modalConfirmBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  modalCancelBtn: {
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  modalCancelBtnText: {
+    fontSize: 14,
+    color: '#64748B',
+    fontWeight: '600',
+  },
 
   empty: {
     alignItems: 'center',

@@ -37,7 +37,7 @@ export default function ServicoScreen() {
   const [activityType, setActivityType] = useState<ActivityType | null>(null);
   const [questions, setQuestions] = useState<ActivityQuestion[]>([]);
   const [availableChecklists, setAvailableChecklists] = useState<
-    { id: string; machine_name: string; tag: string | null; machine_id: string | null }[]
+    { id: string; machine_name: string; tag: string | null; machine_id: string | null; encarregado_id: string | null }[]
   >([]);
   const [selectedChecklistId, setSelectedChecklistId] = useState<string | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
@@ -82,7 +82,7 @@ export default function ServicoScreen() {
         supabase.from('activity_types').select('*').eq('id', type_id).single(),
         supabase
           .from('checklists')
-          .select('id, machine_name, tag, machine_id, status, result')
+          .select('id, machine_name, tag, machine_id, encarregado_id, status, result')
           .eq('operator_id', userId)
           .eq('date', today)
           .order('created_at', { ascending: false }),
@@ -139,6 +139,7 @@ export default function ServicoScreen() {
         machine_name: c.machine_name,
         tag: c.tag,
         machine_id: c.machine_id,
+        encarregado_id: (c as any).encarregado_id ?? null,
       }));
 
       const autoChecklistId = isEncarregado ? null : (eligibleMapped[0]?.id ?? null);
@@ -325,6 +326,31 @@ export default function ServicoScreen() {
         activityId,
         checklistId: selectedChecklistId ?? undefined,
       });
+
+      // Gera alerta de NC para o encarregado responsavel (via checklist)
+      const ncQuestions = questions.filter((q) => preopAnswers[q.id] === false);
+      if (ncQuestions.length > 0 && selectedChecklist?.encarregado_id) {
+        const ncList = ncQuestions
+          .map((q, i) => `${i + 1}. ${q.label}`)
+          .join('\n');
+        const machineName = selectedChecklist.machine_name;
+        const alertPayload = {
+          title: `NC: ${activityType.description} — ${machineName}`,
+          message: `${ncQuestions.length} não conformidade(s) na pré-operação:\n${ncList}`,
+          severity: 'high' as const,
+          created_by: user.id,
+        };
+        // Alerta para o encarregado responsavel
+        void supabase.from('safety_alerts').insert({
+          ...alertPayload,
+          operator_id: selectedChecklist.encarregado_id,
+        });
+        // Broadcast para supervisores
+        void supabase.from('safety_alerts').insert({
+          ...alertPayload,
+          operator_id: null,
+        });
+      }
 
       setSaving(false);
       router.replace('/(operator)/atividade');

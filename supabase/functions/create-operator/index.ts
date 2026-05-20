@@ -1,26 +1,32 @@
 import { authenticate, buildCorsHeaders } from "../_shared/auth.ts";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const VALID_ROLES = new Set(["operator", "encarregado", "supervisor", "manager", "admin"]);
 
-/** Gera senha temporaria forte server-side (16 chars, inclui maiusc/minusc/digito/especial). */
+// Hierarquia de roles: cada role só pode criar roles abaixo de si.
+// admin pode criar qualquer role, incluindo outro admin.
+const CREATABLE_ROLES: Record<string, string[]> = {
+  encarregado: ["operator"],
+  supervisor:  ["operator", "encarregado"],
+  manager:     ["operator", "encarregado", "supervisor"],
+  admin:       ["operator", "encarregado", "supervisor", "manager", "admin"],
+};
+
+/** Gera senha temporária forte server-side (16 chars, inclui maiusc/minusc/digito/especial). */
 function generateTempPassword(): string {
-  const lower = "abcdefghijkmnopqrstuvwxyz";
-  const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-  const digits = "23456789";
+  const lower   = "abcdefghijkmnopqrstuvwxyz";
+  const upper   = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const digits  = "23456789";
   const special = "!@#$%&*";
-  const all = lower + upper + digits + special;
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  // Garante ao menos 1 de cada categoria nos primeiros 4 chars
-  const pick = (set: string, byte: number) => set[byte % set.length];
-  const chars = [
-    pick(lower, bytes[0]),
-    pick(upper, bytes[1]),
-    pick(digits, bytes[2]),
+  const all     = lower + upper + digits + special;
+  const bytes   = crypto.getRandomValues(new Uint8Array(16));
+  const pick    = (set: string, byte: number) => set[byte % set.length];
+  const chars   = [
+    pick(lower,   bytes[0]),
+    pick(upper,   bytes[1]),
+    pick(digits,  bytes[2]),
     pick(special, bytes[3]),
   ];
   for (let i = 4; i < 16; i++) chars.push(pick(all, bytes[i]));
-  // Embaralha com Fisher-Yates usando bytes extras de entropia
   const shuffle = crypto.getRandomValues(new Uint8Array(16));
   for (let i = chars.length - 1; i > 0; i--) {
     const j = shuffle[i] % (i + 1);
@@ -29,9 +35,9 @@ function generateTempPassword(): string {
   return chars.join("");
 }
 
-// Rate limit: max N criacoes por janela de M minutos por caller.
-const RATE_LIMIT_MAX = 10;
-const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
+// Rate limit: max 10 criações por 10 minutos por caller.
+const RATE_LIMIT_MAX    = 10;
+const RATE_LIMIT_WINDOW = 10 * 60 * 1000;
 
 Deno.serve(async (req) => {
   const corsHeaders = buildCorsHeaders(req);
@@ -62,11 +68,12 @@ Deno.serve(async (req) => {
     });
   }
 
-  const supabase = auth.data.serviceClient;
-  const callerId = auth.data.user.id;
+  const supabase    = auth.data.serviceClient;
+  const callerId    = auth.data.user.id;
+  const callerRole  = auth.data.role;
 
-  // Rate limit por caller (conta profiles criados por ele na janela).
-  const since = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString();
+  // Rate limit por caller (conta profiles criados por ele na janela)
+  const since = new Date(Date.now() - RATE_LIMIT_WINDOW).toISOString();
   const { count: recentCount, error: rateErr } = await supabase
     .from("profiles")
     .select("id", { count: "exact", head: true })
@@ -74,40 +81,38 @@ Deno.serve(async (req) => {
     .gte("created_at", since);
 
   if (rateErr) {
-    return new Response(
-      JSON.stringify({ error: "Falha ao consultar rate limit." }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
-    );
+    return new Response(JSON.stringify({ error: "Servico temporariamente indisponivel." }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 
   if ((recentCount ?? 0) >= RATE_LIMIT_MAX) {
     return new Response(
-      JSON.stringify({
-        error: `Limite de ${RATE_LIMIT_MAX} criacoes por ${
-          RATE_LIMIT_WINDOW_MS / 60000
-        } minutos atingido. Tente novamente mais tarde.`,
-      }),
-      {
-        status: 429,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
+      JSON.stringify({ error: `Limite de ${RATE_LIMIT_MAX} criações por ${RATE_LIMIT_WINDOW / 60000} minutos atingido.` }),
+      { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 
   try {
     const body = await req.json();
-    const name = String(body.name ?? "").trim();
+    const name  = String(body.name  ?? "").trim();
     const email = String(body.email ?? "").trim().toLowerCase();
-    const role = String(body.role ?? "operator");
+    const role  = String(body.role  ?? "operator");
 
-    if (name.length < 2) throw new Error("Nome invalido.");
-    if (!EMAIL_REGEX.test(email)) throw new Error("E-mail invalido.");
-    if (!VALID_ROLES.has(role)) throw new Error("Cargo invalido.");
+    if (name.length < 2)          throw new Error("Nome inválido.");
+    if (!EMAIL_REGEX.test(email)) throw new Error("E-mail inválido.");
 
-    // Senha gerada server-side — nunca trafega no request body.
+    // FIX C-2: Verificar hierarquia de roles — caller só pode criar roles
+    // iguais ou abaixo do seu. Sem isso, encarregado criaria admin.
+    const allowed = CREATABLE_ROLES[callerRole] ?? [];
+    if (!allowed.includes(role)) {
+      return new Response(
+        JSON.stringify({ error: `Cargo '${role}' não pode ser criado por '${callerRole}'.` }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const password = generateTempPassword();
 
     const { data: created, error: createErr } = await supabase.auth.admin.createUser({
@@ -115,37 +120,52 @@ Deno.serve(async (req) => {
       password,
       email_confirm: true,
       user_metadata: {
-        full_name: name,
+        full_name:              name,
         role,
-        must_reset_password: true,
-        password_set_by_admin: true,
+        must_reset_password:    true,
+        password_set_by_admin:  true,
       },
     });
 
     if (createErr || !created.user) {
-      throw new Error(createErr?.message ?? "Falha ao criar usuario.");
+      // FIX M-1: não expor mensagem interna do Supabase Auth
+      const isEmailTaken = createErr?.message?.includes("already");
+      throw new Error(isEmailTaken ? "E-mail já cadastrado." : "Falha ao criar usuário.");
     }
 
     const newUserId = created.user.id;
 
     const { error: profileErr } = await supabase.from("profiles").upsert({
-      id: newUserId,
+      id:        newUserId,
       email,
       full_name: name,
       role,
-      phone: null,
-      active: true,
+      phone:     null,
+      active:    true,
       created_by: callerId,
     });
 
     if (profileErr) {
       await supabase.auth.admin.deleteUser(newUserId);
-      throw new Error(profileErr.message);
+      // FIX M-1: não expor schema do DB
+      throw new Error("Falha ao salvar perfil do usuário.");
     }
 
+    // FIX M-6: Registrar criação de usuário no audit log
+    await supabase.from("audit_log").insert({
+      user_id:       callerId,
+      user_role:     callerRole,
+      action:        "create_user",
+      resource_type: "profiles",
+      resource_id:   newUserId,
+      metadata:      { target_role: role, target_email: email },
+    }).then(({ error }) => {
+      if (error) console.error("[create-operator] audit_log insert failed:", error.message);
+    });
+
     return new Response(JSON.stringify({
-      success: true,
-      id: newUserId,
+      success:     true,
+      id:          newUserId,
       tempPassword: password,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -153,10 +173,7 @@ Deno.serve(async (req) => {
   } catch (err) {
     return new Response(
       JSON.stringify({ success: false, error: (err as Error).message }),
-      {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });

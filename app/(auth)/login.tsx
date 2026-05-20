@@ -49,7 +49,7 @@ export default function LoginScreen() {
       >
         <View style={styles.hero}>
           <Image
-            source={require("../../logo.jpeg")}
+            source={require("../../assets/logo.jpeg")}
             style={styles.logo}
             resizeMode="contain"
           />

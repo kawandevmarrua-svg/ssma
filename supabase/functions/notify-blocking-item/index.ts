@@ -1,5 +1,23 @@
 import { authenticate, buildCorsHeaders } from "../_shared/auth.ts";
 
+// FIX M-2: Rate limit para evitar spam de push notifications.
+// Reset em cold start (Deno Deploy); suficiente para conter abusos acidentais.
+const _rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT_MAX    = 30;
+const RATE_LIMIT_WINDOW = 60 * 1000; // 1 min
+
+function checkRateLimit(key: string): boolean {
+  const now   = Date.now();
+  const entry = _rateLimitMap.get(key);
+  if (!entry || entry.resetAt < now) {
+    _rateLimitMap.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
+    return true;
+  }
+  if (entry.count >= RATE_LIMIT_MAX) return false;
+  entry.count++;
+  return true;
+}
+
 interface PushPayload {
   title: string;
   body: string;
@@ -86,7 +104,16 @@ Deno.serve(async (req) => {
     });
   }
 
-  const supabase = auth.data.serviceClient;
+  const supabase  = auth.data.serviceClient;
+  const callerId  = auth.data.user?.id ?? auth.data.role;
+
+  // FIX M-2: Rate limit por caller
+  if (!checkRateLimit(callerId)) {
+    return new Response(
+      JSON.stringify({ error: "Muitas notificações enviadas. Aguarde um minuto." }),
+      { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
 
   try {
     const body = await req.json();

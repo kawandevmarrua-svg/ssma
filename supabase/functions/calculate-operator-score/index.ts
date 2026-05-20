@@ -177,8 +177,10 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
+    // FIX M-1: não expor detalhes internos de erro ao cliente
+    console.error("[calculate-operator-score] error:", (err as Error).message);
     return new Response(
-      JSON.stringify({ success: false, error: (err as Error).message }),
+      JSON.stringify({ success: false, error: "Falha ao calcular pontuações." }),
       {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

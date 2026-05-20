@@ -68,15 +68,25 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
       console.log('[LocationTask] upsert falhou:', upsertError.message);
     }
 
-    // Breadcrumb para historico de deslocamento (atividade ativa ou ocioso)
-    if (derived.currentActivityId || derived.status === 'idle') {
+    // Breadcrumb para historico de deslocamento (atividade ativa ou ocioso).
+    // Descarta fixes com baixa precisao (>50m) para nao inflar distancia haversine,
+    // e sanitiza speed inconsistente (negativo / NaN) que polui max_speed nos KPIs.
+    const accuracy = loc.coords.accuracy ?? null;
+    const ACCURACY_MAX_M = 50;
+    const rawSpeed = loc.coords.speed;
+    const cleanSpeed = typeof rawSpeed === 'number' && Number.isFinite(rawSpeed) && rawSpeed >= 0
+      ? rawSpeed
+      : null;
+    const accuracyOK = accuracy === null || accuracy <= ACCURACY_MAX_M;
+
+    if (accuracyOK && (derived.currentActivityId || derived.status === 'idle')) {
       await supabase.from('location_history').insert({
         operator_id: operatorId,
         activity_id: derived.currentActivityId ?? null,
         latitude: loc.coords.latitude,
         longitude: loc.coords.longitude,
-        accuracy: loc.coords.accuracy ?? null,
-        speed: loc.coords.speed ?? null,
+        accuracy,
+        speed: cleanSpeed,
         heading: loc.coords.heading ?? null,
         event_type: derived.currentActivityId ? 'breadcrumb' : 'idle_breadcrumb',
         recorded_at: new Date(loc.timestamp || Date.now()).toISOString(),

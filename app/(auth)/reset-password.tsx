@@ -42,7 +42,7 @@ export default function ResetPasswordScreen() {
     setLoading(false);
 
     if (error) {
-      Alert.alert('Erro', error.message);
+      Alert.alert('Erro', 'Nao foi possivel atualizar a senha. Tente novamente.');
       return;
     }
 

@@ -34,14 +34,18 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
 async function getWebSigningKey(): Promise<CryptoKey | null> {
   if (cachedWebKey) return cachedWebKey;
   const subtle = globalThis.crypto?.subtle;
-  if (!subtle || typeof globalThis.localStorage === 'undefined') return null;
+  if (!subtle || typeof globalThis.sessionStorage === 'undefined') return null;
 
-  let raw = globalThis.localStorage.getItem(WEB_KEY_STORAGE);
+  // FIX M-4: usar sessionStorage em vez de localStorage.
+  // sessionStorage é descartado ao fechar a aba, reduzindo a janela de exposição
+  // a XSS. localStorage persiste indefinidamente e é acessível por qualquer
+  // script na mesma origem em qualquer aba.
+  let raw = globalThis.sessionStorage.getItem(WEB_KEY_STORAGE);
   if (!raw) {
     const fresh = new Uint8Array(32);
     globalThis.crypto.getRandomValues(fresh);
     raw = bytesToBase64(fresh);
-    globalThis.localStorage.setItem(WEB_KEY_STORAGE, raw);
+    globalThis.sessionStorage.setItem(WEB_KEY_STORAGE, raw);
   }
 
   const keyBytes = base64ToBytes(raw);

@@ -40,6 +40,7 @@ export function useLocationTracking({ operatorId }: Options) {
   });
   const permissionAlertedRef = useRef(false);
   const backgroundStartedRef = useRef(false);
+  const backgroundDeniedAlertedRef = useRef(false);
 
   useEffect(() => {
     if (!operatorId) return;
@@ -156,8 +157,15 @@ export function useLocationTracking({ operatorId }: Options) {
           : await Location.getBackgroundPermissionsAsync();
 
         if (bgPerm !== 'granted') {
-          // Sem permissao "always" o app fica restrito ao foreground.
-          // Nao alertamos novamente para nao incomodar a cada retomada.
+          // Sem "Sempre" o app perde breadcrumbs em background → relatorios
+          // de deslocamento ficam vazios. Alerta UMA vez por sessao.
+          if (promptIfNeeded && !backgroundDeniedAlertedRef.current) {
+            backgroundDeniedAlertedRef.current = true;
+            Alert.alert(
+              'Localizacao em segundo plano desativada',
+              'Sem a permissao "Sempre" seu deslocamento e tempo em frente nao sao registrados quando o app sai da tela. Habilite "Sempre" nas configuracoes para que sua atividade entre nos relatorios.',
+            );
+          }
           return false;
         }
 

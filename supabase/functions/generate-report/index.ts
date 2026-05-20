@@ -1,5 +1,23 @@
 import { authenticate, buildCorsHeaders } from "../_shared/auth.ts";
 
+// FIX M-2: Rate limit em memória por user (reseta em cold start).
+// Impede exfiltração em massa de dados via geração repetida de relatórios.
+const _rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT_MAX    = 10;
+const RATE_LIMIT_WINDOW = 5 * 60 * 1000; // 5 min
+
+function checkRateLimit(userId: string): boolean {
+  const now   = Date.now();
+  const entry = _rateLimitMap.get(userId);
+  if (!entry || entry.resetAt < now) {
+    _rateLimitMap.set(userId, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
+    return true;
+  }
+  if (entry.count >= RATE_LIMIT_MAX) return false;
+  entry.count++;
+  return true;
+}
+
 Deno.serve(async (req) => {
   const corsHeaders = buildCorsHeaders(req);
 
@@ -22,23 +40,29 @@ Deno.serve(async (req) => {
     });
   }
 
+  // FIX M-2: Checar rate limit
+  const callerId = auth.data.user?.id ?? "internal";
+  if (!checkRateLimit(callerId)) {
+    return new Response(
+      JSON.stringify({ error: `Limite de ${RATE_LIMIT_MAX} relatórios por ${RATE_LIMIT_WINDOW / 60000} minutos atingido.` }),
+      { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
   const supabase = auth.data.serviceClient;
 
-  // Cap absoluto para evitar DoS / exfiltracao em massa.
-  const MAX_LIMIT = 1000;
+  const MAX_LIMIT     = 1000;
   const DEFAULT_LIMIT = 200;
 
   try {
     const { type, operator_id, date_from, date_to, limit } = await req.json();
 
     if (!type) {
-      throw new Error(
-        "Parametro 'type' obrigatorio: 'checklist' | 'inspection' | 'activity' | 'operator_summary'",
-      );
+      throw new Error("Parâmetro 'type' obrigatório: 'checklist' | 'inspection' | 'activity' | 'operator_summary'");
     }
 
-    const requestedLimit = Number.isFinite(Number(limit)) ? Number(limit) : DEFAULT_LIMIT;
-    const effectiveLimit = Math.min(Math.max(1, requestedLimit), MAX_LIMIT);
+    const requestedLimit  = Number.isFinite(Number(limit)) ? Number(limit) : DEFAULT_LIMIT;
+    const effectiveLimit  = Math.min(Math.max(1, requestedLimit), MAX_LIMIT);
 
     let reportData: Record<string, unknown> = {
       generated_at: new Date().toISOString(),
@@ -50,7 +74,7 @@ Deno.serve(async (req) => {
 
     const filters = {
       dateFrom: date_from || new Date(Date.now() - 30 * 86400000).toISOString().split("T")[0],
-      dateTo: date_to || new Date().toISOString().split("T")[0],
+      dateTo:   date_to   || new Date().toISOString().split("T")[0],
     };
 
     switch (type) {
@@ -75,11 +99,11 @@ Deno.serve(async (req) => {
         if (operator_id) query = query.eq("operator_id", operator_id);
 
         const { data, error } = await query;
-        if (error) throw error;
+        if (error) throw new Error("Falha ao consultar checklists.");
 
         const summary = {
-          total: data?.length || 0,
-          released: data?.filter((c: { result: string }) => c.result === "released").length || 0,
+          total:        data?.length || 0,
+          released:     data?.filter((c: { result: string }) => c.result === "released").length || 0,
           not_released: data?.filter((c: { result: string }) => c.result === "not_released").length || 0,
         };
 
@@ -105,16 +129,15 @@ Deno.serve(async (req) => {
         if (operator_id) query = query.eq("operator_id", operator_id);
 
         const { data, error } = await query;
-        if (error) throw error;
+        if (error) throw new Error("Falha ao consultar inspeções.");
 
         const summary = {
-          total: data?.length || 0,
-          safe: data?.filter((i: { overall_classification: string }) => i.overall_classification === "safe").length || 0,
-          attention: data?.filter((i: { overall_classification: string }) => i.overall_classification === "attention").length || 0,
-          critical: data?.filter((i: { overall_classification: string }) => i.overall_classification === "critical").length || 0,
-          total_deviations: data?.reduce(
-            (sum: number, i: { behavioral_deviations: unknown[] }) =>
-              sum + (i.behavioral_deviations?.length || 0),
+          total:             data?.length || 0,
+          safe:              data?.filter((i: { overall_classification: string }) => i.overall_classification === "safe").length || 0,
+          attention:         data?.filter((i: { overall_classification: string }) => i.overall_classification === "attention").length || 0,
+          critical:          data?.filter((i: { overall_classification: string }) => i.overall_classification === "critical").length || 0,
+          total_deviations:  data?.reduce(
+            (sum: number, i: { behavioral_deviations: unknown[] }) => sum + (i.behavioral_deviations?.length || 0),
             0,
           ) || 0,
         };
@@ -135,29 +158,23 @@ Deno.serve(async (req) => {
         if (operator_id) query = query.eq("operator_id", operator_id);
 
         const { data, error } = await query;
-        if (error) throw error;
+        if (error) throw new Error("Falha ao consultar atividades.");
 
-        const completedActivities = data?.filter(
-          (a: { end_time: string | null }) => a.end_time !== null,
-        ) || [];
+        const completedActivities = data?.filter((a: { end_time: string | null }) => a.end_time !== null) || [];
         let totalMinutes = 0;
         for (const act of completedActivities) {
           if (act.start_time && act.end_time) {
-            totalMinutes +=
-              (new Date(act.end_time).getTime() - new Date(act.start_time).getTime()) / 60000;
+            totalMinutes += (new Date(act.end_time).getTime() - new Date(act.start_time).getTime()) / 60000;
           }
         }
 
         const summary = {
-          total: data?.length || 0,
-          completed: completedActivities.length,
-          with_interference: data?.filter(
-            (a: { had_interference: boolean }) => a.had_interference,
-          ).length || 0,
-          avg_duration_minutes:
-            completedActivities.length > 0
-              ? Math.round(totalMinutes / completedActivities.length)
-              : 0,
+          total:              data?.length || 0,
+          completed:          completedActivities.length,
+          with_interference:  data?.filter((a: { had_interference: boolean }) => a.had_interference).length || 0,
+          avg_duration_minutes: completedActivities.length > 0
+            ? Math.round(totalMinutes / completedActivities.length)
+            : 0,
         };
 
         reportData = { ...reportData, summary, activities: data };
@@ -165,55 +182,50 @@ Deno.serve(async (req) => {
       }
 
       case "operator_summary": {
-        if (!operator_id) {
-          throw new Error("operator_id obrigatorio para relatorio operator_summary");
-        }
+        if (!operator_id) throw new Error("operator_id obrigatório para relatório operator_summary.");
 
         const period = filters.dateFrom.slice(0, 7);
 
-        const { data: score } = await supabase
-          .from("operator_scores")
-          .select("*")
-          .eq("operator_id", operator_id)
-          .eq("period", period)
-          .single();
+        const [{ data: score }, { data: operator }, { data: recentChecklists }, { data: recentInspections }] =
+          await Promise.all([
+            supabase.from("operator_scores").select("*").eq("operator_id", operator_id).eq("period", period).single(),
+            supabase.from("profiles").select("id, full_name, email, role, active").eq("id", operator_id).single(),
+            supabase.from("checklists")
+              .select("id, date, result, equipment_types(name)")
+              .eq("operator_id", operator_id)
+              .gte("date", filters.dateFrom)
+              .lte("date", filters.dateTo)
+              .order("date", { ascending: false })
+              .limit(10),
+            supabase.from("behavioral_inspections")
+              .select("id, date, overall_classification, profiles!behavioral_inspections_observer_id_fkey(full_name)")
+              .eq("operator_id", operator_id)
+              .gte("date", filters.dateFrom)
+              .lte("date", filters.dateTo)
+              .order("date", { ascending: false })
+              .limit(10),
+          ]);
 
-        const { data: operator } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", operator_id)
-          .single();
-
-        const { data: recentChecklists } = await supabase
-          .from("checklists")
-          .select("id, date, result, equipment_types(name)")
-          .eq("operator_id", operator_id)
-          .gte("date", filters.dateFrom)
-          .lte("date", filters.dateTo)
-          .order("date", { ascending: false })
-          .limit(10);
-
-        const { data: recentInspections } = await supabase
-          .from("behavioral_inspections")
-          .select("id, date, overall_classification, profiles!behavioral_inspections_observer_id_fkey(full_name)")
-          .eq("operator_id", operator_id)
-          .gte("date", filters.dateFrom)
-          .lte("date", filters.dateTo)
-          .order("date", { ascending: false })
-          .limit(10);
-
-        reportData = {
-          ...reportData,
-          operator,
-          score,
-          recent_checklists: recentChecklists,
-          recent_inspections: recentInspections,
-        };
+        reportData = { ...reportData, operator, score, recent_checklists: recentChecklists, recent_inspections: recentInspections };
         break;
       }
 
       default:
-        throw new Error(`Tipo de relatorio invalido: ${type}`);
+        throw new Error("Tipo de relatório inválido.");
+    }
+
+    // FIX M-6: Audit log da geração de relatório
+    const supabaseUser = auth.data.user;
+    if (supabaseUser) {
+      await supabase.from("audit_log").insert({
+        user_id:       supabaseUser.id,
+        user_role:     auth.data.role,
+        action:        "generate_report",
+        resource_type: "report",
+        metadata:      { type, operator_id: operator_id ?? null, date_from: filters.dateFrom, date_to: filters.dateTo, limit: effectiveLimit },
+      }).then(({ error }) => {
+        if (error) console.error("[generate-report] audit_log insert failed:", error.message);
+      });
     }
 
     return new Response(JSON.stringify(reportData), {
@@ -222,10 +234,7 @@ Deno.serve(async (req) => {
   } catch (err) {
     return new Response(
       JSON.stringify({ error: (err as Error).message }),
-      {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });

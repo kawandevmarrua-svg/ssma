@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import NextTopLoader from 'nextjs-toploader';
+import { Toaster } from '@/components/ui/sonner';
+import { ConfirmProvider } from '@/components/confirm-provider';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -18,7 +20,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="pt-BR" suppressHydrationWarning>
       <body className="min-h-screen bg-background antialiased" suppressHydrationWarning>
         <NextTopLoader color="#f97316" height={3} showSpinner={false} />
-        {children}
+        <ConfirmProvider>{children}</ConfirmProvider>
+        <Toaster />
       </body>
     </html>
   );

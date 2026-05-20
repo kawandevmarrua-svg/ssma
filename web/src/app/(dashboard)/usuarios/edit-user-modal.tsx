@@ -1,10 +1,13 @@
 'use client';
 
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { Modal } from '@/components/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select } from '@/components/ui/select';
+import { cn } from '@/lib/utils';
 import { Loader2 } from 'lucide-react';
 import { updateUserAction } from './actions';
 
@@ -63,6 +66,7 @@ export function EditUserModal({ user, onClose, onSaved }: Props) {
       return;
     }
 
+    toast.success('Usuário atualizado.');
     onSaved();
   }
 
@@ -92,16 +96,15 @@ export function EditUserModal({ user, onClose, onSaved }: Props) {
 
         <div className="space-y-2">
           <Label>Cargo *</Label>
-          <select
+          <Select
             value={role}
             onChange={(e) => setRole(e.target.value)}
             required
-            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             {CARGO_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <div className="space-y-2">
@@ -118,22 +121,20 @@ export function EditUserModal({ user, onClose, onSaved }: Props) {
           <div className="flex gap-2">
             <button
               type="button"
-              className={`rounded-full px-4 py-1.5 text-sm font-medium border transition-colors ${
-                active
-                  ? 'bg-emerald-500 text-white border-emerald-500'
-                  : 'bg-background text-muted-foreground border-input hover:bg-accent'
-              }`}
+              className={cn(
+                'rounded-full px-4 py-1.5 text-sm font-medium border transition-colors',
+                active ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-background text-muted-foreground border-input hover:bg-accent',
+              )}
               onClick={() => setActive(true)}
             >
               Ativo
             </button>
             <button
               type="button"
-              className={`rounded-full px-4 py-1.5 text-sm font-medium border transition-colors ${
-                !active
-                  ? 'bg-red-500 text-white border-red-500'
-                  : 'bg-background text-muted-foreground border-input hover:bg-accent'
-              }`}
+              className={cn(
+                'rounded-full px-4 py-1.5 text-sm font-medium border transition-colors',
+                !active ? 'bg-red-500 text-white border-red-500' : 'bg-background text-muted-foreground border-input hover:bg-accent',
+              )}
               onClick={() => setActive(false)}
             >
               Inativo

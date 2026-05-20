@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Loader2,
   Users,
@@ -557,8 +560,8 @@ export default function OrganoGramaPage() {
             return (
               <div key={role} className="flex items-center gap-1.5 rounded-full border px-2.5 py-1" style={{ borderColor: c.stroke + '40', background: c.light }}>
                 <div className="h-2.5 w-2.5 rounded-full" style={{ background: c.fill }} />
-                <span className="text-[11px] font-medium" style={{ color: c.stroke }}>{ROLE_LABELS[role]}</span>
-                <span className="text-[10px] font-bold" style={{ color: c.fill }}>{loading ? '-' : roleCounts[role] || 0}</span>
+                <span className="text-xs font-medium" style={{ color: c.stroke }}>{ROLE_LABELS[role]}</span>
+                <span className="text-xs font-bold" style={{ color: c.fill }}>{loading ? '-' : roleCounts[role] || 0}</span>
               </div>
             );
           })}
@@ -700,14 +703,14 @@ export default function OrganoGramaPage() {
 
                       {/* Text */}
                       <div className="flex-1 min-w-0 text-left">
-                        <p className="text-[11px] font-semibold truncate text-gray-800 leading-tight">
+                        <p className="text-xs font-semibold truncate text-gray-800 leading-tight">
                           {getShortName(name)}
                         </p>
-                        <p className="text-[9px] font-medium mt-0.5" style={{ color: c.stroke }}>
+                        <p className="text-xs font-medium mt-0.5" style={{ color: c.stroke }}>
                           {ROLE_LABELS[node.user.role] || node.user.role}
                         </p>
                         {node.childCount > 0 && (
-                          <p className="text-[8px] text-gray-400 leading-tight">{node.childCount} subordinado{node.childCount > 1 ? 's' : ''}</p>
+                          <p className="text-xs text-gray-400 leading-tight">{node.childCount} subordinado{node.childCount > 1 ? 's' : ''}</p>
                         )}
                       </div>
                     </button>
@@ -719,27 +722,27 @@ export default function OrganoGramaPage() {
 
           {/* Zoom controls (floating) */}
           <div className="absolute bottom-4 left-4 flex items-center gap-1 bg-white/90 backdrop-blur-sm rounded-lg border shadow-sm p-1 z-10">
-            <button onClick={() => setZoom((z) => Math.max(0.2, z - 0.15))} className="rounded-md p-1.5 hover:bg-gray-100 transition-colors" title="Diminuir">
-              <ZoomOut className="h-4 w-4 text-gray-500" />
-            </button>
-            <span className="text-[10px] text-gray-500 w-9 text-center font-medium">{Math.round(zoom * 100)}%</span>
-            <button onClick={() => setZoom((z) => Math.min(3, z + 0.15))} className="rounded-md p-1.5 hover:bg-gray-100 transition-colors" title="Aumentar">
-              <ZoomIn className="h-4 w-4 text-gray-500" />
-            </button>
+            <Button variant="ghost" size="icon" onClick={() => setZoom((z) => Math.max(0.2, z - 0.15))} className="h-7 w-7 text-gray-500 hover:bg-gray-100" title="Diminuir">
+              <ZoomOut className="h-4 w-4" />
+            </Button>
+            <span className="text-xs text-gray-500 w-9 text-center font-medium">{Math.round(zoom * 100)}%</span>
+            <Button variant="ghost" size="icon" onClick={() => setZoom((z) => Math.min(3, z + 0.15))} className="h-7 w-7 text-gray-500 hover:bg-gray-100" title="Aumentar">
+              <ZoomIn className="h-4 w-4" />
+            </Button>
             <div className="w-px h-5 bg-gray-200 mx-0.5" />
-            <button onClick={handleFitView} className="rounded-md p-1.5 hover:bg-gray-100 transition-colors" title="Enquadrar tudo">
-              <Maximize2 className="h-4 w-4 text-gray-500" />
-            </button>
+            <Button variant="ghost" size="icon" onClick={handleFitView} className="h-7 w-7 text-gray-500 hover:bg-gray-100" title="Enquadrar tudo">
+              <Maximize2 className="h-4 w-4" />
+            </Button>
           </div>
 
           {/* Search (floating) */}
           <div className="absolute top-4 left-4 z-10 w-64">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              <input
+              <Input
                 type="text"
                 placeholder="Buscar membro..."
-                className="w-full rounded-lg border bg-white/90 backdrop-blur-sm pl-9 pr-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-300"
+                className="bg-white/90 backdrop-blur-sm pl-9 shadow-sm"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -754,12 +757,12 @@ export default function OrganoGramaPage() {
                       onClick={() => { focusNode(u.id); setSearch(''); }}
                       className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-gray-50 transition-colors"
                     >
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white" style={{ background: c.fill }}>
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: c.fill }}>
                         {(u.full_name || '?')[0].toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium truncate">{u.full_name || 'Sem nome'}</p>
-                        <p className="text-[10px] text-gray-400">{ROLE_LABELS[u.role]} · {u.email}</p>
+                        <p className="text-xs text-gray-400">{ROLE_LABELS[u.role]} · {u.email}</p>
                       </div>
                     </button>
                   );
@@ -769,7 +772,7 @@ export default function OrganoGramaPage() {
           </div>
 
           {/* Help hint */}
-          <div className="absolute bottom-4 right-4 flex items-center gap-1.5 text-[10px] text-gray-400 bg-white/70 backdrop-blur-sm rounded-md px-2 py-1 border z-10">
+          <div className="absolute bottom-4 right-4 flex items-center gap-1.5 text-xs text-gray-400 bg-white/70 backdrop-blur-sm rounded-md px-2 py-1 border z-10">
             <Mouse className="h-3 w-3" />
             Arraste para mover · Scroll para zoom
           </div>
@@ -799,15 +802,15 @@ export default function OrganoGramaPage() {
                 <div className="flex-1 min-w-0">
                   <h3 className="text-xs font-semibold text-gray-800 truncate">{name}</h3>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[9px] font-medium" style={{ color: c.stroke }}>{ROLE_LABELS[selectedUser.role]}</span>
-                    <span className={`inline-flex items-center rounded-full px-1.5 py-px text-[9px] font-medium ${selectedUser.active ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                    <span className="text-xs font-medium" style={{ color: c.stroke }}>{ROLE_LABELS[selectedUser.role]}</span>
+                    <span className={`inline-flex items-center rounded-full px-1.5 py-px text-xs font-medium ${selectedUser.active ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
                       {selectedUser.active ? 'Ativo' : 'Inativo'}
                     </span>
                   </div>
                 </div>
-                <button onClick={() => setSelectedId(null)} className="rounded-md p-1.5 hover:bg-gray-100 transition-colors">
-                  <X className="h-4 w-4 text-gray-400" />
-                </button>
+                <Button variant="ghost" size="icon" onClick={() => setSelectedId(null)} className="h-7 w-7 text-gray-400 hover:bg-gray-100">
+                  <X className="h-4 w-4" />
+                </Button>
               </div>
 
               {analyticsLoading || !analytics ? (
@@ -817,7 +820,7 @@ export default function OrganoGramaPage() {
               ) : (
                 <div className="p-3 space-y-3">
                   {/* Contact */}
-                  <div className="flex items-center gap-2 text-[10px] text-gray-500 flex-wrap">
+                  <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
                     {selectedUser.email && <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />{selectedUser.email}</span>}
                     {selectedUser.phone && <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />{selectedUser.phone}</span>}
                   </div>
@@ -826,7 +829,7 @@ export default function OrganoGramaPage() {
                   <div className="grid grid-cols-2 gap-2">
                     {/* Score circular gauge */}
                     <div className="rounded-lg border p-2 flex flex-col items-center">
-                      <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Score</p>
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Score</p>
                       <div className="relative" style={{ width: 60, height: 60 }}>
                         <svg viewBox="0 0 60 60" className="w-full h-full">
                           <circle cx="30" cy="30" r="25" fill="none" stroke="#f3f4f6" strokeWidth="5" />
@@ -840,17 +843,17 @@ export default function OrganoGramaPage() {
                         </svg>
                         <div className="absolute inset-0 flex flex-col items-center justify-center">
                           <span className="text-sm font-bold text-gray-800">{analytics.score !== null ? analytics.score.toFixed(0) : '--'}</span>
-                          <span className="text-[7px] text-gray-400">/ 100</span>
+                          <span className="text-xs text-gray-400">/ 100</span>
                         </div>
                       </div>
                       {analytics.productivityIndex !== null && (
-                        <p className="text-[9px] text-gray-400 mt-0.5">Prod: {analytics.productivityIndex.toFixed(0)}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">Prod: {analytics.productivityIndex.toFixed(0)}</p>
                       )}
                     </div>
 
                     {/* Conformity gauge */}
                     <div className="rounded-lg border p-2 flex flex-col items-center">
-                      <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Conformidade</p>
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Conformidade</p>
                       <div className="relative" style={{ width: 60, height: 60 }}>
                         <svg viewBox="0 0 60 60" className="w-full h-full">
                           <circle cx="30" cy="30" r="25" fill="none" stroke="#f3f4f6" strokeWidth="5" />
@@ -864,10 +867,10 @@ export default function OrganoGramaPage() {
                         </svg>
                         <div className="absolute inset-0 flex flex-col items-center justify-center">
                           <span className="text-sm font-bold text-gray-800">{conformityRate !== null ? `${conformityRate}%` : '--'}</span>
-                          <span className="text-[7px] text-gray-400">liberados</span>
+                          <span className="text-xs text-gray-400">liberados</span>
                         </div>
                       </div>
-                      <p className="text-[9px] text-gray-400 mt-0.5">{analytics.releasedCount}/{analytics.checklistsMonth}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{analytics.releasedCount}/{analytics.checklistsMonth}</p>
                     </div>
                   </div>
 
@@ -882,15 +885,15 @@ export default function OrganoGramaPage() {
                       <div key={label} className="rounded-lg border p-1.5 text-center">
                         <Icon className="h-3 w-3 mx-auto mb-0.5" style={{ color }} />
                         <p className="text-sm font-bold leading-none" style={{ color }}>{value}</p>
-                        <p className="text-[8px] text-gray-400 leading-tight mt-0.5">{label}</p>
-                        {sub && <p className="text-[7px] text-gray-400">{sub}</p>}
+                        <p className="text-xs text-gray-400 leading-tight mt-0.5">{label}</p>
+                        {sub && <p className="text-xs text-gray-400">{sub}</p>}
                       </div>
                     ))}
                   </div>
 
                   {/* Weekly bar chart */}
                   <div className="rounded-lg border p-2.5">
-                    <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Ultimas 4 semanas</p>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Ultimas 4 semanas</p>
                     <div className="flex items-end gap-1.5 h-20">
                       {analytics.weekLabels.map((label, i) => (
                         <div key={label} className="flex-1 flex flex-col items-center gap-0.5">
@@ -916,24 +919,24 @@ export default function OrganoGramaPage() {
                               title={`${analytics.weeklyActivities[i]} atividades`}
                             />
                           </div>
-                          <span className="text-[8px] text-gray-400">{label}</span>
+                          <span className="text-xs text-gray-400">{label}</span>
                         </div>
                       ))}
                     </div>
                     <div className="flex items-center justify-center gap-3 mt-1.5">
-                      <span className="flex items-center gap-1 text-[8px] text-gray-400"><span className="inline-block w-1.5 h-1.5 rounded-sm" style={{ background: '#3b82f6' }} />Checklists</span>
-                      <span className="flex items-center gap-1 text-[8px] text-gray-400"><span className="inline-block w-1.5 h-1.5 rounded-sm" style={{ background: '#8b5cf6' }} />Atividades</span>
+                      <span className="flex items-center gap-1 text-xs text-gray-400"><span className="inline-block w-1.5 h-1.5 rounded-sm" style={{ background: '#3b82f6' }} />Checklists</span>
+                      <span className="flex items-center gap-1 text-xs text-gray-400"><span className="inline-block w-1.5 h-1.5 rounded-sm" style={{ background: '#8b5cf6' }} />Atividades</span>
                     </div>
                   </div>
 
                   {/* Status breakdown (horizontal stacked bar) */}
                   {analytics.checklistsMonth > 0 && (
                     <div className="rounded-lg border p-2.5">
-                      <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Resultado dos Checklists</p>
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Resultado dos Checklists</p>
                       <div className="flex h-4 rounded-full overflow-hidden">
                         {analytics.releasedCount > 0 && (
                           <div
-                            className="flex items-center justify-center text-[8px] font-bold text-white"
+                            className="flex items-center justify-center text-xs font-bold text-white"
                             style={{ width: `${(analytics.releasedCount / analytics.checklistsMonth) * 100}%`, background: '#10b981' }}
                             title={`${analytics.releasedCount} liberados`}
                           >
@@ -942,7 +945,7 @@ export default function OrganoGramaPage() {
                         )}
                         {analytics.notReleasedCount > 0 && (
                           <div
-                            className="flex items-center justify-center text-[8px] font-bold text-white"
+                            className="flex items-center justify-center text-xs font-bold text-white"
                             style={{ width: `${(analytics.notReleasedCount / analytics.checklistsMonth) * 100}%`, background: '#ef4444' }}
                             title={`${analytics.notReleasedCount} nao liberados`}
                           >
@@ -951,7 +954,7 @@ export default function OrganoGramaPage() {
                         )}
                         {(analytics.checklistsMonth - analytics.releasedCount - analytics.notReleasedCount) > 0 && (
                           <div
-                            className="flex items-center justify-center text-[8px] font-bold text-white"
+                            className="flex items-center justify-center text-xs font-bold text-white"
                             style={{
                               width: `${((analytics.checklistsMonth - analytics.releasedCount - analytics.notReleasedCount) / analytics.checklistsMonth) * 100}%`,
                               background: '#9ca3af',
@@ -963,9 +966,9 @@ export default function OrganoGramaPage() {
                         )}
                       </div>
                       <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                        <span className="flex items-center gap-1 text-[8px] text-gray-400"><span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: '#10b981' }} />Liberados</span>
-                        <span className="flex items-center gap-1 text-[8px] text-gray-400"><span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: '#ef4444' }} />Nao lib.</span>
-                        <span className="flex items-center gap-1 text-[8px] text-gray-400"><span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: '#9ca3af' }} />Outros</span>
+                        <span className="flex items-center gap-1 text-xs text-gray-400"><span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: '#10b981' }} />Liberados</span>
+                        <span className="flex items-center gap-1 text-xs text-gray-400"><span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: '#ef4444' }} />Nao lib.</span>
+                        <span className="flex items-center gap-1 text-xs text-gray-400"><span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: '#9ca3af' }} />Outros</span>
                       </div>
                     </div>
                   )}
@@ -982,12 +985,12 @@ export default function OrganoGramaPage() {
                     if (badges.length === 0) return null;
                     return (
                       <div className="rounded-lg border p-2.5">
-                        <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Destaques</p>
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Destaques</p>
                         <div className="flex flex-wrap gap-1.5">
                           {badges.map((b) => (
-                            <span key={b.label} className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-medium" style={{ background: b.bg, color: b.color }}>
+                            <Badge key={b.label} variant="plain" className="border-transparent px-2.5 py-1 font-medium" style={{ background: b.bg, color: b.color }}>
                               <b.icon className="h-3 w-3" />{b.label}
-                            </span>
+                            </Badge>
                           ))}
                         </div>
                       </div>
@@ -998,15 +1001,15 @@ export default function OrganoGramaPage() {
                   <div className="grid grid-cols-3 gap-1.5">
                     <div className="rounded-lg border p-1.5 text-center">
                       <p className="text-sm font-bold text-violet-600">{analytics.inspectionsCount}</p>
-                      <p className="text-[8px] text-gray-400">Insp. Comport.</p>
+                      <p className="text-xs text-gray-400">Insp. Comport.</p>
                     </div>
                     <div className="rounded-lg border p-1.5 text-center">
                       <p className="text-sm font-bold text-orange-600">{analytics.deviationsOpen}</p>
-                      <p className="text-[8px] text-gray-400">Desvios abertos</p>
+                      <p className="text-xs text-gray-400">Desvios abertos</p>
                     </div>
                     <div className="rounded-lg border p-1.5 text-center">
                       <p className="text-sm font-bold" style={{ color: analytics.notReleasedCount > 3 ? '#ef4444' : '#10b981' }}>{analytics.notReleasedCount}</p>
-                      <p className="text-[8px] text-gray-400">Nao liberados</p>
+                      <p className="text-xs text-gray-400">Nao liberados</p>
                     </div>
                   </div>
 
@@ -1015,17 +1018,17 @@ export default function OrganoGramaPage() {
                     const sc = ROLE_HEX[selectedSupervisor.role] || DEFAULT_HEX;
                     return (
                       <div>
-                        <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Supervisor</p>
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Supervisor</p>
                         <button
                           onClick={() => focusNode(selectedSupervisor.id)}
                           className="w-full flex items-center gap-2 rounded-lg border p-2 hover:bg-gray-50 transition-colors text-left"
                         >
-                          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white" style={{ background: sc.fill }}>
+                          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: sc.fill }}>
                             {getInitials(selectedSupervisor.full_name || '?')}
                           </div>
                           <div>
-                            <p className="text-[11px] font-medium text-gray-700">{selectedSupervisor.full_name || 'Sem nome'}</p>
-                            <p className="text-[9px]" style={{ color: sc.stroke }}>{ROLE_LABELS[selectedSupervisor.role]}</p>
+                            <p className="text-xs font-medium text-gray-700">{selectedSupervisor.full_name || 'Sem nome'}</p>
+                            <p className="text-xs" style={{ color: sc.stroke }}>{ROLE_LABELS[selectedSupervisor.role]}</p>
                           </div>
                         </button>
                       </div>
@@ -1035,7 +1038,7 @@ export default function OrganoGramaPage() {
                   {/* Subordinates */}
                   {selectedSubordinates.length > 0 && (
                     <div>
-                      <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
                         Subordinados ({selectedSubordinates.length})
                       </p>
                       <div className="space-y-1 max-h-32 overflow-y-auto">
@@ -1047,11 +1050,11 @@ export default function OrganoGramaPage() {
                               onClick={() => focusNode(s.id)}
                               className="w-full flex items-center gap-2 rounded-lg border p-1.5 hover:bg-gray-50 transition-colors text-left"
                             >
-                              <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[8px] font-bold text-white" style={{ background: sc.fill }}>
+                              <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: sc.fill }}>
                                 {getInitials(s.full_name || '?')}
                               </div>
                               <div className="flex-1 min-w-0">
-                                <p className="text-[11px] font-medium text-gray-700 truncate">{s.full_name || 'Sem nome'}</p>
+                                <p className="text-xs font-medium text-gray-700 truncate">{s.full_name || 'Sem nome'}</p>
                               </div>
                               <div className={`h-1.5 w-1.5 rounded-full shrink-0 ${s.active ? 'bg-emerald-400' : 'bg-gray-400'}`} />
                             </button>

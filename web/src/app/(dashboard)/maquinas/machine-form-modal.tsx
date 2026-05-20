@@ -1,10 +1,13 @@
 'use client';
 
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { Modal } from '@/components/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { cn } from '@/lib/utils';
 import { Loader2 } from 'lucide-react';
 import type { Machine } from '@/lib/types';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -52,12 +55,14 @@ export function MachineFormModal({ open, editing, supabase, onClose, onSaved }: 
         .eq('id', editing.id);
 
       if (updateError) {
-        setError(updateError.message);
+        console.error('[MachineFormModal] update error:', updateError.message);
+        setError('Falha ao atualizar a maquina. Tente novamente.');
         setSaving(false);
         return;
       }
 
       setSaving(false);
+      toast.success('Máquina atualizada.');
       onSaved();
     } else {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
@@ -68,12 +73,14 @@ export function MachineFormModal({ open, editing, supabase, onClose, onSaved }: 
         .single();
 
       if (insertError) {
-        setError(insertError.message);
+        console.error('[MachineFormModal] insert error:', insertError.message);
+        setError('Falha ao cadastrar a maquina. Tente novamente.');
         setSaving(false);
         return;
       }
 
       setSaving(false);
+      toast.success('Máquina cadastrada.');
       onSaved(inserted as Machine);
     }
   }
@@ -107,8 +114,8 @@ export function MachineFormModal({ open, editing, supabase, onClose, onSaved }: 
         </div>
         <div className="space-y-2">
           <Label>Observacoes</Label>
-          <textarea
-            className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          <Textarea
+            className="min-h-[80px]"
             placeholder="Notas adicionais sobre a maquina..."
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
@@ -120,12 +127,18 @@ export function MachineFormModal({ open, editing, supabase, onClose, onSaved }: 
             <div className="flex gap-2">
               <button
                 type="button"
-                className={`rounded-full px-4 py-1.5 text-sm font-medium border transition-colors ${active ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-background text-muted-foreground border-input hover:bg-accent'}`}
+                className={cn(
+                  'rounded-full px-4 py-1.5 text-sm font-medium border transition-colors',
+                  active ? 'bg-emerald-500 text-white border-emerald-500' : 'bg-background text-muted-foreground border-input hover:bg-accent',
+                )}
                 onClick={() => setActive(true)}
               >Ativa</button>
               <button
                 type="button"
-                className={`rounded-full px-4 py-1.5 text-sm font-medium border transition-colors ${!active ? 'bg-red-500 text-white border-red-500' : 'bg-background text-muted-foreground border-input hover:bg-accent'}`}
+                className={cn(
+                  'rounded-full px-4 py-1.5 text-sm font-medium border transition-colors',
+                  !active ? 'bg-red-500 text-white border-red-500' : 'bg-background text-muted-foreground border-input hover:bg-accent',
+                )}
                 onClick={() => setActive(false)}
               >Inativa</button>
             </div>

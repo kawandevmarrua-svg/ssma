@@ -1,11 +1,15 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
+import { useConfirm } from '@/components/confirm-provider';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
 import { Modal } from '@/components/modal';
 import {
   Loader2,
@@ -29,11 +33,11 @@ interface Location {
 
 export default function LocalidadesPage() {
   const supabase = useMemo(() => createClient(), []);
+  const confirm = useConfirm();
   const [items, setItems] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Location | null>(null);
   const [creating, setCreating] = useState(false);
-  const [deleting, setDeleting] = useState<Location | null>(null);
   const [search, setSearch] = useState('');
 
   async function load() {
@@ -52,11 +56,21 @@ export default function LocalidadesPage() {
     load();
   }
 
-  async function confirmDelete() {
-    if (!deleting) return;
-    await supabase.from('locations').delete().eq('id', deleting.id);
-    setDeleting(null);
+  async function handleDelete(loc: Location) {
+    const ok = await confirm({
+      title: 'Excluir localidade?',
+      description: `"${loc.name}"${loc.code ? ` (${loc.code})` : ''} será removida. Esta ação não pode ser desfeita.`,
+      confirmText: 'Excluir',
+      variant: 'destructive',
+    });
+    if (!ok) return;
+    const { error } = await supabase.from('locations').delete().eq('id', loc.id);
+    if (error) {
+      toast.error('Falha ao excluir localidade.');
+      return;
+    }
     load();
+    toast.success('Localidade excluída.');
   }
 
   const filtered = useMemo(() => {
@@ -117,7 +131,7 @@ export default function LocalidadesPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-sm font-medium">{loc.name}</p>
                       {loc.code && (
-                        <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono font-semibold text-muted-foreground">
+                        <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono font-semibold text-muted-foreground">
                           {loc.code}
                         </span>
                       )}
@@ -129,6 +143,7 @@ export default function LocalidadesPage() {
                     )}
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                       <button
+                        type="button"
                         onClick={() => toggleActive(loc)}
                         className="underline-offset-2 hover:underline"
                       >
@@ -145,20 +160,24 @@ export default function LocalidadesPage() {
                     </div>
                   </div>
                   <div className="flex shrink-0 gap-1">
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       onClick={() => setEditing(loc)}
-                      className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground"
+                      className="h-8 w-8 text-muted-foreground hover:text-foreground"
                       aria-label="Editar"
                     >
                       <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => setDeleting(loc)}
-                      className="rounded-md p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDelete(loc)}
+                      className="h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                       aria-label="Excluir"
                     >
                       <Trash2 className="h-4 w-4" />
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </CardContent>
@@ -175,29 +194,6 @@ export default function LocalidadesPage() {
         />
       )}
 
-      {deleting && (
-        <Modal
-          open={true}
-          onClose={() => setDeleting(null)}
-          title="Excluir localidade"
-          description="Esta acao nao pode ser desfeita."
-        >
-          <div className="space-y-4">
-            <p className="text-sm">
-              <span className="font-medium">{deleting.name}</span>
-              {deleting.code && <span className="ml-2 font-mono text-muted-foreground">({deleting.code})</span>}
-            </p>
-            <div className="flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={() => setDeleting(null)}>
-                Cancelar
-              </Button>
-              <Button variant="destructive" className="flex-1" onClick={confirmDelete}>
-                Excluir
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
     </div>
   );
 }
@@ -253,6 +249,7 @@ function LocationForm({ item, onClose, onSaved }: FormProps) {
       if (insErr) { setError(insErr.message); setSaving(false); return; }
     }
     setSaving(false);
+    toast.success(item ? 'Localidade atualizada.' : 'Localidade criada.');
     onSaved();
   }
 
@@ -279,8 +276,8 @@ function LocationForm({ item, onClose, onSaved }: FormProps) {
         </div>
         <div className="space-y-2">
           <Label>Descricao</Label>
-          <textarea
-            className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          <Textarea
+            className="min-h-[60px]"
             placeholder="Detalhes adicionais sobre a localidade"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -307,12 +304,10 @@ function LocationForm({ item, onClose, onSaved }: FormProps) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <input
+          <Checkbox
             id="active"
-            type="checkbox"
-            className="h-4 w-4 rounded border"
             checked={active}
-            onChange={(e) => setActive(e.target.checked)}
+            onCheckedChange={(c) => setActive(c === true)}
           />
           <label htmlFor="active" className="text-sm">Ativo</label>
         </div>

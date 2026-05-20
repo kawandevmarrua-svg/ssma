@@ -3,9 +3,13 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 import { formatDate, formatDateTime, formatTime, getDuration, resolveSignedUrl } from '@/lib/formatters';
 import type { ActivityRow } from '@/lib/types';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/select';
 import {
   Card,
   CardContent,
@@ -24,11 +28,11 @@ import {
   Tag,
   Camera,
   AlertTriangle,
-  X,
   HardHat,
   FileDown,
 } from 'lucide-react';
 import { exportActivityPDF, exportActivityListPDF } from '@/lib/pdf';
+import { PhotoModal } from '@/components/photo-modal';
 
 const STATUS_CONFIG = {
   in_progress: { label: 'Em Andamento', color: 'text-yellow-700', bg: 'bg-yellow-50 border-yellow-200', dot: 'bg-yellow-500', icon: Clock },
@@ -206,13 +210,15 @@ export default function AtividadesPage() {
 
     return (
       <div className="space-y-6">
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => { setSelected(null); setResolvedPhotos({}); }}
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          className="-ml-2 gap-1 text-muted-foreground hover:text-foreground"
         >
           <ChevronLeft className="h-4 w-4" />
           Voltar para lista
-        </button>
+        </Button>
 
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
@@ -225,14 +231,16 @@ export default function AtividadesPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <button
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => exportActivityPDF(selected)}
-              className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              className="gap-1.5 text-xs text-muted-foreground"
               title="Exportar PDF"
             >
               <FileDown className="h-3.5 w-3.5" />
               PDF
-            </button>
+            </Button>
             <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-semibold ${cfg.bg} ${cfg.color}`}>
               <Icon className="h-4 w-4" />
               {cfg.label}
@@ -365,19 +373,7 @@ export default function AtividadesPage() {
         )}
 
         {/* Photo modal */}
-        {photoModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setPhotoModal(null)}>
-            <div className="relative max-w-3xl max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
-              <button
-                onClick={() => setPhotoModal(null)}
-                className="absolute -top-3 -right-3 rounded-full bg-white p-1 shadow-md hover:bg-gray-100"
-              >
-                <X className="h-5 w-5" />
-              </button>
-              <img src={photoModal} alt="Foto da atividade" className="max-h-[85vh] rounded-lg object-contain" />
-            </div>
-          </div>
-        )}
+        <PhotoModal src={photoModal} alt="Foto da atividade" onClose={() => setPhotoModal(null)} />
       </div>
     );
   }
@@ -393,13 +389,15 @@ export default function AtividadesPage() {
           </p>
         </div>
         {filtered.length > 0 && (
-          <button
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => exportActivityListPDF(filtered)}
-            className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
+            className="shrink-0 gap-1.5 text-xs text-muted-foreground"
           >
             <FileDown className="h-3.5 w-3.5" />
             Exportar PDF
-          </button>
+          </Button>
         )}
       </div>
 
@@ -442,20 +440,20 @@ export default function AtividadesPage() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <select
+        <Select
           value={filterOperator}
           onChange={(e) => setFilterOperator(e.target.value)}
-          className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          className="sm:w-auto sm:min-w-[180px]"
         >
           <option value="">Todos os operadores</option>
           {operators.map((op) => (
             <option key={op.id} value={op.id}>{op.name}</option>
           ))}
-        </select>
-        <select
+        </Select>
+        <Select
           value={filterMachine}
           onChange={(e) => setFilterMachine(e.target.value)}
-          className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          className="sm:w-auto sm:min-w-[180px]"
         >
           <option value="">Todas as máquinas</option>
           {machines.map((m) => (
@@ -463,11 +461,11 @@ export default function AtividadesPage() {
               {m.name}{m.tag ? ` · ${m.tag}` : ''}
             </option>
           ))}
-        </select>
-        <select
+        </Select>
+        <Select
           value={filterActivityType}
           onChange={(e) => setFilterActivityType(e.target.value)}
-          className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          className="sm:w-auto sm:min-w-[180px]"
         >
           <option value="">Todos os tipos</option>
           {activityTypes.map((t) => (
@@ -475,7 +473,7 @@ export default function AtividadesPage() {
               {t.code} — {t.description}
             </option>
           ))}
-        </select>
+        </Select>
         <div className="flex gap-2 flex-wrap">
           {(['', 'in_progress', 'completed'] as const).map((val) => {
             const labels: Record<string, string> = { '': 'Todas', in_progress: 'Em Andamento', completed: 'Concluídas' };
@@ -531,7 +529,7 @@ export default function AtividadesPage() {
                         <div className="min-w-0">
                           <p className="font-medium truncate flex items-center gap-2">
                             {activity.activity_types?.code && (
-                              <span className="inline-flex shrink-0 items-center rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-mono font-bold text-primary">
+                              <span className="inline-flex shrink-0 items-center rounded bg-primary/10 px-1.5 py-0.5 text-xs font-mono font-bold text-primary">
                                 {activity.activity_types.code}
                               </span>
                             )}
@@ -574,10 +572,10 @@ export default function AtividadesPage() {
                             )}
                           </div>
                         </div>
-                        <span className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${cfg.bg} ${cfg.color}`}>
+                        <Badge variant="plain" className={cn('shrink-0 border px-2.5', cfg.bg, cfg.color)}>
                           <Icon className="h-3 w-3" />
                           {cfg.label}
-                        </span>
+                        </Badge>
                       </div>
                     </div>
                   </div>
@@ -586,13 +584,14 @@ export default function AtividadesPage() {
             );
           })}
           {hasMore && (
-            <button
+            <Button
+              variant="outline"
               onClick={loadMore}
               disabled={loadingMore}
-              className="w-full rounded-md border bg-card py-3 text-sm font-medium text-muted-foreground hover:bg-accent transition-colors disabled:opacity-50"
+              className="w-full bg-card py-3 text-sm font-medium text-muted-foreground hover:bg-accent"
             >
               {loadingMore ? 'Carregando...' : 'Carregar mais'}
-            </button>
+            </Button>
           )}
         </div>
       )}

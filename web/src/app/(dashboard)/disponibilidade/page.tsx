@@ -7,6 +7,8 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import {
   HardHat,
   Loader2,
@@ -186,11 +188,11 @@ function DailyDMUFChart({ daily }: { daily: MachineDMUF['daily'] }) {
                   title="Ocioso"
                 />
               </div>
-              <span className="text-[9px] text-muted-foreground leading-none">
+              <span className="text-xs text-muted-foreground leading-none">
                 {d.date.slice(8)}/{d.date.slice(5, 7)}
               </span>
               {/* tooltip */}
-              <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 hidden group-hover:block z-10 bg-background border rounded-lg shadow-lg px-2 py-1.5 text-[10px] whitespace-nowrap">
+              <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 hidden group-hover:block z-10 bg-background border rounded-lg shadow-lg px-2 py-1.5 text-xs whitespace-nowrap">
                 <p className="font-semibold">{d.date.slice(8)}/{d.date.slice(5, 7)}</p>
                 <p>DM: <span className={d.dm >= META_DM ? 'text-emerald-600' : 'text-red-600'}>{d.dm}%</span></p>
                 <p>UF: <span className={d.uf >= META_UF ? 'text-emerald-600' : 'text-red-600'}>{d.uf}%</span></p>
@@ -200,7 +202,7 @@ function DailyDMUFChart({ daily }: { daily: MachineDMUF['daily'] }) {
           );
         })}
       </div>
-      <div className="flex gap-3 mt-2 text-[10px] text-muted-foreground">
+      <div className="flex gap-3 mt-2 text-xs text-muted-foreground">
         <span className="flex items-center gap-1"><span className="h-2 w-2 rounded bg-emerald-500" /> Trabalhado</span>
         <span className="flex items-center gap-1"><span className="h-2 w-2 rounded bg-red-400" /> Manutencao</span>
         <span className="flex items-center gap-1"><span className="h-2 w-2 rounded bg-slate-200 border" /> Ocioso</span>
@@ -220,16 +222,16 @@ function HoursBreakdown({ calH, maintH, workH }: { calH: number; maintH: number;
       <p className="text-xs font-semibold text-muted-foreground mb-2">Distribuicao de Horas</p>
       <div className="flex rounded-full overflow-hidden h-5">
         <div className="bg-emerald-500 flex items-center justify-center" style={{ width: `${(workH / total) * 100}%` }}>
-          {workH > 0 && <span className="text-[9px] text-white font-bold">{workH.toFixed(0)}h</span>}
+          {workH > 0 && <span className="text-xs text-white font-bold">{workH.toFixed(0)}h</span>}
         </div>
         <div className="bg-slate-300 flex items-center justify-center" style={{ width: `${(idleH / total) * 100}%` }}>
-          {idleH > 5 && <span className="text-[9px] text-slate-700 font-bold">{idleH.toFixed(0)}h</span>}
+          {idleH > 5 && <span className="text-xs text-slate-700 font-bold">{idleH.toFixed(0)}h</span>}
         </div>
         <div className="bg-red-400 flex items-center justify-center" style={{ width: `${(maintH / total) * 100}%` }}>
-          {maintH > 3 && <span className="text-[9px] text-white font-bold">{maintH.toFixed(0)}h</span>}
+          {maintH > 3 && <span className="text-xs text-white font-bold">{maintH.toFixed(0)}h</span>}
         </div>
       </div>
-      <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
+      <div className="flex justify-between text-xs text-muted-foreground mt-1">
         <span>Trabalhado: {workH.toFixed(1)}h</span>
         <span>Ocioso: {idleH.toFixed(1)}h</span>
         <span>Manutencao: {maintH.toFixed(1)}h</span>
@@ -302,9 +304,9 @@ export default function DisponibilidadePage() {
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Settings className="h-6 w-6 text-emerald-600" />
             Disponibilidade &amp; Utilizacao
-            <button onClick={() => setShowHelp(!showHelp)} className="ml-1 text-muted-foreground hover:text-foreground transition-colors">
+            <Button variant="ghost" size="icon" onClick={() => setShowHelp(!showHelp)} className="ml-1 h-7 w-7 text-muted-foreground hover:text-foreground">
               <HelpCircle className="h-5 w-5" />
-            </button>
+            </Button>
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
             DM e UF por maquina — metas: DM {'>'}  {META_DM}% | UF {'>'} {META_UF}%
@@ -312,12 +314,14 @@ export default function DisponibilidadePage() {
         </div>
         <div className="flex items-center gap-2">
           <PeriodSelector value={period} onChange={setPeriod} />
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={() => exportCSV(machines)}
-            className="ml-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+            className="ml-2 gap-1.5"
           >
             <Download className="h-3.5 w-3.5" /> CSV
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -327,9 +331,9 @@ export default function DisponibilidadePage() {
           <CardContent className="pt-4 pb-4">
             <div className="flex justify-between items-start mb-3">
               <h3 className="font-bold text-sm">O que esta pagina mostra?</h3>
-              <button onClick={() => setShowHelp(false)} className="text-muted-foreground hover:text-foreground">
+              <Button variant="ghost" size="icon" onClick={() => setShowHelp(false)} className="h-6 w-6 text-muted-foreground hover:text-foreground">
                 <X className="h-4 w-4" />
-              </button>
+              </Button>
             </div>
             <p className="text-sm text-muted-foreground mb-3">
               Esta pagina mede se suas maquinas estao <strong>disponiveis</strong> e se, quando disponiveis, estao sendo <strong>usadas</strong>.
@@ -410,7 +414,7 @@ export default function DisponibilidadePage() {
               <div>
                 <p className="text-xs text-muted-foreground">Maquinas DM Critica</p>
                 <p className="text-2xl font-bold">{criticalDM}</p>
-                <p className="text-[10px] text-muted-foreground">abaixo de {META_DM}%</p>
+                <p className="text-xs text-muted-foreground">abaixo de {META_DM}%</p>
               </div>
             </div>
           </CardContent>
@@ -425,7 +429,7 @@ export default function DisponibilidadePage() {
               <div>
                 <p className="text-xs text-muted-foreground">Horas Perdidas</p>
                 <p className="text-2xl font-bold text-violet-700">{totalLostH.toFixed(0)}h</p>
-                <p className="text-[10px] text-muted-foreground">manutencao + {totalIdleH.toFixed(0)}h ociosas</p>
+                <p className="text-xs text-muted-foreground">manutencao + {totalIdleH.toFixed(0)}h ociosas</p>
               </div>
             </div>
           </CardContent>
@@ -441,11 +445,13 @@ export default function DisponibilidadePage() {
           { key: 'name' as const, label: 'Nome' },
         ].map((s) => (
           <button
+            type="button"
             key={s.key}
             onClick={() => setSortBy(s.key)}
-            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-              sortBy === s.key ? 'bg-emerald-100 text-emerald-700' : 'bg-muted/60 text-muted-foreground hover:bg-muted'
-            }`}
+            className={cn(
+              'px-2.5 py-1 rounded-md text-xs font-medium transition-colors',
+              sortBy === s.key ? 'bg-emerald-100 text-emerald-700' : 'bg-muted/60 text-muted-foreground hover:bg-muted',
+            )}
           >
             {s.label}
           </button>
@@ -460,6 +466,7 @@ export default function DisponibilidadePage() {
           return (
             <Card key={m.id} className="border overflow-hidden">
               <button
+                type="button"
                 className="w-full text-left"
                 onClick={() => setExpanded(isExpanded ? null : m.id)}
               >
@@ -480,7 +487,7 @@ export default function DisponibilidadePage() {
                     <div className="min-w-0 w-44 shrink-0">
                       <p className="font-semibold text-sm truncate">{m.name}</p>
                       {m.tag && (
-                        <span className="inline-block mt-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">
+                        <span className="inline-block mt-0.5 px-2 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-600">
                           {m.tag}
                         </span>
                       )}
@@ -508,7 +515,7 @@ export default function DisponibilidadePage() {
                     <div className="text-right shrink-0 hidden md:block">
                       <p className="text-xs text-muted-foreground">Trabalhadas</p>
                       <p className="text-lg font-bold">{m.workedH.toFixed(0)}h</p>
-                      <p className="text-[10px] text-muted-foreground">de {m.calendarH}h</p>
+                      <p className="text-xs text-muted-foreground">de {m.calendarH}h</p>
                     </div>
 
                     {/* Chevron */}
@@ -528,19 +535,19 @@ export default function DisponibilidadePage() {
                   </div>
                   <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
                     <div className="bg-background rounded-lg p-2.5 border">
-                      <p className="text-[10px] text-muted-foreground">Horas Calendario</p>
+                      <p className="text-xs text-muted-foreground">Horas Calendario</p>
                       <p className="text-base font-bold">{m.calendarH}h</p>
                     </div>
                     <div className="bg-background rounded-lg p-2.5 border">
-                      <p className="text-[10px] text-muted-foreground">Manutencao</p>
+                      <p className="text-xs text-muted-foreground">Manutencao</p>
                       <p className="text-base font-bold text-red-600">{m.maintenanceH.toFixed(1)}h</p>
                     </div>
                     <div className="bg-background rounded-lg p-2.5 border">
-                      <p className="text-[10px] text-muted-foreground">Disponivel</p>
+                      <p className="text-xs text-muted-foreground">Disponivel</p>
                       <p className="text-base font-bold text-emerald-600">{m.availableH.toFixed(1)}h</p>
                     </div>
                     <div className="bg-background rounded-lg p-2.5 border">
-                      <p className="text-[10px] text-muted-foreground">Trabalhadas</p>
+                      <p className="text-xs text-muted-foreground">Trabalhadas</p>
                       <p className="text-base font-bold text-blue-600">{m.workedH.toFixed(1)}h</p>
                     </div>
                   </div>

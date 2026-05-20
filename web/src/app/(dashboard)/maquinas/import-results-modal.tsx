@@ -2,6 +2,8 @@
 
 import { Modal } from '@/components/modal';
 import { FileSpreadsheet } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 export interface ImportResult {
   machineName: string;
@@ -37,17 +39,17 @@ export function ImportResultsModal({ results, onClose }: Props) {
               <p className="font-medium truncate">{r.machineName}</p>
               {r.message && <p className="text-xs text-muted-foreground">{r.message}</p>}
             </div>
-            <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${
+            <Badge variant="plain" className={cn('shrink-0 border-transparent',
               r.status === 'created' ? 'bg-emerald-100 text-emerald-700'
                 : r.status === 'updated' ? 'bg-blue-100 text-blue-700'
                 : r.status === 'skipped' ? 'bg-gray-100 text-gray-700'
                 : 'bg-red-100 text-red-700'
-            }`}>
+            )}>
               {r.status === 'created' ? `+ ${r.itemsCount} perguntas`
                 : r.status === 'updated' ? `${r.itemsCount} perguntas`
                 : r.status === 'skipped' ? 'ignorada'
                 : 'erro'}
-            </span>
+            </Badge>
           </div>
         ))}
       </div>

@@ -1,11 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { Modal } from '@/components/modal';
 import { Loader2, Plus, AlertTriangle, Wrench, CheckCircle2, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -141,9 +145,9 @@ export default function ManutencaoPage() {
               <AlertTriangle className="h-4 w-4 text-destructive" />
               Equipamentos Não Liberados
               {notReleased.length > 0 && (
-                <span className="rounded-full bg-destructive/10 text-destructive px-2 py-0.5 text-xs font-semibold">
+                <Badge variant="plain" className="border-transparent bg-destructive/10 text-destructive">
                   {notReleased.length}
-                </span>
+                </Badge>
               )}
             </h2>
             {notReleased.length === 0 ? (
@@ -229,6 +233,7 @@ function OrdersList({
       <div className="flex gap-2 flex-wrap">
         {(['all', 'open', 'in_progress', 'completed'] as const).map(f => (
           <button
+            type="button"
             key={f}
             onClick={() => setFilter(f)}
             className={cn(
@@ -259,9 +264,9 @@ function OrdersList({
                     <div className="flex-1 min-w-0 space-y-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold text-sm">{order.title}</span>
-                        <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold', p.className)}>
+                        <Badge variant="plain" className={cn('border', p.className)}>
                           {p.label}
-                        </span>
+                        </Badge>
                         <span className={cn('inline-flex items-center gap-1 text-xs font-medium', s.className)}>
                           {s.icon} {s.label}
                         </span>
@@ -352,6 +357,7 @@ function OrderForm({
       if (e) { setError(e.message); setSaving(false); return; }
     }
     setSaving(false);
+    toast.success(order ? 'Ordem atualizada.' : 'Ordem de manutenção criada.');
     onSaved();
   }
 
@@ -369,8 +375,7 @@ function OrderForm({
 
         <div className="space-y-1.5">
           <Label>Equipamento</Label>
-          <select
-            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          <Select
             value={machineId}
             onChange={e => setMachineId(e.target.value)}
           >
@@ -378,13 +383,13 @@ function OrderForm({
             {machines.map(m => (
               <option key={m.id} value={m.id}>{m.name}{m.tag ? ` — ${m.tag}` : ''}</option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <div className="space-y-1.5">
           <Label>Descrição</Label>
-          <textarea
-            className="flex min-h-[72px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          <Textarea
+            className="min-h-[72px]"
             value={description}
             onChange={e => setDescription(e.target.value)}
             placeholder="Descreva o problema ou serviço necessário"
@@ -410,8 +415,7 @@ function OrderForm({
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
             <Label>Responsável</Label>
-            <select
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            <Select
               value={responsible}
               onChange={e => setResponsible(e.target.value)}
             >
@@ -419,7 +423,7 @@ function OrderForm({
               {users.map(u => (
                 <option key={u.id} value={u.full_name ?? u.id}>{u.full_name ?? u.id}</option>
               ))}
-            </select>
+            </Select>
           </div>
           <div className="space-y-1.5">
             <Label>Prazo</Label>

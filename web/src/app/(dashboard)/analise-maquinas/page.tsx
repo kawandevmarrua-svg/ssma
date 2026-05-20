@@ -10,6 +10,8 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Select } from '@/components/ui/select';
 import {
   HardHat,
   Search,
@@ -349,8 +351,8 @@ function DailyChart({ data }: { data: { label: string; clH: number; actH: number
           </linearGradient>
         </defs>
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-        <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
-        <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v.toFixed(0)}h`} />
+        <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
+        <YAxis tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v.toFixed(0)}h`} />
         <Tooltip content={<ChartTooltip />} />
         <Legend wrapperStyle={{ fontSize: 11, paddingTop: 6 }} iconType="circle" iconSize={8} />
         <Area type="monotone" dataKey="clH" name="Checklist" stroke={CHART.checklist} strokeWidth={2} fill="url(#grad-cl)" animationDuration={700} dot={false} activeDot={{ r: 4 }} />
@@ -395,7 +397,7 @@ function ChecklistDonut({ released, blocked, pending }: { released: number; bloc
         </ResponsiveContainer>
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
           <span className="text-lg font-bold text-foreground leading-none">{total}</span>
-          <span className="text-[9px] text-muted-foreground mt-0.5">total</span>
+          <span className="text-xs text-muted-foreground mt-0.5">total</span>
         </div>
       </div>
       <div className="space-y-1.5 text-xs">
@@ -419,7 +421,7 @@ function HoursSplitBar({ clH, actH }: { clH: number; actH: number }) {
         <div className="transition-all" style={{ width: `${clPct}%`, backgroundColor: CHART.checklist }} />
         <div className="transition-all" style={{ width: `${100 - clPct}%`, backgroundColor: CHART.activity }} />
       </div>
-      <div className="flex justify-between text-[10px] text-muted-foreground">
+      <div className="flex justify-between text-xs text-muted-foreground">
         <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: CHART.checklist }} />Checklist {fmtH(clH)}</span>
         <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: CHART.activity }} />Atividade {fmtH(actH)}</span>
       </div>
@@ -517,12 +519,6 @@ export default function AnaliseMaquinasPage() {
 
   const maxH = useMemo(() => Math.max(...filtered.map((m) => clHours(m.checklists) + actHours(m.activities)), 0.1), [filtered]);
 
-  // Idle machines
-  const idle = useMemo(() => {
-    const usedIds = new Set(machineAnalyses.map((m) => m.id));
-    return machines.filter((m) => m.active && !usedIds.has(m.id));
-  }, [machines, machineAnalyses]);
-
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -530,9 +526,14 @@ export default function AnaliseMaquinasPage() {
         <div>
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight flex items-center gap-2">
             Analise de Maquinas
-            <button onClick={() => setShowHelp(!showHelp)} className="text-muted-foreground hover:text-foreground transition-colors">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowHelp(!showHelp)}
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            >
               <HelpCircle className="h-5 w-5" />
-            </button>
+            </Button>
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground">Horas trabalhadas e desempenho por maquina.</p>
         </div>
@@ -541,34 +542,39 @@ export default function AnaliseMaquinasPage() {
 
       {/* Help panel */}
       {showHelp && (
-        <Card className="border-2 border-violet-200 bg-violet-50/30">
-          <CardContent className="pt-4 pb-4">
+        <Card>
+          <CardContent className="p-4">
             <div className="flex justify-between items-start mb-3">
-              <h3 className="font-bold text-sm">O que esta pagina mostra?</h3>
-              <button onClick={() => setShowHelp(false)} className="text-muted-foreground hover:text-foreground">
+              <h3 className="font-semibold text-sm">O que esta pagina mostra?</h3>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowHelp(false)}
+                className="h-6 w-6 text-muted-foreground hover:text-foreground"
+              >
                 <X className="h-4 w-4" />
-              </button>
+              </Button>
             </div>
             <p className="text-sm text-muted-foreground mb-3">
-              Mostra o <strong>desempenho de cada maquina</strong> com base em horas de checklist e atividades. Permite identificar maquinas com problemas e comparar a frota.
+              Desempenho de cada maquina com base em horas de checklist e atividades. Identifique maquinas com problemas e compare a frota.
             </p>
             <div className="grid md:grid-cols-3 gap-3 text-xs">
-              <div className="bg-background rounded-lg p-3 border">
-                <p className="font-bold text-blue-700 mb-1">Horas por Maquina</p>
-                <p className="text-muted-foreground">Soma de horas de checklist (inspecao) + atividades (servico). Maquinas com poucas horas podem estar ociosas ou com problemas.</p>
+              <div className="rounded-lg p-3 border bg-muted/30">
+                <p className="font-semibold text-foreground mb-1">Horas por Maquina</p>
+                <p className="text-muted-foreground">Soma de checklist (inspecao) + atividades (servico). Poucas horas = maquina ociosa ou com problema.</p>
               </div>
-              <div className="bg-background rounded-lg p-3 border">
-                <p className="font-bold text-violet-700 mb-1">Resultado dos Checklists</p>
-                <p className="text-muted-foreground">Liberados, bloqueados e pendentes. Muitos bloqueios = maquina com defeitos recorrentes que precisa de manutencao.</p>
+              <div className="rounded-lg p-3 border bg-muted/30">
+                <p className="font-semibold text-foreground mb-1">Resultado dos Checklists</p>
+                <p className="text-muted-foreground">Liberados, bloqueados e pendentes. Muitos bloqueios = defeitos recorrentes.</p>
               </div>
-              <div className="bg-background rounded-lg p-3 border">
-                <p className="font-bold text-red-700 mb-1">Interferencias</p>
-                <p className="text-muted-foreground">Eventos que impediram o trabalho normal. Alta frequencia de interferencia indica problemas sistematicos.</p>
+              <div className="rounded-lg p-3 border bg-muted/30">
+                <p className="font-semibold text-foreground mb-1">Interferencias</p>
+                <p className="text-muted-foreground">Eventos que impediram trabalho normal. Alta frequencia = problema sistematico.</p>
               </div>
             </div>
-            <div className="mt-3 text-xs text-muted-foreground">
-              <strong>Decisoes que esta pagina responde:</strong> Quais maquinas estao produzindo mais? Quais estao sempre bloqueadas no checklist? Quais operadores mais usam cada maquina? A carga de trabalho esta balanceada entre os equipamentos?
-            </div>
+            <p className="mt-3 text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground">Responde:</span> Quais maquinas produzem mais? Quais estao sempre bloqueadas? Quais operadores usam cada maquina? Carga balanceada?
+            </p>
           </CardContent>
         </Card>
       )}
@@ -576,21 +582,37 @@ export default function AnaliseMaquinasPage() {
       {/* Filters */}
       {!loading && (
         <div className="flex items-center gap-3 flex-wrap">
-          <select value={filterOperator} onChange={(e) => setFilterOperator(e.target.value)} className="rounded-md border border-border bg-background px-3 py-1.5 text-xs">
+          <Select
+            value={filterOperator}
+            onChange={(e) => setFilterOperator(e.target.value)}
+            className="h-8 w-auto min-w-[180px] text-xs"
+          >
             <option value="">Todos os operadores</option>
             {operatorList.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-          </select>
+          </Select>
           <div className="relative flex-1 max-w-xs">
             <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input placeholder="Buscar maquina..." className="pl-9 h-8 text-xs" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
           {(filterOperator || search) && (
-            <button onClick={() => { setFilterOperator(''); setSearch(''); }} className="text-xs text-muted-foreground hover:text-foreground underline">Limpar</button>
+            <Button
+              variant="link"
+              size="sm"
+              onClick={() => { setFilterOperator(''); setSearch(''); }}
+              className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground"
+            >
+              Limpar
+            </Button>
           )}
           {machineAnalyses.length > 0 && (
-            <button onClick={() => exportCSV(machineAnalyses)} className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-muted transition-colors ml-auto">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => exportCSV(machineAnalyses)}
+              className="ml-auto h-8 gap-1 px-2.5 text-xs text-muted-foreground"
+            >
               <Download className="h-3.5 w-3.5" /> CSV
-            </button>
+            </Button>
           )}
         </div>
       )}
@@ -599,63 +621,45 @@ export default function AnaliseMaquinasPage() {
         <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
       ) : (
         <>
-          {/* Summary — 5 cards with cool palette */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            <Card>
+          {/* Summary — primary card + secondary inline */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <Card className="md:col-span-2 bg-gradient-to-br from-orange-50 to-orange-100/40 border-orange-200/60">
               <CardContent className="p-5">
-                <div className="flex items-center gap-2 mb-2"><Clock className="h-4 w-4 text-blue-600" /><span className="text-xs text-muted-foreground font-medium">Horas Trabalhadas</span></div>
-                <p className="text-3xl font-bold text-blue-700">{fmtH(summary.totalH)}</p>
-                <p className="text-[10px] text-muted-foreground mt-1">{periodInline} ({periodLabel})</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-5">
-                <div className="flex items-center gap-2 mb-2"><HardHat className="h-4 w-4 text-slate-600" /><span className="text-xs text-muted-foreground font-medium">Maquinas</span></div>
-                <p className="text-3xl font-bold text-slate-700">{summary.used}<span className="text-base font-normal text-slate-400">/{summary.active}</span></p>
-                <p className="text-[10px] text-muted-foreground mt-1">com registro {periodInline}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-5">
-                <div className="flex items-center gap-2 mb-2"><ListChecks className="h-4 w-4 text-emerald-600" /><span className="text-xs text-muted-foreground font-medium">Checklists</span></div>
-                <p className="text-3xl font-bold">{summary.clCount}</p>
-                <div className="flex items-center gap-2 mt-1.5 text-[11px]">
-                  <span className="text-emerald-600 font-medium">{summary.released} lib.</span>
-                  {summary.blocked > 0 && <span className="text-red-600 font-medium">{summary.blocked} bloq.</span>}
+                <div className="flex items-center gap-2 mb-2">
+                  <Clock className="h-4 w-4 text-orange-700" />
+                  <span className="text-xs text-orange-900/70 font-medium uppercase tracking-wide">Horas Trabalhadas</span>
                 </div>
-                <p className="text-[10px] text-muted-foreground mt-0.5">{periodInline}</p>
+                <div className="flex items-end gap-4 flex-wrap">
+                  <p className="text-4xl font-bold text-orange-900 leading-none">{fmtH(summary.totalH)}</p>
+                  <p className="text-xs text-orange-900/60 pb-1">
+                    {summary.used} de {summary.active} maquinas ativas · {periodInline}
+                  </p>
+                </div>
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="p-5">
-                <div className="flex items-center gap-2 mb-2"><Activity className="h-4 w-4 text-indigo-600" /><span className="text-xs text-muted-foreground font-medium">Atividades</span></div>
-                <p className="text-3xl font-bold text-indigo-700">{summary.actCount}</p>
-                <p className="text-[10px] text-muted-foreground mt-1">{periodInline}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-5">
-                <div className="flex items-center gap-2 mb-2"><AlertTriangle className={`h-4 w-4 ${summary.interf > 0 ? 'text-red-600' : 'text-muted-foreground'}`} /><span className="text-xs text-muted-foreground font-medium">Interferencias</span></div>
-                <p className={`text-3xl font-bold ${summary.interf > 0 ? 'text-red-600' : ''}`}>{summary.interf}</p>
-                <p className="text-[10px] text-muted-foreground mt-1">{periodInline}</p>
+              <CardContent className="p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+                    <ListChecks className="h-3.5 w-3.5" /> Checklists
+                  </span>
+                  <span className="text-lg font-semibold tabular-nums">{summary.clCount}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+                    <Activity className="h-3.5 w-3.5" /> Atividades
+                  </span>
+                  <span className="text-lg font-semibold tabular-nums">{summary.actCount}</span>
+                </div>
+                <div className="flex items-center justify-between border-t pt-2">
+                  <span className={`text-xs flex items-center gap-1.5 ${summary.interf > 0 ? 'text-red-600' : 'text-muted-foreground'}`}>
+                    <AlertTriangle className="h-3.5 w-3.5" /> Interferencias
+                  </span>
+                  <span className={`text-lg font-semibold tabular-nums ${summary.interf > 0 ? 'text-red-600' : ''}`}>{summary.interf}</span>
+                </div>
               </CardContent>
             </Card>
           </div>
-
-          {/* Idle machines — subtle */}
-          {idle.length > 0 && (
-            <div className="flex items-start gap-2 rounded-lg border border-dashed p-3">
-              <AlertTriangle className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-              <div>
-                <p className="text-xs font-medium">
-                  {idle.length} maquina{idle.length > 1 ? 's' : ''} sem registro no periodo
-                </p>
-                <p className="text-[11px] text-muted-foreground mt-0.5">
-                  {idle.map((m) => m.tag ? `${m.name} (${m.tag})` : m.name).join(' · ')}
-                </p>
-              </div>
-            </div>
-          )}
 
           {/* Machine list */}
           {filtered.length === 0 ? (
@@ -697,97 +701,93 @@ export default function AnaliseMaquinasPage() {
                 const clPct = totalH > 0 ? (mClH / totalH) * 100 : 0;
 
                 return (
-                  <Card key={m.id} className="overflow-hidden">
-                    <button onClick={() => setExpandedId(isExpanded ? null : m.id)} className="w-full text-left">
-                      <CardContent className="p-[23px]">
-                        <div className="flex items-center gap-[19px]">
-                          <div className={`flex h-[49px] w-[49px] shrink-0 items-center justify-center rounded-xl ${m.active ? 'bg-orange-100 text-orange-700' : 'bg-muted text-muted-foreground'}`}>
-                            <HardHat className="h-[23px] w-[23px]" />
+                  <Card key={m.id} className="overflow-hidden transition-colors">
+                    <button
+                      onClick={() => setExpandedId(isExpanded ? null : m.id)}
+                      aria-expanded={isExpanded}
+                      className="w-full text-left hover:bg-muted/40 transition-colors cursor-pointer"
+                    >
+                      <CardContent className="p-5">
+                        <div className="flex items-center gap-4">
+                          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${m.active ? 'bg-orange-100 text-orange-700' : 'bg-muted text-muted-foreground'}`}>
+                            <HardHat className="h-6 w-6" />
                           </div>
 
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-2 flex-wrap">
                               <span className="text-lg font-semibold truncate">{m.name}</span>
-                              {m.tag && <span className="text-[13px] text-orange-700 font-mono bg-orange-100 px-2 py-[4px] rounded">{m.tag}</span>}
-                              <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-[4px] rounded-full border ${statusStyle.cls}`}>
+                              {m.tag && <span className="text-xs text-muted-foreground font-mono bg-muted px-2 py-0.5 rounded">{m.tag}</span>}
+                              <span className={`inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full border ${statusStyle.cls}`}>
                                 {statusStyle.label}
+                              </span>
+                              <span className="ml-auto text-right">
+                                <span className="text-xl font-bold text-foreground tabular-nums">{fmtH(totalH)}</span>
+                                <span className="text-xs text-muted-foreground ml-1">{periodInline}</span>
                               </span>
                             </div>
 
                             {/* Stacked progress bar */}
-                            <div className="flex items-center gap-3">
-                              <div className="flex-1 h-3 rounded-full bg-muted overflow-hidden max-w-md">
-                                {totalH > 0 && <>
-                                  <div className="h-full float-left rounded-l-full" style={{ width: `${clPct * pct / 100}%`, backgroundColor: CHART.checklist }} />
-                                  <div className="h-full float-left rounded-r-full" style={{ width: `${(100 - clPct) * pct / 100}%`, backgroundColor: CHART.activity }} />
-                                </>}
-                              </div>
-                              <div className="w-[92px] text-right shrink-0">
-                                <p className="text-[21px] font-bold text-orange-700 leading-tight">{fmtH(totalH)}</p>
-                                <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">{periodInline}</p>
-                              </div>
+                            <div className="flex h-2 rounded-full bg-muted overflow-hidden max-w-md mb-2">
+                              {totalH > 0 && (
+                                <>
+                                  <div style={{ width: `${clPct * pct / 100}%`, backgroundColor: CHART.checklist }} />
+                                  <div style={{ width: `${(100 - clPct) * pct / 100}%`, backgroundColor: CHART.activity }} />
+                                </>
+                              )}
                             </div>
 
-                            <div className="mt-2.5 space-y-1 text-[13px] max-w-md">
-                              <div className="flex items-start gap-2">
-                                <span className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: CHART.checklist }} />
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-baseline justify-between gap-2">
-                                    <span className="font-medium text-foreground">Inspeção pré-operação</span>
-                                    <span className="text-foreground tabular-nums shrink-0"><span className="font-semibold">{fmtH(mClH)}</span> · {m.checklists.length} checklists</span>
-                                  </div>
-                                  <p className="text-[11px] text-muted-foreground leading-tight">tempo gasto preenchendo o checklist — não é produção</p>
-                                </div>
-                              </div>
-                              <div className="flex items-start gap-2">
-                                <span className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: CHART.activity }} />
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-baseline justify-between gap-2">
-                                    <span className="font-medium text-foreground">Operação produtiva</span>
-                                    <span className="text-foreground tabular-nums shrink-0"><span className="font-semibold">{fmtH(mActH)}</span> · {m.activities.length} atividades</span>
-                                  </div>
-                                  <p className="text-[11px] text-muted-foreground leading-tight">tempo de trabalho real da máquina após liberação</p>
-                                </div>
-                              </div>
+                            {/* Inline metrics */}
+                            <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap mb-2">
+                              <span className="flex items-center gap-1.5">
+                                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: CHART.checklist }} />
+                                Checklist <span className="font-semibold text-foreground tabular-nums">{fmtH(mClH)}</span>
+                                <span className="text-muted-foreground/70">({m.checklists.length})</span>
+                              </span>
+                              <span className="text-muted-foreground/40">·</span>
+                              <span className="flex items-center gap-1.5">
+                                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: CHART.activity }} />
+                                Atividade <span className="font-semibold text-foreground tabular-nums">{fmtH(mActH)}</span>
+                                <span className="text-muted-foreground/70">({m.activities.length})</span>
+                              </span>
                             </div>
 
-                            {/* Decision-support chips */}
-                            <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                            {/* Decision chips */}
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               {released > 0 && (
-                                <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-[4px] rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                  <span className="w-2 h-2 rounded-full bg-emerald-500" />{released} liberados
+                                <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{released} liberados
                                 </span>
                               )}
                               {blocked > 0 && (
-                                <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-[4px] rounded-full bg-red-50 text-red-700 border border-red-200">
-                                  <span className="w-2 h-2 rounded-full bg-red-500" />{blocked} bloqueados
+                                <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-red-500" />{blocked} bloqueados
                                 </span>
                               )}
                               {pending > 0 && (
-                                <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-[4px] rounded-full bg-yellow-50 text-yellow-700 border border-yellow-200">
-                                  <span className="w-2 h-2 rounded-full bg-yellow-500" />{pending} pendentes
+                                <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-yellow-50 text-yellow-700 border border-yellow-200">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-yellow-500" />{pending} pendentes
                                 </span>
                               )}
                               {interf > 0 && (
-                                <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-[4px] rounded-full bg-red-50 text-red-700 border border-red-200">
-                                  <AlertTriangle className="h-[13px] w-[13px]" />{interf} interferencias
+                                <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">
+                                  <AlertTriangle className="h-3 w-3" />{interf} interf.
                                 </span>
                               )}
                               {blockRate >= 30 && blocked > 0 && (
-                                <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-[4px] rounded-full bg-red-100 text-red-800 border border-red-300">
+                                <span className="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-800 border border-red-300">
                                   Taxa bloqueio {blockRate}%
                                 </span>
                               )}
                               {opCount > 0 && (
-                                <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-[4px] rounded-full bg-muted text-muted-foreground border">
-                                  <Users className="h-[13px] w-[13px]" />{opCount} op.
+                                <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground border">
+                                  <Users className="h-3 w-3" />{opCount} op.
                                 </span>
                               )}
                             </div>
                           </div>
 
                           <div className="shrink-0">
-                            {isExpanded ? <ChevronUp className="h-[23px] w-[23px] text-muted-foreground" /> : <ChevronDown className="h-[23px] w-[23px] text-muted-foreground" />}
+                            {isExpanded ? <ChevronUp className="h-5 w-5 text-muted-foreground" /> : <ChevronDown className="h-5 w-5 text-muted-foreground" />}
                           </div>
                         </div>
                       </CardContent>
@@ -816,19 +816,19 @@ export default function AnaliseMaquinasPage() {
                             <div className="grid grid-cols-4 gap-3">
                               <div className="rounded-xl border p-3 text-center">
                                 <p className="text-lg font-bold text-foreground">{fmtH(mClH)}</p>
-                                <p className="text-[10px] text-muted-foreground mt-0.5 flex items-center justify-center gap-1"><span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: CHART.checklist }} />Checklist</p>
+                                <p className="text-xs text-muted-foreground mt-0.5 flex items-center justify-center gap-1"><span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: CHART.checklist }} />Checklist</p>
                               </div>
                               <div className="rounded-xl border p-3 text-center">
                                 <p className="text-lg font-bold text-foreground">{fmtH(mActH)}</p>
-                                <p className="text-[10px] text-muted-foreground mt-0.5 flex items-center justify-center gap-1"><span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: CHART.activity }} />Atividade</p>
+                                <p className="text-xs text-muted-foreground mt-0.5 flex items-center justify-center gap-1"><span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: CHART.activity }} />Atividade</p>
                               </div>
                               <div className="rounded-xl border p-3 text-center">
                                 <p className="text-lg font-bold text-foreground">{fmtH(totalH)}</p>
-                                <p className="text-[10px] text-muted-foreground mt-0.5">Total</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">Total</p>
                               </div>
                               <div className="rounded-xl border p-3 text-center">
                                 <p className={`text-lg font-bold ${interf > 0 ? 'text-red-600' : 'text-foreground'}`}>{interf}</p>
-                                <p className="text-[10px] text-muted-foreground mt-0.5">Interf.</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">Interf.</p>
                               </div>
                             </div>
 
@@ -855,19 +855,19 @@ export default function AnaliseMaquinasPage() {
                                   const bgColor = OPERATOR_PALETTE[idx % OPERATOR_PALETTE.length];
                                   return (
                                     <div key={op.id} className="flex items-center gap-2.5 rounded-lg border bg-card p-2.5 hover:bg-muted/40 transition-colors">
-                                      <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white shadow-sm" style={{ backgroundColor: bgColor }}>
+                                      <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white shadow-sm" style={{ backgroundColor: bgColor }}>
                                         {(op.name || '?')[0].toUpperCase()}
                                       </div>
                                       <div className="flex-1 min-w-0">
                                         <div className="flex items-center justify-between gap-1">
-                                          <p className="text-[11px] font-semibold truncate text-foreground">{op.name}</p>
-                                          <span className="text-[11px] font-bold shrink-0 tabular-nums" style={{ color: bgColor }}>{fmtH(op.hours)}</span>
+                                          <p className="text-xs font-semibold truncate text-foreground">{op.name}</p>
+                                          <span className="text-xs font-bold shrink-0 tabular-nums" style={{ color: bgColor }}>{fmtH(op.hours)}</span>
                                         </div>
                                         <div className="flex items-center gap-2 mt-1">
                                           <div className="h-1.5 flex-1 rounded-full bg-muted overflow-hidden">
                                             <div className="h-full rounded-full transition-all" style={{ width: `${opPct}%`, backgroundColor: bgColor }} />
                                           </div>
-                                          <span className="text-[9px] text-muted-foreground tabular-nums shrink-0">{op.count}</span>
+                                          <span className="text-xs text-muted-foreground tabular-nums shrink-0">{op.count}</span>
                                         </div>
                                       </div>
                                     </div>

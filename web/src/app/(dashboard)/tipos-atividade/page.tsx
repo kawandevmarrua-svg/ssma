@@ -1,11 +1,16 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
+import { useConfirm } from '@/components/confirm-provider';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Select } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { Modal } from '@/components/modal';
 import {
   Loader2,
@@ -36,11 +41,11 @@ const CATEGORY_LABELS: Record<Category, string> = {
 
 export default function TiposAtividadePage() {
   const supabase = useMemo(() => createClient(), []);
+  const confirm = useConfirm();
   const [items, setItems] = useState<ActivityType[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<ActivityType | null>(null);
   const [creating, setCreating] = useState(false);
-  const [deleting, setDeleting] = useState<ActivityType | null>(null);
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState<Category | ''>('');
 
@@ -61,11 +66,21 @@ export default function TiposAtividadePage() {
     load();
   }
 
-  async function confirmDelete() {
-    if (!deleting) return;
-    await supabase.from('activity_types').delete().eq('id', deleting.id);
-    setDeleting(null);
+  async function handleDelete(t: ActivityType) {
+    const ok = await confirm({
+      title: 'Excluir tipo de atividade?',
+      description: `${t.code} — ${t.description}. Atividades já registradas manterão a referência (ON DELETE SET NULL).`,
+      confirmText: 'Excluir',
+      variant: 'destructive',
+    });
+    if (!ok) return;
+    const { error } = await supabase.from('activity_types').delete().eq('id', t.id);
+    if (error) {
+      toast.error('Falha ao excluir tipo de atividade.');
+      return;
+    }
     load();
+    toast.success('Tipo de atividade excluído.');
   }
 
   const filtered = useMemo(() => {
@@ -112,16 +127,16 @@ export default function TiposAtividadePage() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <select
+        <Select
           value={filterCategory}
           onChange={(e) => setFilterCategory(e.target.value as Category | '')}
-          className="h-9 rounded-md border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="sm:w-auto sm:min-w-[180px]"
         >
           <option value="">Todas as categorias</option>
           <option value="parada">Paradas (P)</option>
           <option value="servico">Servicos (S)</option>
           <option value="outro">Outros</option>
-        </select>
+        </Select>
       </div>
 
       {loading ? (
@@ -155,6 +170,7 @@ export default function TiposAtividadePage() {
                             <span>Ordem #{t.order_index}</span>
                             <span>·</span>
                             <button
+                              type="button"
                               onClick={() => toggleActive(t)}
                               className="underline-offset-2 hover:underline"
                             >
@@ -163,7 +179,7 @@ export default function TiposAtividadePage() {
                             {t.allow_custom && (
                               <>
                                 <span>·</span>
-                                <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                                <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-700">
                                   TEXTO LIVRE
                                 </span>
                               </>
@@ -171,20 +187,24 @@ export default function TiposAtividadePage() {
                           </div>
                         </div>
                         <div className="flex shrink-0 gap-1">
-                          <button
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             onClick={() => setEditing(t)}
-                            className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground"
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
                             aria-label="Editar"
                           >
                             <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => setDeleting(t)}
-                            className="rounded-md p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDelete(t)}
+                            className="h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                             aria-label="Excluir"
                           >
                             <Trash2 className="h-4 w-4" />
-                          </button>
+                          </Button>
                         </div>
                       </div>
                     </CardContent>
@@ -204,28 +224,6 @@ export default function TiposAtividadePage() {
         />
       )}
 
-      {deleting && (
-        <Modal
-          open={true}
-          onClose={() => setDeleting(null)}
-          title="Excluir tipo de atividade"
-          description="Atividades ja registradas com este tipo manterao a referencia (ON DELETE SET NULL)."
-        >
-          <div className="space-y-4">
-            <p className="text-sm">
-              <span className="font-mono font-bold">{deleting.code}</span> — {deleting.description}
-            </p>
-            <div className="flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={() => setDeleting(null)}>
-                Cancelar
-              </Button>
-              <Button variant="destructive" className="flex-1" onClick={confirmDelete}>
-                Excluir
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
     </div>
   );
 }
@@ -272,6 +270,7 @@ function ActivityTypeForm({ item, onClose, onSaved }: FormProps) {
       if (insErr) { setError(insErr.message); setSaving(false); return; }
     }
     setSaving(false);
+    toast.success(item ? 'Tipo de atividade atualizado.' : 'Tipo de atividade criado.');
     onSaved();
   }
 
@@ -291,21 +290,20 @@ function ActivityTypeForm({ item, onClose, onSaved }: FormProps) {
           </div>
           <div className="space-y-2">
             <Label>Categoria *</Label>
-            <select
+            <Select
               value={category}
               onChange={(e) => setCategory(e.target.value as Category)}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
             >
               <option value="parada">Parada (P)</option>
               <option value="servico">Servico (S)</option>
               <option value="outro">Outro</option>
-            </select>
+            </Select>
           </div>
         </div>
         <div className="space-y-2">
           <Label>Descricao *</Label>
-          <textarea
-            className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          <Textarea
+            className="min-h-[60px]"
             placeholder="Ex: Dialogo Diario de Seguranca"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -319,23 +317,20 @@ function ActivityTypeForm({ item, onClose, onSaved }: FormProps) {
           </div>
           <div className="flex items-end pb-1">
             <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border"
+              <Checkbox
                 checked={active}
-                onChange={(e) => setActive(e.target.checked)}
+                onCheckedChange={(c) => setActive(c === true)}
               />
               Ativo
             </label>
           </div>
         </div>
         <div className="flex items-start gap-2">
-          <input
+          <Checkbox
             id="allow_custom"
-            type="checkbox"
-            className="mt-0.5 h-4 w-4 rounded border"
+            className="mt-0.5"
             checked={allowCustom}
-            onChange={(e) => setAllowCustom(e.target.checked)}
+            onCheckedChange={(c) => setAllowCustom(c === true)}
           />
           <label htmlFor="allow_custom" className="text-sm">
             Pedir descricao livre ao operador (use para &ldquo;Outros (informar)&rdquo;)

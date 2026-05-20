@@ -16,6 +16,16 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const STRONG_PASSWORD = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
 const VALID_ROLES = new Set(['admin', 'manager', 'supervisor', 'encarregado', 'operator']);
 
+// Hierarquia de roles: quem pode criar/editar quem.
+// Ninguém pode atribuir um role igual ou superior ao seu próprio
+// (exceto admin, que pode atribuir qualquer role inclusive admin).
+const ASSIGNABLE_ROLES: Record<string, string[]> = {
+  encarregado: ['operator'],
+  supervisor:  ['operator', 'encarregado'],
+  manager:     ['operator', 'encarregado', 'supervisor', 'manager', 'admin'],
+  admin:       ['operator', 'encarregado', 'supervisor', 'manager', 'admin'],
+};
+
 export async function createUserAction(input: CreateUserInput) {
   const supabaseAuth = await createServerClient();
   const {
@@ -33,8 +43,9 @@ export async function createUserAction(input: CreateUserInput) {
     return { error: 'Sem permissao para criar usuarios.' };
   }
 
-  if (callerProfile.role !== 'admin' && input.role === 'admin') {
-    return { error: 'Apenas administradores podem criar outros administradores.' };
+  const allowedToCreate = ASSIGNABLE_ROLES[callerProfile.role] ?? [];
+  if (!allowedToCreate.includes(input.role)) {
+    return { error: 'Sem permissao para atribuir este cargo.' };
   }
 
   const nome = input.nome.trim();
@@ -77,7 +88,8 @@ export async function createUserAction(input: CreateUserInput) {
   });
 
   if (createErr || !created.user) {
-    return { error: createErr?.message ?? 'Falha ao criar usuario.' };
+    console.error('[createUserAction] auth.admin.createUser error:', createErr?.message);
+    return { error: 'Falha ao criar usuario. Verifique se o e-mail ja esta em uso.' };
   }
 
   const { error: upsertErr } = await admin.from('profiles').upsert({
@@ -91,8 +103,9 @@ export async function createUserAction(input: CreateUserInput) {
   });
 
   if (upsertErr) {
+    console.error('[createUserAction] profiles upsert error:', upsertErr.message);
     await admin.auth.admin.deleteUser(created.user.id);
-    return { error: upsertErr.message };
+    return { error: 'Falha ao configurar perfil do usuario.' };
   }
 
   revalidatePath('/usuarios');
@@ -124,8 +137,20 @@ export async function updateUserAction(input: UpdateUserInput) {
     return { error: 'Sem permissao para editar usuarios.' };
   }
 
-  if (callerProfile.role !== 'admin' && input.role === 'admin') {
-    return { error: 'Apenas administradores podem atribuir o cargo de administrador.' };
+  // Impede escalada de privilege: caller só pode atribuir roles abaixo do seu.
+  const allowedToAssign = ASSIGNABLE_ROLES[callerProfile.role] ?? [];
+  if (!allowedToAssign.includes(input.role)) {
+    return { error: 'Sem permissao para atribuir este cargo.' };
+  }
+
+  // Impede rebaixar alguém com role igual ou superior (ex: encarregado editando manager).
+  const { data: targetProfile } = await supabaseAuth
+    .from('profiles')
+    .select('role')
+    .eq('id', input.id)
+    .single();
+  if (targetProfile && !allowedToAssign.includes(targetProfile.role)) {
+    return { error: 'Sem permissao para editar este usuario.' };
   }
 
   const name = input.full_name.trim();
@@ -156,7 +181,8 @@ export async function updateUserAction(input: UpdateUserInput) {
     .eq('id', input.id);
 
   if (updateErr) {
-    return { error: updateErr.message };
+    console.error('[updateUserAction] profiles update error:', updateErr.message);
+    return { error: 'Falha ao atualizar usuario.' };
   }
 
   revalidatePath('/usuarios');

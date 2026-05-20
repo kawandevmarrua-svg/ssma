@@ -1,12 +1,16 @@
 'use client';
 
 import { useEffect, useMemo, useState, useCallback } from 'react';
+import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
+import { useConfirm } from '@/components/confirm-provider';
 import { formatDateTime } from '@/lib/formatters';
 import type { OperatorBasic, SafetyAlert } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { Modal } from '@/components/modal';
 import {
   Card,
@@ -34,6 +38,7 @@ const SEVERITY = {
 
 export default function AlertasPage() {
   const supabase = useMemo(() => createClient(), []);
+  const confirm = useConfirm();
 
   const PAGE_SIZE = 50;
   const [alerts, setAlerts] = useState<SafetyAlert[]>([]);
@@ -50,7 +55,6 @@ export default function AlertasPage() {
   const [sending, setSending] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [resendingId, setResendingId] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
   const ALERT_SELECT = '*, creator:profiles!safety_alerts_created_by_fkey(id, full_name, email)';
 
@@ -162,8 +166,9 @@ export default function AlertasPage() {
       .single();
 
     if (error || !inserted) {
+      console.error('[AlertasPage] insert error:', error?.message);
       setSending(false);
-      setFormError(error?.message ?? 'Falha ao criar alerta.');
+      setFormError('Falha ao criar alerta. Tente novamente.');
       return;
     }
 
@@ -183,33 +188,37 @@ export default function AlertasPage() {
     await loadAlerts();
 
     if (pushError) {
-      setFeedback({
-        type: 'err',
-        text: `Alerta criado, mas falha ao enviar push: ${pushError.message}`,
-      });
+      console.error('[AlertasPage] push error:', pushError.message);
+      toast.error('Alerta criado, mas falha ao enviar push. Tente reenviar manualmente.');
     } else {
       const count = (pushData as { tokens_count?: number } | null)?.tokens_count ?? 0;
-      setFeedback({
-        type: 'ok',
-        text:
-          count > 0
-            ? `Alerta enviado por push para ${count} dispositivo(s).`
-            : 'Alerta criado. Operadores serão notificados via Realtime quando o app estiver aberto.',
-      });
+      toast.success(
+        count > 0
+          ? `Alerta enviado por push para ${count} dispositivo(s).`
+          : 'Alerta criado. Operadores serão notificados via Realtime quando o app estiver aberto.',
+      );
     }
-
-    setTimeout(() => setFeedback(null), 4000);
   }
 
   async function handleDelete(alert: SafetyAlert) {
-    if (!confirm(`Excluir alerta "${alert.title}"?`)) return;
-    await supabase.from('safety_alerts').delete().eq('id', alert.id);
+    const ok = await confirm({
+      title: 'Excluir alerta?',
+      description: `O alerta "${alert.title}" será removido. Esta ação não pode ser desfeita.`,
+      confirmText: 'Excluir',
+      variant: 'destructive',
+    });
+    if (!ok) return;
+    const { error } = await supabase.from('safety_alerts').delete().eq('id', alert.id);
+    if (error) {
+      toast.error('Falha ao excluir alerta.');
+      return;
+    }
     await loadAlerts();
+    toast.success('Alerta excluído.');
   }
 
   async function handleResend(alert: SafetyAlert) {
     setResendingId(alert.id);
-    setFeedback(null);
 
     const { data, error } = await supabase.functions.invoke('notify-blocking-item', {
       body: {
@@ -222,19 +231,16 @@ export default function AlertasPage() {
     setResendingId(null);
 
     if (error) {
-      setFeedback({ type: 'err', text: `Falha ao reenviar: ${error.message}` });
+      console.error('[AlertasPage] resend error:', error.message);
+      toast.error('Falha ao reenviar push. Tente novamente.');
     } else {
       const count = (data as { tokens_count?: number } | null)?.tokens_count ?? 0;
-      setFeedback({
-        type: 'ok',
-        text:
-          count > 0
-            ? `Push reenviado para ${count} dispositivo(s).`
-            : 'Alerta reenviado. Operadores serão notificados via Realtime quando o app estiver aberto.',
-      });
+      toast.success(
+        count > 0
+          ? `Push reenviado para ${count} dispositivo(s).`
+          : 'Alerta reenviado. Operadores serão notificados via Realtime quando o app estiver aberto.',
+      );
     }
-
-    setTimeout(() => setFeedback(null), 4000);
   }
 
   function operatorName(id: string | null) {
@@ -250,7 +256,7 @@ export default function AlertasPage() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <h1 className="text-lg sm:text-xl font-semibold tracking-tight">Alertas de Segurança</h1>
-          <p className="text-[11px] sm:text-xs text-muted-foreground">
+          <p className="text-xs sm:text-xs text-muted-foreground">
             {alerts.length} alertas · {totalUnread} não lidos · {totalResponded} respondidos
           </p>
         </div>
@@ -260,18 +266,6 @@ export default function AlertasPage() {
           <span className="sm:hidden">Novo</span>
         </Button>
       </div>
-
-      {feedback && (
-        <div
-          className={`rounded-md border px-2.5 py-1.5 text-xs ${
-            feedback.type === 'ok'
-              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-              : 'border-red-200 bg-red-50 text-red-800'
-          }`}
-        >
-          {feedback.text}
-        </div>
-      )}
 
       {loading ? (
         <div className="flex justify-center py-6">
@@ -308,10 +302,12 @@ export default function AlertasPage() {
                             {alert.message}
                           </p>
                         </div>
-                        <button
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           onClick={() => handleResend(alert)}
                           disabled={resendingId === alert.id}
-                          className="shrink-0 text-muted-foreground hover:text-primary transition-colors disabled:opacity-50"
+                          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-primary"
                           title="Reenviar push"
                         >
                           {resendingId === alert.id ? (
@@ -319,17 +315,19 @@ export default function AlertasPage() {
                           ) : (
                             <RefreshCw className="h-4 w-4" />
                           )}
-                        </button>
-                        <button
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           onClick={() => handleDelete(alert)}
-                          className="shrink-0 text-muted-foreground hover:text-red-500 transition-colors"
+                          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-red-500"
                           title="Excluir"
                         >
                           <Trash2 className="h-4 w-4" />
-                        </button>
+                        </Button>
                       </div>
 
-                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
                         <span
                           className={`rounded-full px-1.5 py-0 font-semibold ${sev.badge}`}
                         >
@@ -358,7 +356,7 @@ export default function AlertasPage() {
 
                       {alert.response && (
                         <div className="mt-1.5 rounded-md border-l-2 border-l-emerald-500 bg-emerald-50 px-2 py-1.5">
-                          <div className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
+                          <div className="flex items-center gap-1 text-xs font-semibold text-emerald-700">
                             <MessageSquare className="h-3 w-3" />
                             Resposta do operador
                             {alert.responded_at && (
@@ -379,13 +377,14 @@ export default function AlertasPage() {
             );
           })}
           {hasMore && (
-            <button
+            <Button
+              variant="outline"
               onClick={loadMoreAlerts}
               disabled={loadingMore}
-              className="w-full rounded-md border bg-card py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent transition-colors disabled:opacity-50"
+              className="h-auto w-full bg-card py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent"
             >
               {loadingMore ? 'Carregando...' : 'Carregar mais'}
-            </button>
+            </Button>
           )}
         </div>
       )}
@@ -415,8 +414,8 @@ export default function AlertasPage() {
 
           <div className="space-y-2">
             <Label>Mensagem *</Label>
-            <textarea
-              className="flex min-h-[100px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            <Textarea
+              className="min-h-[100px]"
               placeholder="Descreva o alerta..."
               value={message}
               onChange={(e) => setMessage(e.target.value)}
@@ -427,8 +426,7 @@ export default function AlertasPage() {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Severidade</Label>
-              <select
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              <Select
                 value={severity}
                 onChange={(e) =>
                   setSeverity(e.target.value as SafetyAlert['severity'])
@@ -438,13 +436,12 @@ export default function AlertasPage() {
                 <option value="medium">Médio</option>
                 <option value="high">Alto</option>
                 <option value="critical">Crítico</option>
-              </select>
+              </Select>
             </div>
 
             <div className="space-y-2">
               <Label>Destinatário</Label>
-              <select
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              <Select
                 value={operatorId}
                 onChange={(e) => setOperatorId(e.target.value)}
               >
@@ -454,7 +451,7 @@ export default function AlertasPage() {
                     {op.full_name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
           </div>
 

@@ -1,7 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
+import { Badge } from '@/components/ui/badge';
+import { useConfirm } from '@/components/confirm-provider';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -39,6 +42,7 @@ const RESPONSE_TYPE_LABELS: Record<ResponseType, string> = {
 
 export default function MaquinasPage() {
   const supabase = useMemo(() => createClient(), []);
+  const confirm = useConfirm();
   const [machines, setMachines] = useState<Machine[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -98,16 +102,38 @@ export default function MaquinasPage() {
   }, [expandedMachineId, itemsByMachine, loadItemsFor]);
 
   async function deleteQuestion(m: Machine, it: ChecklistItem) {
-    if (!confirm(`Excluir a pergunta "${it.description.slice(0, 60)}..."?`)) return;
-    await supabase.from('machine_checklist_items').delete().eq('id', it.id);
+    const ok = await confirm({
+      title: 'Excluir pergunta?',
+      description: `"${it.description.slice(0, 80)}${it.description.length > 80 ? '...' : ''}" será removida.`,
+      confirmText: 'Excluir',
+      variant: 'destructive',
+    });
+    if (!ok) return;
+    const { error } = await supabase.from('machine_checklist_items').delete().eq('id', it.id);
+    if (error) {
+      toast.error('Falha ao excluir pergunta.');
+      return;
+    }
     await loadItemsFor(m.id);
     await loadMachines();
+    toast.success('Pergunta excluída.');
   }
 
   async function deleteMachine(m: Machine) {
-    if (!confirm(`Excluir a maquina "${m.name}"? Todas as ${m.items_count ?? 0} perguntas vinculadas serao removidas tambem.`)) return;
-    await supabase.from('machines').delete().eq('id', m.id);
+    const ok = await confirm({
+      title: 'Excluir máquina?',
+      description: `A máquina "${m.name}" e todas as ${m.items_count ?? 0} perguntas vinculadas serão removidas. Esta ação não pode ser desfeita.`,
+      confirmText: 'Excluir',
+      variant: 'destructive',
+    });
+    if (!ok) return;
+    const { error } = await supabase.from('machines').delete().eq('id', m.id);
+    if (error) {
+      toast.error('Falha ao excluir máquina.');
+      return;
+    }
     await loadMachines();
+    toast.success('Máquina excluída.');
   }
 
   async function handleImportFile(file: File) {
@@ -218,9 +244,15 @@ export default function MaquinasPage() {
               <Card key={m.id}>
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">
-                    <button className="shrink-0 text-muted-foreground hover:text-foreground" title={expanded ? 'Ocultar perguntas' : 'Mostrar perguntas'} onClick={() => toggleExpand(m)}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+                      title={expanded ? 'Ocultar perguntas' : 'Mostrar perguntas'}
+                      onClick={() => toggleExpand(m)}
+                    >
                       {expanded ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
-                    </button>
+                    </Button>
                     <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white ${m.active ? 'bg-amber-500' : 'bg-gray-400'}`}>
                       <HardHat className="h-5 w-5" />
                     </div>
@@ -232,10 +264,10 @@ export default function MaquinasPage() {
                         <span className="flex items-center gap-1"><ListChecks className="h-3 w-3" />{m.items_count ?? 0} perguntas</span>
                       </div>
                     </div>
-                    <button className="shrink-0 rounded-md border p-1.5 hover:bg-accent" title="Editar maquina" onClick={() => { setEditing(m); setShowModal(true); }}><Pencil className="h-4 w-4" /></button>
-                    <button className="shrink-0 rounded-md border p-1.5 hover:bg-accent" title="Ver QR Code" onClick={() => setQrMachine(m)}><QrCode className="h-4 w-4" /></button>
-                    <button className="shrink-0 rounded-md border p-1.5 hover:bg-red-50 hover:text-red-700" title="Excluir maquina" onClick={() => deleteMachine(m)}><Trash2 className="h-4 w-4" /></button>
-                    <button className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${m.active ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`} onClick={() => handleToggleActive(m)}>{m.active ? 'Ativa' : 'Inativa'}</button>
+                    <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" title="Editar maquina" onClick={() => { setEditing(m); setShowModal(true); }}><Pencil className="h-4 w-4" /></Button>
+                    <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" title="Ver QR Code" onClick={() => setQrMachine(m)}><QrCode className="h-4 w-4" /></Button>
+                    <Button variant="outline" size="icon" className="h-8 w-8 shrink-0 hover:bg-red-50 hover:text-red-700" title="Excluir maquina" onClick={() => deleteMachine(m)}><Trash2 className="h-4 w-4" /></Button>
+                    <button type="button" className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${m.active ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`} onClick={() => handleToggleActive(m)}>{m.active ? 'Ativa' : 'Inativa'}</button>
                   </div>
 
                   {expanded && (
@@ -264,12 +296,12 @@ export default function MaquinasPage() {
                                         <div className="flex-1 min-w-0">
                                           <p>{it.description}</p>
                                           <div className="mt-1 flex flex-wrap gap-1.5">
-                                            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700">{RESPONSE_TYPE_LABELS[it.response_type]}</span>
-                                            {it.is_blocking && <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">impeditivo</span>}
+                                            <Badge variant="plain" className="border-transparent bg-blue-100 font-normal text-blue-700">{RESPONSE_TYPE_LABELS[it.response_type]}</Badge>
+                                            {it.is_blocking && <Badge variant="plain" className="border-transparent bg-red-100 text-red-700">impeditivo</Badge>}
                                           </div>
                                         </div>
-                                        <button className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground" title="Editar pergunta" onClick={() => setQuestionModal({ machine: m, item: it })}><Pencil className="h-3.5 w-3.5" /></button>
-                                        <button className="shrink-0 rounded p-1 text-muted-foreground hover:bg-red-50 hover:text-red-700" title="Excluir pergunta" onClick={() => deleteQuestion(m, it)}><Trash2 className="h-3.5 w-3.5" /></button>
+                                        <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground" title="Editar pergunta" onClick={() => setQuestionModal({ machine: m, item: it })}><Pencil className="h-3.5 w-3.5" /></Button>
+                                        <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground hover:bg-red-50 hover:text-red-700" title="Excluir pergunta" onClick={() => deleteQuestion(m, it)}><Trash2 className="h-3.5 w-3.5" /></Button>
                                       </div>
                                     ))}
                                   </div>

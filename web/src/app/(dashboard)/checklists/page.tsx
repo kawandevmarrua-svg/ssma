@@ -7,6 +7,8 @@ import { formatDate, formatDateTime, resolveSignedUrl as resolveUrl } from '@/li
 import type { ChecklistRow, ChecklistResponseRow } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 import {
   Card,
   CardContent,
@@ -25,11 +27,11 @@ import {
   Truck,
   Camera,
   AlertTriangle,
-  X,
   FileDown,
   ShieldCheck,
 } from 'lucide-react';
 import { exportChecklistPDF, exportChecklistListPDF } from '@/lib/pdf';
+import { PhotoModal } from '@/components/photo-modal';
 
 type ResponseRow = ChecklistResponseRow;
 
@@ -220,13 +222,15 @@ export default function ChecklistsPage() {
 
     return (
       <div className="space-y-6">
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => { setSelected(null); setResponses([]); setResolvedPhotos({}); }}
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          className="-ml-2 gap-1 text-muted-foreground hover:text-foreground"
         >
           <ChevronLeft className="h-4 w-4" />
           Voltar para lista
-        </button>
+        </Button>
 
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
@@ -239,14 +243,16 @@ export default function ChecklistsPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <button
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => exportChecklistPDF(selected, responses)}
-              className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              className="gap-1.5 text-xs text-muted-foreground"
               title="Exportar PDF"
             >
               <FileDown className="h-3.5 w-3.5" />
               PDF
-            </button>
+            </Button>
             <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-semibold ${cfg.bg} ${cfg.color}`}>
               <Icon className="h-4 w-4" />
               {cfg.label}
@@ -473,19 +479,7 @@ export default function ChecklistsPage() {
         )}
 
         {/* Photo modal */}
-        {photoModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setPhotoModal(null)}>
-            <div className="relative max-w-3xl max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
-              <button
-                onClick={() => setPhotoModal(null)}
-                className="absolute -top-3 -right-3 rounded-full bg-white p-1 shadow-md hover:bg-gray-100"
-              >
-                <X className="h-5 w-5" />
-              </button>
-              <img src={photoModal} alt="Foto do item" className="max-h-[85vh] rounded-lg object-contain" />
-            </div>
-          </div>
-        )}
+        <PhotoModal src={photoModal} alt="Foto do item" onClose={() => setPhotoModal(null)} />
       </div>
     );
   }
@@ -501,13 +495,15 @@ export default function ChecklistsPage() {
           </p>
         </div>
         {filtered.length > 0 && (
-          <button
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => exportChecklistListPDF(filtered)}
-            className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
+            className="shrink-0 gap-1.5 text-xs text-muted-foreground"
           >
             <FileDown className="h-3.5 w-3.5" />
             Exportar PDF
-          </button>
+          </Button>
         )}
       </div>
 
@@ -619,15 +615,15 @@ export default function ChecklistsPage() {
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
                           {checklist.encarregado_confirmed && (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                            <Badge variant="success">
                               <ShieldCheck className="h-3 w-3" />
                               Confirmado
-                            </span>
+                            </Badge>
                           )}
-                          <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${cfg.bg} ${cfg.color}`}>
+                          <Badge variant="plain" className={cn('border px-2.5', cfg.bg, cfg.color)}>
                             <Icon className="h-3 w-3" />
                             {cfg.label}
-                          </span>
+                          </Badge>
                         </div>
                       </div>
                     </div>
@@ -637,13 +633,14 @@ export default function ChecklistsPage() {
             );
           })}
           {hasMore && (
-            <button
+            <Button
+              variant="outline"
               onClick={loadMoreChecklists}
               disabled={loadingMore}
-              className="w-full rounded-md border bg-card py-3 text-sm font-medium text-muted-foreground hover:bg-accent transition-colors disabled:opacity-50"
+              className="w-full bg-card py-3 text-sm font-medium text-muted-foreground hover:bg-accent"
             >
               {loadingMore ? 'Carregando...' : 'Carregar mais'}
-            </button>
+            </Button>
           )}
         </div>
       )}

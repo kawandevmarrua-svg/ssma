@@ -3,7 +3,7 @@
 // reais do sistema. Mude USE_MOCK para false ao conectar ao banco.
 // ══════════════════════════════════════════════════════════════
 
-export const USE_MOCK = true;
+export const USE_MOCK = false;
 
 // ── Operadores reais (perfis do Supabase) ──
 

@@ -9,6 +9,10 @@ import {
   CardTitle,
   CardDescription,
 } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
@@ -762,31 +766,37 @@ export default function MapaClient() {
             <span>{isLive ? 'Posicao em tempo real dos operadores em campo.' : 'Rotas percorridas, metricas e proatividade do mes.'}</span>
           </p>
         </div>
-        <button
+        <Button
+          variant="outline"
+          size="sm"
           onClick={() => { setLoading(true); loadData(); }}
-          className="inline-flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm hover:bg-accent"
+          className="gap-2 bg-card"
         >
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
           Atualizar
-        </button>
+        </Button>
       </div>
 
       {/* View mode tabs */}
       <div className="inline-flex rounded-lg border bg-card p-1 text-sm">
         <button
+          type="button"
           onClick={() => { setViewMode('live'); setSelectedOperatorId(null); }}
-          className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 font-medium transition-colors ${
-            isLive ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
-          }`}
+          className={cn(
+            'inline-flex items-center gap-2 rounded-md px-3 py-1.5 font-medium transition-colors',
+            isLive ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
+          )}
         >
           <MapPin className="h-4 w-4" />
           Ao vivo
         </button>
         <button
+          type="button"
           onClick={() => { setViewMode('analysis'); setSelectedOperatorId(null); }}
-          className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 font-medium transition-colors ${
-            !isLive ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
-          }`}
+          className={cn(
+            'inline-flex items-center gap-2 rounded-md px-3 py-1.5 font-medium transition-colors',
+            !isLive ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
+          )}
         >
           <Route className="h-4 w-4" />
           Rotas e Analise
@@ -796,8 +806,11 @@ export default function MapaClient() {
       {/* Status filter */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {Object.entries(STATUS_LABELS).map(([key, label]) => (
-          <button key={key} onClick={() => setFilterStatus(filterStatus === key ? '' : key)}
-            className={`rounded-lg border p-3 text-center transition-colors ${filterStatus === key ? 'ring-2 ring-primary border-primary' : 'hover:bg-muted'}`}>
+          <button type="button" key={key} onClick={() => setFilterStatus(filterStatus === key ? '' : key)}
+            className={cn(
+              'rounded-lg border p-3 text-center transition-colors',
+              filterStatus === key ? 'ring-2 ring-primary border-primary' : 'hover:bg-muted',
+            )}>
             <p className={`text-xl font-bold ${STATUS_COLORS[key]}`}>{loading ? '...' : statusCounts[key] || 0}</p>
             <p className="text-xs text-muted-foreground">{label}</p>
           </button>
@@ -807,17 +820,17 @@ export default function MapaClient() {
       {/* Controls */}
       <div className="flex items-center gap-4 text-sm flex-wrap">
         <label className="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" className="h-4 w-4 rounded border" checked={showLocations} onChange={(e) => setShowLocations(e.target.checked)} />
+          <Checkbox checked={showLocations} onCheckedChange={(c) => setShowLocations(c === true)} />
           <MapPin className="h-4 w-4 text-violet-500" />
           Localidades
         </label>
         {filterStatus && (
-          <button onClick={() => setFilterStatus('')} className="text-xs text-muted-foreground underline hover:text-foreground">Limpar filtro</button>
+          <Button variant="link" size="sm" onClick={() => setFilterStatus('')} className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground">Limpar filtro</Button>
         )}
         {!isLive && (
           <div className="ml-auto flex gap-2">
-            <button onClick={() => setExpandedOps(new Set(filtered.map((o) => o.operator_id)))} className="text-xs text-muted-foreground underline hover:text-foreground">Expandir todos</button>
-            <button onClick={() => setExpandedOps(new Set())} className="text-xs text-muted-foreground underline hover:text-foreground">Recolher todos</button>
+            <Button variant="link" size="sm" onClick={() => setExpandedOps(new Set(filtered.map((o) => o.operator_id)))} className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground">Expandir todos</Button>
+            <Button variant="link" size="sm" onClick={() => setExpandedOps(new Set())} className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground">Recolher todos</Button>
           </div>
         )}
       </div>
@@ -855,7 +868,7 @@ export default function MapaClient() {
                   )}
                 </p>
                 {selectedOperatorId && (
-                  <button onClick={() => setSelectedOperatorId(null)} className="text-[10px] text-muted-foreground underline hover:text-foreground">Ver todos</button>
+                  <Button variant="link" size="sm" onClick={() => setSelectedOperatorId(null)} className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground">Ver todos</Button>
                 )}
               </div>
               {!loading && filtered.length > 0 ? (
@@ -870,9 +883,13 @@ export default function MapaClient() {
 
                     return (
                       <button
+                        type="button"
                         key={op.operator_id}
                         onClick={() => setSelectedOperatorId(isSelected ? null : op.operator_id)}
-                        className={`w-full text-left px-3 py-2.5 transition-colors ${isSelected ? 'bg-primary/10 ring-1 ring-inset ring-primary/30' : 'hover:bg-muted/30'}`}
+                        className={cn(
+                          'w-full text-left px-3 py-2.5 transition-colors',
+                          isSelected ? 'bg-primary/10 ring-1 ring-inset ring-primary/30' : 'hover:bg-muted/30',
+                        )}
                       >
                         <div className="flex items-center gap-2">
                           {/* Status / route color indicator */}
@@ -889,7 +906,7 @@ export default function MapaClient() {
                               <p className="text-sm font-medium truncate">{op.profiles?.full_name || 'Operador'}</p>
                               {!isLive && <span className={`h-2 w-2 rounded-full shrink-0 ${STATUS_DOT[op.current_status]}`} />}
                             </div>
-                            <div className="flex items-center gap-2 mt-0.5 text-[10px] text-muted-foreground flex-wrap">
+                            <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground flex-wrap">
                               <span className={STATUS_COLORS[op.current_status]}>{STATUS_LABELS[op.current_status]}</span>
                               <span>· {timeSince(op.updated_at)}</span>
                               {!isLive && route && (
@@ -901,7 +918,7 @@ export default function MapaClient() {
 
                         {/* Mini metrics row */}
                         {!isLive && m && (
-                          <div className="flex items-center gap-2 mt-1.5 ml-5 text-[10px] flex-wrap">
+                          <div className="flex items-center gap-2 mt-1.5 ml-5 text-xs flex-wrap">
                             <span className="inline-flex items-center gap-0.5 text-blue-600">
                               <ListChecks className="h-2.5 w-2.5" />{m.checklistsMonth}
                             </span>
@@ -928,7 +945,7 @@ export default function MapaClient() {
 
                         {/* Route coordinates */}
                         {!isLive && route && route.points.length >= 2 && (
-                          <div className="mt-1 ml-5 text-[9px] text-muted-foreground font-mono">
+                          <div className="mt-1 ml-5 text-xs text-muted-foreground font-mono">
                             <span className="text-indigo-500">A</span> {route.points[0].lat.toFixed(4)},{route.points[0].lng.toFixed(4)}
                             {' → '}
                             <span className="text-emerald-500">B</span> {route.points[route.points.length - 1].lat.toFixed(4)},{route.points[route.points.length - 1].lng.toFixed(4)}
@@ -964,7 +981,7 @@ export default function MapaClient() {
             return (
               <Card key={op.operator_id} className={`overflow-hidden border ${STATUS_BG[op.current_status] || ''}`}>
                 {/* Header */}
-                <button onClick={() => toggleExpanded(op.operator_id)} className="w-full text-left">
+                <button type="button" onClick={() => toggleExpanded(op.operator_id)} className="w-full text-left">
                   <CardContent className="p-4">
                     <div className="flex items-center gap-3">
                       <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${
@@ -1002,11 +1019,11 @@ export default function MapaClient() {
                         {!isExpanded && badges.length > 0 && (
                           <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                             {badges.slice(0, 3).map((b) => (
-                              <span key={b.label} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${b.bg} ${b.color}`}>
+                              <Badge key={b.label} variant="plain" className={cn('border-transparent font-medium', b.bg, b.color)}>
                                 <b.icon className="h-2.5 w-2.5" />{b.label}
-                              </span>
+                              </Badge>
                             ))}
-                            {badges.length > 3 && <span className="text-[10px] text-muted-foreground">+{badges.length - 3}</span>}
+                            {badges.length > 3 && <span className="text-xs text-muted-foreground">+{badges.length - 3}</span>}
                           </div>
                         )}
                       </div>
@@ -1044,7 +1061,7 @@ export default function MapaClient() {
                               <span className="text-sm font-bold text-indigo-700">{route.distanceKm.toFixed(2)} km</span>
                             </div>
                             {(route.distanceActivityKm > 0 || route.distanceIdleKm > 0) && (
-                              <div className="flex gap-3 text-[10px]">
+                              <div className="flex gap-3 text-xs">
                                 <span className="text-blue-600 font-medium">Em atividade: {route.distanceActivityKm.toFixed(2)} km</span>
                                 <span className="text-gray-500 font-medium">Ocioso: {route.distanceIdleKm.toFixed(2)} km</span>
                               </div>
@@ -1067,12 +1084,12 @@ export default function MapaClient() {
                                 };
                                 return (
                                   <div key={i} className="flex items-center gap-2 py-1.5">
-                                    <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white ${eventColors[p.eventType] ?? 'bg-gray-400'}`}>
+                                    <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ${eventColors[p.eventType] ?? 'bg-gray-400'}`}>
                                       {shortLabel[p.eventType] ?? String(i + 1)}
                                     </span>
                                     <div className="flex-1 min-w-0">
                                       <p className="font-medium">{p.label}</p>
-                                      <p className="text-muted-foreground font-mono text-[10px]">{p.lat.toFixed(5)}, {p.lng.toFixed(5)}</p>
+                                      <p className="text-muted-foreground font-mono text-xs">{p.lat.toFixed(5)}, {p.lng.toFixed(5)}</p>
                                     </div>
                                     <span className="text-muted-foreground shrink-0">{p.time}</span>
                                   </div>
@@ -1080,7 +1097,7 @@ export default function MapaClient() {
                               })}
                             </div>
                             {route.points.length > 0 && (
-                              <div className="pt-1 text-[10px] text-muted-foreground">
+                              <div className="pt-1 text-xs text-muted-foreground">
                                 <Flag className="h-3 w-3 inline mr-1" />
                                 {route.points.length} pontos registrados
                               </div>
@@ -1106,8 +1123,8 @@ export default function MapaClient() {
                             ].map(({ label, value, sub, color }) => (
                               <div key={label} className="rounded-md border p-2.5 text-center">
                                 <p className={`text-lg font-bold ${color}`}>{value}</p>
-                                <p className="text-[10px] text-muted-foreground leading-tight">{label}</p>
-                                {sub && <p className="text-[10px] text-muted-foreground">{sub}</p>}
+                                <p className="text-xs text-muted-foreground leading-tight">{label}</p>
+                                {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
                               </div>
                             ))}
                           </div>
@@ -1170,24 +1187,24 @@ export default function MapaClient() {
 function RealtimeBadge({ status }: { status: 'connecting' | 'live' | 'disconnected' }) {
   if (status === 'live') {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 text-green-700 px-2 py-0.5 text-xs font-medium">
+      <Badge variant="plain" className="gap-1.5 border-transparent bg-green-50 font-medium text-green-700">
         <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
         Ao vivo
-      </span>
+      </Badge>
     );
   }
   if (status === 'connecting') {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 text-amber-700 px-2 py-0.5 text-xs font-medium">
+      <Badge variant="plain" className="gap-1.5 border-transparent bg-amber-50 font-medium text-amber-700">
         <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
         Conectando...
-      </span>
+      </Badge>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 text-red-700 px-2 py-0.5 text-xs font-medium">
+    <Badge variant="plain" className="gap-1.5 border-transparent bg-red-50 font-medium text-red-700">
       <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
       Sem conexao em tempo real
-    </span>
+    </Badge>
   );
 }

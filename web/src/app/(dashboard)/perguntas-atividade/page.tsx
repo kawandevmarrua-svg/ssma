@@ -1,11 +1,16 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
+import { Badge } from '@/components/ui/badge';
+import { useConfirm } from '@/components/confirm-provider';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
 import { Modal } from '@/components/modal';
 import {
   Loader2,
@@ -30,11 +35,11 @@ interface ActivityQuestion {
 
 export default function PerguntasAtividadePage() {
   const supabase = useMemo(() => createClient(), []);
+  const confirm = useConfirm();
   const [questions, setQuestions] = useState<ActivityQuestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<ActivityQuestion | null>(null);
   const [creating, setCreating] = useState(false);
-  const [deleting, setDeleting] = useState<ActivityQuestion | null>(null);
 
   async function load() {
     const { data } = await supabase
@@ -66,11 +71,21 @@ export default function PerguntasAtividadePage() {
     load();
   }
 
-  async function confirmDelete() {
-    if (!deleting) return;
-    await supabase.from('activity_questions').delete().eq('id', deleting.id);
-    setDeleting(null);
+  async function handleDelete(q: ActivityQuestion) {
+    const ok = await confirm({
+      title: 'Excluir pergunta?',
+      description: `"${q.label}". As respostas existentes serão mantidas, mas esta pergunta deixará de aparecer no app.`,
+      confirmText: 'Excluir',
+      variant: 'destructive',
+    });
+    if (!ok) return;
+    const { error } = await supabase.from('activity_questions').delete().eq('id', q.id);
+    if (error) {
+      toast.error('Falha ao excluir pergunta.');
+      return;
+    }
     load();
+    toast.success('Pergunta excluída.');
   }
 
   return (
@@ -108,38 +123,43 @@ export default function PerguntasAtividadePage() {
               <CardContent className="p-4">
                 <div className="flex items-start gap-3">
                   <div className="flex flex-col items-center gap-1 pt-1">
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       onClick={() => move(q, -1)}
                       disabled={i === 0}
-                      className="text-muted-foreground hover:text-foreground disabled:opacity-30"
+                      className="h-7 w-7 text-muted-foreground hover:text-foreground disabled:opacity-30"
                       aria-label="Subir"
                     >
                       <ChevronUp className="h-4 w-4" />
-                    </button>
+                    </Button>
                     <GripVertical className="h-3 w-3 text-muted-foreground" />
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       onClick={() => move(q, 1)}
                       disabled={i === questions.length - 1}
-                      className="text-muted-foreground hover:text-foreground disabled:opacity-30"
+                      className="h-7 w-7 text-muted-foreground hover:text-foreground disabled:opacity-30"
                       aria-label="Descer"
                     >
                       <ChevronDown className="h-4 w-4" />
-                    </button>
+                    </Button>
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
                       <p className="text-sm font-medium">{q.label}</p>
                       {q.critical && (
-                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-xs font-semibold text-destructive">
+                        <Badge variant="plain" className="shrink-0 border border-destructive/30 bg-destructive/10 text-destructive">
                           <AlertTriangle className="h-3 w-3" />
                           Critica
-                        </span>
+                        </Badge>
                       )}
                     </div>
                     <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                       <span>Ordem #{q.order_index}</span>
                       <span>·</span>
                       <button
+                        type="button"
                         onClick={() => toggleActive(q)}
                         className="underline-offset-2 hover:underline"
                       >
@@ -148,26 +168,30 @@ export default function PerguntasAtividadePage() {
                       {q.key && (
                         <>
                           <span>·</span>
-                          <span className="font-mono text-[10px]">key: {q.key}</span>
+                          <span className="font-mono text-xs">key: {q.key}</span>
                         </>
                       )}
                     </div>
                   </div>
                   <div className="flex shrink-0 gap-1">
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       onClick={() => setEditing(q)}
-                      className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground"
+                      className="h-8 w-8 text-muted-foreground hover:text-foreground"
                       aria-label="Editar"
                     >
                       <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => setDeleting(q)}
-                      className="rounded-md p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDelete(q)}
+                      className="h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                       aria-label="Excluir"
                     >
                       <Trash2 className="h-4 w-4" />
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </CardContent>
@@ -185,26 +209,6 @@ export default function PerguntasAtividadePage() {
         />
       )}
 
-      {deleting && (
-        <Modal
-          open={true}
-          onClose={() => setDeleting(null)}
-          title="Excluir pergunta"
-          description="As respostas existentes serao mantidas, mas esta pergunta deixara de aparecer no app."
-        >
-          <div className="space-y-4">
-            <p className="text-sm">{deleting.label}</p>
-            <div className="flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={() => setDeleting(null)}>
-                Cancelar
-              </Button>
-              <Button variant="destructive" className="flex-1" onClick={confirmDelete}>
-                Excluir
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
     </div>
   );
 }
@@ -258,6 +262,7 @@ function QuestionForm({ question, nextOrder, onClose, onSaved }: QuestionFormPro
       if (insErr) { setError(insErr.message); setSaving(false); return; }
     }
     setSaving(false);
+    toast.success(question ? 'Pergunta atualizada.' : 'Pergunta criada.');
     onSaved();
   }
 
@@ -273,8 +278,8 @@ function QuestionForm({ question, nextOrder, onClose, onSaved }: QuestionFormPro
       >
         <div className="space-y-2">
           <Label>Pergunta *</Label>
-          <textarea
-            className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          <Textarea
+            className="min-h-[80px]"
             placeholder="Ex: Voce esta apto para operar?"
             value={label}
             onChange={(e) => setLabel(e.target.value)}
@@ -288,23 +293,19 @@ function QuestionForm({ question, nextOrder, onClose, onSaved }: QuestionFormPro
           </div>
           <div className="flex items-end pb-1">
             <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border"
+              <Checkbox
                 checked={active}
-                onChange={(e) => setActive(e.target.checked)}
+                onCheckedChange={(c) => setActive(c === true)}
               />
               Ativa
             </label>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <input
+          <Checkbox
             id="critical"
-            type="checkbox"
-            className="h-4 w-4 rounded border"
             checked={critical}
-            onChange={(e) => setCritical(e.target.checked)}
+            onCheckedChange={(c) => setCritical(c === true)}
           />
           <label htmlFor="critical" className="text-sm">
             Pergunta critica (resposta NAO gera alerta automatico ao gestor)

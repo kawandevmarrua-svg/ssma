@@ -9,6 +9,10 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 import {
   Loader2,
   Route,
@@ -205,6 +209,20 @@ function fillDays(period: Period): string[] {
   return days;
 }
 
+// Gera array de dias YYYY-MM-DD entre 2 datetimes (inclusivo).
+function fillDaysRange(fromIso: string, toIso: string): string[] {
+  const days: string[] = [];
+  const from = new Date(fromIso.slice(0, 10));
+  const to = new Date(toIso.slice(0, 10));
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from > to) return days;
+  const cur = new Date(from);
+  while (cur <= to) {
+    days.push(cur.toISOString().split('T')[0]);
+    cur.setDate(cur.getDate() + 1);
+  }
+  return days;
+}
+
 function fmtKm(km: number): string {
   if (km < 0.01) return '0 m';
   if (km < 1) return `${Math.round(km * 1000)} m`;
@@ -228,7 +246,7 @@ function coerenciaAtividade(travel: TravelMetric | null, durationH: number): { s
   if (speedKmh > 40) {
     return { status: 'velocidade', reason: `Vel. máx ${speedKmh.toFixed(0)} km/h — possível transporte/anomalia` };
   }
-  // Idle: more than 1h of activity but < 0.3 km/h average movement
+  // Parada: more than 1h of activity but < 0.3 km/h average movement
   if (durationH >= 1 && travel.distance_km / Math.max(durationH, 0.1) < 0.3) {
     return { status: 'ociosa', reason: `${travel.distance_km.toFixed(1)} km em ${durationH.toFixed(1)}h — máquina parada` };
   }
@@ -239,14 +257,14 @@ function coerenciaAtividade(travel: TravelMetric | null, durationH: number): { s
 // 'operacional' = trabalho dentro da frente (mov. lento e contínuo)
 // 'deslocamento' = trajeto entre frentes/abastecimento (vel. moderada)
 // 'transporte' = máquina sendo rebocada/transportada (vel. alta)
-// 'idle' = parada com ruído de GPS (mov. ínfimo)
-type TipoKm = 'operacional' | 'deslocamento' | 'transporte' | 'idle';
+// 'parada' = máquina parada com ruído de GPS (mov. ínfimo)
+type TipoKm = 'operacional' | 'deslocamento' | 'transporte' | 'parada';
 
 function classificarTipoKm(travel: TravelMetric, durationH: number): TipoKm {
   const maxKmh = travel.max_speed * 3.6;
   const avgKmh = durationH > 0 ? travel.distance_km / durationH : 0;
   if (maxKmh > 40) return 'transporte';
-  if (avgKmh < 0.3) return 'idle';
+  if (avgKmh < 0.3) return 'parada';
   if (avgKmh >= 0.3 && avgKmh < 8) return 'operacional';
   return 'deslocamento';
 }
@@ -279,6 +297,12 @@ export default function DeslocamentoPage() {
   const [filterOperator, setFilterOperator] = useState('');
   const [filterFrente, setFilterFrente] = useState('');
   const [showHelp, setShowHelp] = useState(false);
+  // Range custom datetime-local (YYYY-MM-DDTHH:mm). Quando ambos setados, sobrepoe o period.
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const customRangeActive = customFrom !== '' && customTo !== '' && customFrom <= customTo;
+  const ACTIVITIES_LIMIT = 2000;
+  const [truncated, setTruncated] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -288,29 +312,33 @@ export default function DeslocamentoPage() {
       setActivities(mock.activities);
       setMetrics(mock.metrics);
       setLocations([]);
+      setTruncated(false);
       setLoading(false);
       return;
     }
 
-    const dateFrom = getDateFrom(period);
-    const dateTo = new Date().toISOString().split('T')[0];
+    const dateFrom = customRangeActive ? customFrom.slice(0, 10) : getDateFrom(period);
+    const dateTo = customRangeActive ? customTo.slice(0, 10) : new Date().toISOString().split('T')[0];
 
     const [actRes, metRes, locRes] = await Promise.all([
       supabase
         .from('activities')
         .select('id, date, location, description, start_time, end_time, equipment_tag, operator_id, activity_type_id, profiles(full_name), activity_types(code, description)')
         .gte('date', dateFrom)
+        .lte('date', dateTo)
         .order('date', { ascending: false })
-        .limit(2000),
+        .limit(ACTIVITIES_LIMIT),
       supabase.rpc('get_activity_travel_metrics', { p_from: dateFrom, p_to: dateTo }),
       supabase.from('locations').select('id, name, latitude, longitude').eq('active', true),
     ]);
 
-    setActivities((actRes.data as ActivityRow[] | null) ?? []);
+    const acts = (actRes.data as ActivityRow[] | null) ?? [];
+    setActivities(acts);
     setMetrics((metRes.data as TravelMetric[] | null) ?? []);
     setLocations((locRes.data as LocationRow[] | null) ?? []);
+    setTruncated(acts.length >= ACTIVITIES_LIMIT);
     setLoading(false);
-  }, [supabase, period]);
+  }, [supabase, period, customRangeActive, customFrom, customTo]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -348,19 +376,33 @@ export default function DeslocamentoPage() {
   // ── Filtered merged ──
 
   const filteredMerged = useMemo(() => {
+    const fromMs = customRangeActive ? new Date(customFrom).getTime() : null;
+    const toMs = customRangeActive ? new Date(customTo).getTime() : null;
     return merged.filter((a) => {
       if (filterOperator && a.operator_id !== filterOperator) return false;
       if (filterFrente && a.location !== filterFrente) return false;
+      if (fromMs !== null && toMs !== null) {
+        const ref = a.start_time ? new Date(a.start_time).getTime() : new Date(a.date).getTime();
+        if (Number.isNaN(ref)) return false;
+        if (ref < fromMs || ref > toMs) return false;
+      }
       return true;
     });
-  }, [merged, filterOperator, filterFrente]);
+  }, [merged, filterOperator, filterFrente, customRangeActive, customFrom, customTo]);
 
   // Only activities with tracking data
   const tracked = useMemo(() => filteredMerged.filter((a) => a.travel && a.travel.point_count > 1), [filteredMerged]);
 
   // ── KPIs ──
 
-  const periodDays = periodToDays(period);
+  // Quando range custom ativo, periodDays cobre exatamente os dias do range (min 1).
+  const periodDays = useMemo(() => {
+    if (customRangeActive) {
+      const ms = new Date(customTo).getTime() - new Date(customFrom).getTime();
+      return Math.max(1, Math.ceil(ms / (24 * 3600 * 1000)));
+    }
+    return periodToDays(period);
+  }, [customRangeActive, customFrom, customTo, period]);
 
   const kpis = useMemo(() => {
     const totalKm = tracked.reduce((s, a) => s + (a.travel?.distance_km ?? 0), 0);
@@ -373,8 +415,8 @@ export default function DeslocamentoPage() {
     const kmPerDay = totalKm / periodDays;
 
     // Segmenta km por tipo
-    let kmOperacional = 0, kmDeslocamento = 0, kmTransporte = 0, kmIdle = 0;
-    let countOperacional = 0, countDeslocamento = 0, countTransporte = 0, countIdle = 0;
+    let kmOperacional = 0, kmDeslocamento = 0, kmTransporte = 0, kmParada = 0;
+    let countOperacional = 0, countDeslocamento = 0, countTransporte = 0, countParada = 0;
     for (const a of tracked) {
       if (!a.travel) continue;
       const dh = durationHours(a.start_time, a.end_time);
@@ -382,23 +424,26 @@ export default function DeslocamentoPage() {
       if (tipo === 'operacional') { kmOperacional += a.travel.distance_km; countOperacional++; }
       else if (tipo === 'deslocamento') { kmDeslocamento += a.travel.distance_km; countDeslocamento++; }
       else if (tipo === 'transporte') { kmTransporte += a.travel.distance_km; countTransporte++; }
-      else { kmIdle += a.travel.distance_km; countIdle++; }
+      else { kmParada += a.travel.distance_km; countParada++; }
     }
     const speedAlerts = countTransporte;
-    const idleCount = countIdle;
+    const paradaCount = countParada;
 
     return {
       totalKm, avgKm, maxSpeed,
       trackedCount: tracked.length, totalCount: filteredMerged.length,
-      operators: operatorCount, trackingPct, kmPerDay, speedAlerts, idleCount,
-      kmOperacional, kmDeslocamento, kmTransporte, kmIdle,
-      countOperacional, countDeslocamento, countTransporte, countIdle,
+      operators: operatorCount, trackingPct, kmPerDay, speedAlerts, paradaCount,
+      kmOperacional, kmDeslocamento, kmTransporte, kmParada,
+      countOperacional, countDeslocamento, countTransporte, countParada,
     };
   }, [tracked, filteredMerged, periodDays]);
 
   // ── Km per day (timeline) ──
 
-  const days = useMemo(() => fillDays(period), [period]);
+  const days = useMemo(
+    () => (customRangeActive ? fillDaysRange(customFrom, customTo) : fillDays(period)),
+    [customRangeActive, customFrom, customTo, period],
+  );
 
   const kmByDay = useMemo(() => {
     const map: Record<string, number> = {};
@@ -412,8 +457,8 @@ export default function DeslocamentoPage() {
   // Daily km split by movement type — for stacked area chart
   const kmByDayStacked = useMemo(() => {
     const fmtDay = (iso: string) => { const [, m, d] = iso.split('-'); return `${d}/${m}`; };
-    const byDay = new Map<string, { operacional: number; deslocamento: number; transporte: number; idle: number }>();
-    days.forEach((d) => byDay.set(d, { operacional: 0, deslocamento: 0, transporte: 0, idle: 0 }));
+    const byDay = new Map<string, { operacional: number; deslocamento: number; transporte: number; parada: number }>();
+    days.forEach((d) => byDay.set(d, { operacional: 0, deslocamento: 0, transporte: 0, parada: 0 }));
     tracked.forEach((a) => {
       if (!a.travel) return;
       const bucket = byDay.get(a.date);
@@ -429,7 +474,7 @@ export default function DeslocamentoPage() {
         Operacional: Math.round(b.operacional * 10) / 10,
         Deslocamento: Math.round(b.deslocamento * 10) / 10,
         Transporte: Math.round(b.transporte * 10) / 10,
-        Idle: Math.round(b.idle * 10) / 10,
+        Parada: Math.round(b.parada * 10) / 10,
       };
     });
   }, [tracked, days]);
@@ -526,9 +571,9 @@ export default function DeslocamentoPage() {
         <div>
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight flex items-center gap-2">
             Deslocamento
-            <button onClick={() => setShowHelp(!showHelp)} className="text-muted-foreground hover:text-foreground transition-colors">
+            <Button variant="ghost" size="icon" onClick={() => setShowHelp(!showHelp)} className="h-7 w-7 text-muted-foreground hover:text-foreground">
               <HelpCircle className="h-5 w-5" />
-            </button>
+            </Button>
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground">
             Distancia percorrida e metricas de movimentacao por atividade.
@@ -543,9 +588,9 @@ export default function DeslocamentoPage() {
           <CardContent className="pt-4 pb-4">
             <div className="flex justify-between items-start mb-3">
               <h3 className="font-bold text-sm">O que esta pagina mostra?</h3>
-              <button onClick={() => setShowHelp(false)} className="text-muted-foreground hover:text-foreground">
+              <Button variant="ghost" size="icon" onClick={() => setShowHelp(false)} className="h-6 w-6 text-muted-foreground hover:text-foreground">
                 <X className="h-4 w-4" />
-              </button>
+              </Button>
             </div>
             <p className="text-sm text-muted-foreground mb-3">
               Analisa a <strong>movimentacao fisica</strong> de operadores e maquinas durante as atividades, usando dados de GPS e apontamentos de horas.
@@ -561,7 +606,7 @@ export default function DeslocamentoPage() {
               </div>
               <div className="bg-background rounded-lg p-3 border">
                 <p className="font-bold text-violet-700 mb-1">Tipo de Km</p>
-                <p className="text-muted-foreground">Classifica a distancia em operacional (trabalho), deslocamento (entre frentes), transporte (reboque) e idle (parado).</p>
+                <p className="text-muted-foreground">Classifica a distancia em operacional (trabalho), deslocamento (entre frentes), transporte (reboque) e parada (maquina parada).</p>
               </div>
             </div>
             <div className="mt-3 text-xs text-muted-foreground">
@@ -594,14 +639,67 @@ export default function DeslocamentoPage() {
               <option key={f} value={f}>{f}</option>
             ))}
           </select>
-          {(filterOperator || filterFrente) && (
-            <button
-              onClick={() => { setFilterOperator(''); setFilterFrente(''); }}
-              className="text-xs text-muted-foreground hover:text-foreground underline"
+          <div className="flex items-center gap-2 rounded-md border border-border bg-background px-2 py-1 text-xs">
+            <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
+            <label className="flex items-center gap-1">
+              <span className="text-muted-foreground">De</span>
+              <input
+                type="datetime-local"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                className="bg-transparent text-xs outline-none"
+              />
+            </label>
+            <span className="text-muted-foreground">→</span>
+            <label className="flex items-center gap-1">
+              <span className="text-muted-foreground">Ate</span>
+              <input
+                type="datetime-local"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+                className="bg-transparent text-xs outline-none"
+              />
+            </label>
+            {(customFrom || customTo) && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => { setCustomFrom(''); setCustomTo(''); }}
+                className="ml-1 h-5 w-5 text-muted-foreground hover:text-foreground"
+                title="Limpar range"
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            )}
+          </div>
+          {customRangeActive && (
+            <span className="text-xs text-blue-700 font-medium">Range custom ativo (sobrepoe periodo)</span>
+          )}
+          {(filterOperator || filterFrente || customFrom || customTo) && (
+            <Button
+              variant="link"
+              size="sm"
+              onClick={() => {
+                setFilterOperator('');
+                setFilterFrente('');
+                setCustomFrom('');
+                setCustomTo('');
+              }}
+              className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground"
             >
               Limpar filtros
-            </button>
+            </Button>
           )}
+        </div>
+      )}
+
+      {!loading && truncated && (
+        <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+          <span>
+            Mostrando apenas as <strong>{ACTIVITIES_LIMIT}</strong> atividades mais recentes do periodo.
+            Resultado truncado — estreite o range de datas ou filtre por operador/frente para ver tudo.
+          </span>
         </div>
       )}
 
@@ -617,7 +715,7 @@ export default function DeslocamentoPage() {
               { label: 'Total Atividades', value: String(kpis.totalCount), icon: Route, color: 'text-foreground', hint: `${kpis.totalCount} apontamentos no periodo` },
               { label: 'Com Rastreamento', value: `${kpis.trackedCount} (${kpis.trackingPct}%)`, icon: Navigation, color: 'text-blue-600', hint: 'cobertura efetiva do app movel' },
               { label: `Km Medio/Dia (${periodDays}d)`, value: fmtKm(kpis.kmPerDay), icon: CalendarIcon, color: 'text-teal-600', hint: 'intensidade diaria de movimentacao' },
-              { label: 'Operadores', value: String(kpis.operators), icon: User, color: 'text-violet-600', hint: 'distintos com GPS no periodo' },
+              { label: 'Operadores c/ GPS', value: String(kpis.operators), icon: User, color: 'text-violet-600', hint: 'distintos com rastreamento no periodo' },
             ].map(({ label, value, icon: Icon, color, hint }) => (
               <Card key={label}>
                 <CardContent className="p-4">
@@ -626,7 +724,7 @@ export default function DeslocamentoPage() {
                     <span className="text-xs text-muted-foreground">{label}</span>
                   </div>
                   <p className={`text-2xl font-bold ${color}`}>{value}</p>
-                  <p className="text-[10px] text-muted-foreground mt-1">{hint}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{hint}</p>
                 </CardContent>
               </Card>
             ))}
@@ -652,7 +750,7 @@ export default function DeslocamentoPage() {
                       </div>
                       <div className="min-w-0">
                         <p className="text-xs font-medium truncate">{row.profiles?.full_name}</p>
-                        <p className="text-[10px] text-muted-foreground">{formatDate(row.date)} - {row.location}</p>
+                        <p className="text-xs text-muted-foreground">{formatDate(row.date)} - {row.location}</p>
                       </div>
                     </div>
                   ))}
@@ -673,7 +771,7 @@ export default function DeslocamentoPage() {
                   <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /><span className="text-emerald-700 font-semibold">{fmtKm(kpis.kmOperacional)}</span><span className="text-muted-foreground">operacional</span></span>
                   <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-500" /><span className="text-blue-700 font-semibold">{fmtKm(kpis.kmDeslocamento)}</span><span className="text-muted-foreground">deslocamento</span></span>
                   <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-500" /><span className="text-red-700 font-semibold">{fmtKm(kpis.kmTransporte)}</span><span className="text-muted-foreground">transporte</span></span>
-                  <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500" /><span className="text-amber-700 font-semibold">{fmtKm(kpis.kmIdle)}</span><span className="text-muted-foreground">idle</span></span>
+                  <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500" /><span className="text-amber-700 font-semibold">{fmtKm(kpis.kmParada)}</span><span className="text-muted-foreground">parada</span></span>
                 </div>
               </div>
             </CardHeader>
@@ -698,7 +796,7 @@ export default function DeslocamentoPage() {
                         <stop offset="0%" stopColor="#ef4444" stopOpacity={0.8} />
                         <stop offset="100%" stopColor="#ef4444" stopOpacity={0.25} />
                       </linearGradient>
-                      <linearGradient id="g-idle" x1="0" y1="0" x2="0" y2="1">
+                      <linearGradient id="g-parada" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.8} />
                         <stop offset="100%" stopColor="#f59e0b" stopOpacity={0.25} />
                       </linearGradient>
@@ -713,7 +811,7 @@ export default function DeslocamentoPage() {
                     <Area type="monotone" dataKey="Operacional" stackId="1" stroke="#10b981" strokeWidth={2} fill="url(#g-operacional)" />
                     <Area type="monotone" dataKey="Deslocamento" stackId="1" stroke="#3b82f6" strokeWidth={2} fill="url(#g-deslocamento)" />
                     <Area type="monotone" dataKey="Transporte" stackId="1" stroke="#ef4444" strokeWidth={2} fill="url(#g-transporte)" />
-                    <Area type="monotone" dataKey="Idle" stackId="1" stroke="#f59e0b" strokeWidth={2} fill="url(#g-idle)" />
+                    <Area type="monotone" dataKey="Parada" stackId="1" stroke="#f59e0b" strokeWidth={2} fill="url(#g-parada)" />
                   </AreaChart>
                 </ResponsiveContainer>
               )}
@@ -780,26 +878,30 @@ export default function DeslocamentoPage() {
                     )}
                   </CardDescription>
                 </div>
-                <button
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={handleExport}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted transition-colors shrink-0"
+                  className="shrink-0 gap-1.5 text-xs text-muted-foreground"
                 >
                   <Download className="h-3.5 w-3.5" />
                   Exportar CSV
-                </button>
+                </Button>
               </div>
             </CardHeader>
             <CardContent>
               <div className="flex gap-2 mb-4">
                 {(['date', 'distance'] as const).map((s) => (
                   <button
+                    type="button"
                     key={s}
                     onClick={() => setSortBy(s)}
-                    className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
+                    className={cn(
+                      'rounded-full px-3 py-1 text-xs font-medium border transition-colors',
                       sortBy === s
                         ? 'bg-primary text-primary-foreground border-primary'
-                        : 'bg-background text-muted-foreground border-border hover:bg-muted'
-                    }`}
+                        : 'bg-background text-muted-foreground border-border hover:bg-muted',
+                    )}
                   >
                     {s === 'date' ? 'Por data' : 'Por distancia'}
                   </button>
@@ -815,23 +917,23 @@ export default function DeslocamentoPage() {
                 </p>
               ) : (
                 <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
-                  <table className="w-full text-sm">
-                    <thead className="sticky top-0 bg-background z-10">
-                      <tr className="border-b text-left text-muted-foreground">
-                        <th className="py-2 pr-4 font-medium">Coerencia</th>
-                        <th className="py-2 pr-4 font-medium">Data</th>
-                        <th className="py-2 pr-4 font-medium">Operador</th>
-                        <th className="py-2 pr-4 font-medium">Atividade</th>
-                        <th className="py-2 pr-4 font-medium">Frente</th>
-                        <th className="py-2 pr-4 font-medium">Equipamento</th>
-                        <th className="py-2 pr-4 font-medium">Horario</th>
-                        <th className="py-2 pr-4 font-medium">Duracao</th>
-                        <th className="py-2 pr-4 font-medium">Distancia</th>
-                        <th className="py-2 pr-4 font-medium" title="Horario do primeiro movimento detectado pelo GPS">Inicio GPS</th>
-                        <th className="py-2 font-medium">Vel. Max</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                  <Table className="text-sm">
+                    <TableHeader className="sticky top-0 bg-background z-10">
+                      <TableRow className="border-b text-left text-muted-foreground hover:bg-transparent">
+                        <TableHead className="py-2 pr-4 font-medium">Coerencia</TableHead>
+                        <TableHead className="py-2 pr-4 font-medium">Data</TableHead>
+                        <TableHead className="py-2 pr-4 font-medium">Operador</TableHead>
+                        <TableHead className="py-2 pr-4 font-medium">Atividade</TableHead>
+                        <TableHead className="py-2 pr-4 font-medium">Frente</TableHead>
+                        <TableHead className="py-2 pr-4 font-medium">Equipamento</TableHead>
+                        <TableHead className="py-2 pr-4 font-medium">Horario</TableHead>
+                        <TableHead className="py-2 pr-4 font-medium">Duracao</TableHead>
+                        <TableHead className="py-2 pr-4 font-medium">Distancia</TableHead>
+                        <TableHead className="py-2 pr-4 font-medium" title="Horario do primeiro movimento detectado pelo GPS">Inicio GPS</TableHead>
+                        <TableHead className="py-2 font-medium">Vel. Max</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
                       {tableData.map((row) => {
                         const t = row.travel;
                         const hasData = !!(t && t.point_count > 1);
@@ -845,27 +947,27 @@ export default function DeslocamentoPage() {
                         };
                         const style = coerStyle[coer.status];
                         return (
-                          <tr key={row.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
-                            <td className="py-2.5 pr-4">
-                              <span title={coer.reason} className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${style.cls} cursor-help`}>
+                          <TableRow key={row.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                            <TableCell className="py-2.5 pr-4">
+                              <Badge variant="plain" title={coer.reason} className={cn('border cursor-help', style.cls)}>
                                 {style.label}
-                              </span>
-                            </td>
-                            <td className="py-2.5 pr-4 text-xs whitespace-nowrap">
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="py-2.5 pr-4 text-xs whitespace-nowrap">
                               {formatDate(row.date)}
-                            </td>
-                            <td className="py-2.5 pr-4">
+                            </TableCell>
+                            <TableCell className="py-2.5 pr-4">
                               <div className="flex items-center gap-2">
-                                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-100 text-[10px] font-bold text-blue-700">
+                                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">
                                   {(row.profiles?.full_name || 'O').charAt(0).toUpperCase()}
                                 </div>
                                 <span className="font-medium text-sm">{row.profiles?.full_name || 'Operador'}</span>
                               </div>
-                            </td>
-                            <td className="py-2.5 pr-4">
+                            </TableCell>
+                            <TableCell className="py-2.5 pr-4">
                               <div className="flex items-center gap-1.5">
                                 {row.activity_types?.code && (
-                                  <span className="inline-flex shrink-0 items-center rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-mono font-bold text-primary">
+                                  <span className="inline-flex shrink-0 items-center rounded bg-primary/10 px-1.5 py-0.5 text-xs font-mono font-bold text-primary">
                                     {row.activity_types.code}
                                   </span>
                                 )}
@@ -873,23 +975,23 @@ export default function DeslocamentoPage() {
                                   {row.description || '--'}
                                 </span>
                               </div>
-                            </td>
-                            <td className="py-2.5 pr-4 text-xs text-muted-foreground">
+                            </TableCell>
+                            <TableCell className="py-2.5 pr-4 text-xs text-muted-foreground">
                               <div className="flex items-center gap-1">
                                 <MapPin className="h-3 w-3 shrink-0" />
                                 {row.location || '--'}
                               </div>
-                            </td>
-                            <td className="py-2.5 pr-4 text-xs text-muted-foreground font-mono">
+                            </TableCell>
+                            <TableCell className="py-2.5 pr-4 text-xs text-muted-foreground font-mono">
                               {row.equipment_tag || '--'}
-                            </td>
-                            <td className="py-2.5 pr-4 text-xs whitespace-nowrap text-muted-foreground">
+                            </TableCell>
+                            <TableCell className="py-2.5 pr-4 text-xs whitespace-nowrap text-muted-foreground">
                               {formatTime(row.start_time)} — {formatTime(row.end_time)}
-                            </td>
-                            <td className="py-2.5 pr-4 text-xs whitespace-nowrap">
+                            </TableCell>
+                            <TableCell className="py-2.5 pr-4 text-xs whitespace-nowrap">
                               {getDuration(row.start_time, row.end_time) || '--'}
-                            </td>
-                            <td className="py-2.5 pr-4">
+                            </TableCell>
+                            <TableCell className="py-2.5 pr-4">
                               {hasData ? (
                                 <div className="flex flex-col gap-0.5">
                                   <span className={`inline-flex items-center gap-1 font-semibold text-sm ${coer.status === 'ociosa' ? 'text-amber-700' : 'text-emerald-700'}`}>
@@ -902,20 +1004,20 @@ export default function DeslocamentoPage() {
                                       operacional: { label: 'operacional', cls: 'text-emerald-600' },
                                       deslocamento: { label: 'deslocamento', cls: 'text-blue-600' },
                                       transporte: { label: 'transporte', cls: 'text-red-600' },
-                                      idle: { label: 'idle', cls: 'text-amber-600' },
+                                      parada: { label: 'parada', cls: 'text-amber-600' },
                                     };
                                     const ts = tipoStyle[tipoKm];
-                                    return <span className={`text-[10px] font-medium ${ts.cls}`}>{ts.label}</span>;
+                                    return <span className={`text-xs font-medium ${ts.cls}`}>{ts.label}</span>;
                                   })()}
                                 </div>
                               ) : (
                                 <span className="text-xs text-muted-foreground/50">--</span>
                               )}
-                            </td>
-                            <td className="py-2.5 pr-4 text-xs whitespace-nowrap text-muted-foreground">
+                            </TableCell>
+                            <TableCell className="py-2.5 pr-4 text-xs whitespace-nowrap text-muted-foreground">
                               {hasData && t!.first_move_at ? formatTime(t!.first_move_at) : '--'}
-                            </td>
-                            <td className="py-2.5 text-xs whitespace-nowrap">
+                            </TableCell>
+                            <TableCell className="py-2.5 text-xs whitespace-nowrap">
                               {hasData ? (
                                 <span className={t!.max_speed * 3.6 > 40 ? 'text-red-600 font-semibold' : 'text-muted-foreground'}>
                                   {fmtSpeed(t!.max_speed)}
@@ -923,12 +1025,12 @@ export default function DeslocamentoPage() {
                               ) : (
                                 <span className="text-muted-foreground/50">--</span>
                               )}
-                            </td>
-                          </tr>
+                            </TableCell>
+                          </TableRow>
                         );
                       })}
-                    </tbody>
-                  </table>
+                    </TableBody>
+                  </Table>
                 </div>
               )}
             </CardContent>

@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
+import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table';
 import {
   Card,
   CardContent,
@@ -696,19 +699,17 @@ export default function DashboardPage() {
                         )}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                              item.type === 'checklist' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
-                            }`}>
+                            <Badge variant="plain" className={cn('border-transparent', item.type === 'checklist' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700')}>
                               {item.type === 'checklist' ? 'Checklist' : 'Atividade'}
-                            </span>
+                            </Badge>
                             <span className="text-sm font-medium group-hover:underline">{item.label}</span>
                             <span className="text-xs text-muted-foreground">
                               {item.operator} · {new Date(item.date).toLocaleDateString('pt-BR')}
                             </span>
                             {item.badge && (
-                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${item.badgeColor}`}>
+                              <Badge variant="plain" className={cn('border-transparent', item.badgeColor)}>
                                 {item.badge}
-                              </span>
+                              </Badge>
                             )}
                           </div>
                           {item.notes ? (
@@ -791,41 +792,39 @@ export default function DashboardPage() {
 
                 return (
                   <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b text-left text-muted-foreground">
-                          <th className="py-2 pr-4 font-medium">Origem</th>
-                          <th className="py-2 pr-4 font-medium">Operador</th>
-                          <th className="py-2 pr-4 font-medium">Equipamento</th>
-                          <th className="py-2 pr-4 font-medium">Irregularidade</th>
-                          <th className="py-2 pr-4 font-medium">Secao</th>
-                          <th className="py-2 pr-4 font-medium">Data</th>
-                          <th className="py-2 pr-4 font-medium">Obs.</th>
-                          <th className="py-2"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
+                    <Table className="text-sm">
+                      <TableHeader>
+                        <TableRow className="border-b text-left text-muted-foreground hover:bg-transparent">
+                          <TableHead className="py-2 pr-4 font-medium">Origem</TableHead>
+                          <TableHead className="py-2 pr-4 font-medium">Operador</TableHead>
+                          <TableHead className="py-2 pr-4 font-medium">Equipamento</TableHead>
+                          <TableHead className="py-2 pr-4 font-medium">Irregularidade</TableHead>
+                          <TableHead className="py-2 pr-4 font-medium">Secao</TableHead>
+                          <TableHead className="py-2 pr-4 font-medium">Data</TableHead>
+                          <TableHead className="py-2 pr-4 font-medium">Obs.</TableHead>
+                          <TableHead className="py-2"></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
                         {rows.map((row) => (
-                          <tr key={row.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
-                            <td className="py-2.5 pr-4">
-                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                                row.type === 'checklist' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
-                              }`}>
+                          <TableRow key={row.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                            <TableCell className="py-2.5 pr-4">
+                              <Badge variant="plain" className={cn('border-transparent', row.type === 'checklist' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700')}>
                                 {row.type === 'checklist' ? 'Checklist' : 'Atividade'}
-                              </span>
-                            </td>
-                            <td className="py-2.5 pr-4">
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="py-2.5 pr-4">
                               <div className="flex items-center gap-2">
-                                <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+                                <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
                                   row.type === 'checklist' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'
                                 }`}>
                                   {row.operator.charAt(0).toUpperCase()}
                                 </div>
                                 <span className="font-medium">{row.operator}</span>
                               </div>
-                            </td>
-                            <td className="py-2.5 pr-4 text-muted-foreground">{row.equipment}</td>
-                            <td className="py-2.5 pr-4">
+                            </TableCell>
+                            <TableCell className="py-2.5 pr-4 text-muted-foreground">{row.equipment}</TableCell>
+                            <TableCell className="py-2.5 pr-4">
                               <div className="flex items-center gap-1.5">
                                 {row.type === 'checklist' ? (
                                   <XCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
@@ -836,26 +835,26 @@ export default function DashboardPage() {
                                   {row.issue}
                                 </span>
                               </div>
-                            </td>
-                            <td className="py-2.5 pr-4 text-muted-foreground text-xs">{row.section}</td>
-                            <td className="py-2.5 pr-4 text-muted-foreground text-xs whitespace-nowrap">
+                            </TableCell>
+                            <TableCell className="py-2.5 pr-4 text-muted-foreground text-xs">{row.section}</TableCell>
+                            <TableCell className="py-2.5 pr-4 text-muted-foreground text-xs whitespace-nowrap">
                               {new Date(row.date).toLocaleDateString('pt-BR')}
-                            </td>
-                            <td className="py-2.5 pr-4 text-xs text-muted-foreground max-w-[150px] truncate" title={row.notes || ''}>
+                            </TableCell>
+                            <TableCell className="py-2.5 pr-4 text-xs text-muted-foreground max-w-[150px] truncate" title={row.notes || ''}>
                               {row.notes || '—'}
-                            </td>
-                            <td className="py-2.5">
+                            </TableCell>
+                            <TableCell className="py-2.5">
                               <Link
                                 href={row.linkHref}
                                 className="text-xs text-primary font-medium underline whitespace-nowrap"
                               >
                                 Ver {row.type} →
                               </Link>
-                            </td>
-                          </tr>
+                            </TableCell>
+                          </TableRow>
                         ))}
-                      </tbody>
-                    </table>
+                      </TableBody>
+                    </Table>
                   </div>
                 );
               })()}

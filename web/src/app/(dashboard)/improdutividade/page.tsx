@@ -5,6 +5,8 @@ import {
   Card,
   CardContent,
 } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import {
   Loader2,
   User,
@@ -185,7 +187,7 @@ function StackedBar({ cat, totalH }: { cat: TimeCategory; totalH: number }) {
             title={`${CAT_LABELS[item.key]}: ${item.value.toFixed(1)}h (${pct.toFixed(0)}%)`}
           >
             {pct > 8 && (
-              <span className="text-[9px] text-white font-bold">{pct.toFixed(0)}%</span>
+              <span className="text-xs text-white font-bold">{pct.toFixed(0)}%</span>
             )}
           </div>
         );
@@ -215,10 +217,10 @@ function DailyStackedChart({ daily }: { daily: OperatorAnalysis['daily'] }) {
                 />
               ))}
             </div>
-            <span className="text-[9px] text-muted-foreground leading-none">
+            <span className="text-xs text-muted-foreground leading-none">
               {d.date.slice(8)}/{d.date.slice(5, 7)}
             </span>
-            <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 hidden group-hover:block z-10 bg-background border rounded-lg shadow-lg px-2 py-1.5 text-[10px] whitespace-nowrap">
+            <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 hidden group-hover:block z-10 bg-background border rounded-lg shadow-lg px-2 py-1.5 text-xs whitespace-nowrap">
               <p className="font-semibold">{d.date.slice(8)}/{d.date.slice(5, 7)}</p>
               <p className="text-emerald-600">Produtivo: {d.cat.produtivo.toFixed(1)}h</p>
               <p className="text-amber-600">Planejada: {d.cat.paradaPlanejada.toFixed(1)}h</p>
@@ -242,14 +244,14 @@ function TopActivities({ items }: { items: OperatorAnalysis['topActivities'] }) 
       <div className="space-y-1.5">
         {items.map((a) => (
           <div key={a.code} className="flex items-center gap-2">
-            <span className="text-[10px] font-mono font-bold text-muted-foreground w-7 shrink-0">{a.code}</span>
+            <span className="text-xs font-mono font-bold text-muted-foreground w-7 shrink-0">{a.code}</span>
             <div className="flex-1 h-4 bg-muted/60 rounded-full overflow-hidden">
               <div
                 className={`h-full rounded-full ${a.code.startsWith('S') ? 'bg-emerald-400' : a.code === 'P11' || a.code === 'P12' ? 'bg-violet-400' : 'bg-amber-400'}`}
                 style={{ width: `${(a.hours / max) * 100}%` }}
               />
             </div>
-            <span className="text-[10px] font-bold text-muted-foreground w-10 text-right shrink-0">{a.hours.toFixed(1)}h</span>
+            <span className="text-xs font-bold text-muted-foreground w-10 text-right shrink-0">{a.hours.toFixed(1)}h</span>
           </div>
         ))}
       </div>
@@ -346,9 +348,9 @@ export default function ImprodutividadePage() {
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <TrendingDown className="h-6 w-6 text-amber-600" />
             Analise de Improdutividade
-            <button onClick={() => setShowHelp(!showHelp)} className="ml-1 text-muted-foreground hover:text-foreground transition-colors">
+            <Button variant="ghost" size="icon" onClick={() => setShowHelp(!showHelp)} className="ml-1 h-7 w-7 text-muted-foreground hover:text-foreground">
               <HelpCircle className="h-5 w-5" />
-            </button>
+            </Button>
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
             Distribuicao do turno por operador: produtivo vs paradas vs locomocao apontada
@@ -356,12 +358,14 @@ export default function ImprodutividadePage() {
         </div>
         <div className="flex items-center gap-2">
           <PeriodSelector value={period} onChange={setPeriod} />
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={() => exportCSV(operators)}
-            className="ml-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+            className="ml-2 gap-1.5"
           >
             <Download className="h-3.5 w-3.5" /> CSV
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -371,9 +375,9 @@ export default function ImprodutividadePage() {
           <CardContent className="pt-4 pb-4">
             <div className="flex justify-between items-start mb-3">
               <h3 className="font-bold text-sm">O que esta pagina mostra?</h3>
-              <button onClick={() => setShowHelp(false)} className="text-muted-foreground hover:text-foreground">
+              <Button variant="ghost" size="icon" onClick={() => setShowHelp(false)} className="h-6 w-6 text-muted-foreground hover:text-foreground">
                 <X className="h-4 w-4" />
-              </button>
+              </Button>
             </div>
             <p className="text-sm text-muted-foreground mb-3">
               Mostra como cada operador distribui seu turno de trabalho. O objetivo e identificar <strong>onde o tempo esta sendo perdido</strong>.
@@ -438,7 +442,7 @@ export default function ImprodutividadePage() {
               <div>
                 <p className="text-xs text-muted-foreground">Horas N-Planejadas</p>
                 <p className="text-2xl font-bold text-red-700">{totalImprodH.toFixed(0)}h</p>
-                <p className="text-[10px] text-muted-foreground">paradas nao previstas</p>
+                <p className="text-xs text-muted-foreground">paradas nao previstas</p>
               </div>
             </div>
           </CardContent>
@@ -453,7 +457,7 @@ export default function ImprodutividadePage() {
               <div>
                 <p className="text-xs text-muted-foreground">Locomocao Apontada Total</p>
                 <p className="text-2xl font-bold text-violet-700">{totalDeslocH.toFixed(0)}h</p>
-                <p className="text-[10px] text-muted-foreground">P11 + P12</p>
+                <p className="text-xs text-muted-foreground">P11 + P12</p>
               </div>
             </div>
           </CardContent>
@@ -468,7 +472,7 @@ export default function ImprodutividadePage() {
               <div>
                 <p className="text-xs text-muted-foreground">Melhor Operador</p>
                 <p className="text-sm font-bold text-blue-700 truncate">{bestOp?.name.split(' ').slice(0, 2).join(' ')}</p>
-                <p className="text-[10px] text-emerald-600 font-bold">{bestOp?.pctProdutivo.toFixed(1)}% produtivo</p>
+                <p className="text-xs text-emerald-600 font-bold">{bestOp?.pctProdutivo.toFixed(1)}% produtivo</p>
               </div>
             </div>
           </CardContent>
@@ -480,7 +484,7 @@ export default function ImprodutividadePage() {
         <CardContent className="pt-4 pb-3">
           <p className="text-xs font-semibold text-muted-foreground mb-2">Distribuicao Geral da Equipe</p>
           <StackedBar cat={fleetTotal} totalH={fleetTotalH} />
-          <div className="flex flex-wrap gap-4 mt-2 text-[10px]">
+          <div className="flex flex-wrap gap-4 mt-2 text-xs">
             {(Object.keys(COLORS) as (keyof typeof COLORS)[]).map((key) => {
               const h = fleetTotal[key];
               const pct = fleetTotalH > 0 ? (h / fleetTotalH) * 100 : 0;
@@ -505,11 +509,13 @@ export default function ImprodutividadePage() {
           { key: 'nome' as const, label: 'Nome' },
         ].map((s) => (
           <button
+            type="button"
             key={s.key}
             onClick={() => setSortBy(s.key)}
-            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-              sortBy === s.key ? 'bg-amber-100 text-amber-700' : 'bg-muted/60 text-muted-foreground hover:bg-muted'
-            }`}
+            className={cn(
+              'px-2.5 py-1 rounded-md text-xs font-medium transition-colors',
+              sortBy === s.key ? 'bg-amber-100 text-amber-700' : 'bg-muted/60 text-muted-foreground hover:bg-muted',
+            )}
           >
             {s.label}
           </button>
@@ -526,6 +532,7 @@ export default function ImprodutividadePage() {
           return (
             <Card key={op.id} className="border overflow-hidden">
               <button
+                type="button"
                 className="w-full text-left"
                 onClick={() => setExpanded(isExpanded ? null : op.id)}
               >
@@ -549,7 +556,7 @@ export default function ImprodutividadePage() {
                     {/* Stacked bar */}
                     <div className="flex-1 min-w-0">
                       <StackedBar cat={op.total} totalH={op.totalH} />
-                      <div className="flex gap-3 mt-1 text-[9px] text-muted-foreground">
+                      <div className="flex gap-3 mt-1 text-xs text-muted-foreground">
                         <span>{op.total.produtivo.toFixed(0)}h prod</span>
                         <span>{op.total.paradaPlanejada.toFixed(0)}h plan</span>
                         <span>{op.total.deslocamento.toFixed(0)}h locom.</span>
@@ -561,7 +568,7 @@ export default function ImprodutividadePage() {
                     <div className="text-right shrink-0 hidden md:block">
                       <p className="text-xs text-muted-foreground">Total</p>
                       <p className="text-lg font-bold">{op.totalH.toFixed(0)}h</p>
-                      <p className="text-[10px] text-muted-foreground">de {op.shiftH}h turno</p>
+                      <p className="text-xs text-muted-foreground">de {op.shiftH}h turno</p>
                     </div>
 
                     <div className="shrink-0 text-muted-foreground">
@@ -581,25 +588,25 @@ export default function ImprodutividadePage() {
                   {/* Context info */}
                   <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
                     <div className="bg-background rounded-lg p-2.5 border">
-                      <p className="text-[10px] text-muted-foreground">Produtivo</p>
+                      <p className="text-xs text-muted-foreground">Produtivo</p>
                       <p className="text-base font-bold text-emerald-600">{op.total.produtivo.toFixed(1)}h</p>
                     </div>
                     <div className="bg-background rounded-lg p-2.5 border">
-                      <p className="text-[10px] text-muted-foreground">Parada Planejada</p>
+                      <p className="text-xs text-muted-foreground">Parada Planejada</p>
                       <p className="text-base font-bold text-amber-600">{op.total.paradaPlanejada.toFixed(1)}h</p>
                     </div>
                     <div className="bg-background rounded-lg p-2.5 border">
-                      <p className="text-[10px] text-muted-foreground">Locomocao Apontada</p>
+                      <p className="text-xs text-muted-foreground">Locomocao Apontada</p>
                       <p className="text-base font-bold text-violet-600">{op.total.deslocamento.toFixed(1)}h</p>
                     </div>
                     <div className="bg-background rounded-lg p-2.5 border">
-                      <p className="text-[10px] text-muted-foreground">N-Planejada</p>
+                      <p className="text-xs text-muted-foreground">N-Planejada</p>
                       <p className="text-base font-bold text-red-600">{op.total.paradaNaoPlanejada.toFixed(1)}h</p>
                     </div>
                   </div>
 
                   {/* Machines + Frentes */}
-                  <div className="mt-3 flex flex-wrap gap-4 text-[10px] text-muted-foreground">
+                  <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
                     <span>
                       <Wrench className="h-3 w-3 inline mr-1" />
                       Maquinas: {op.machines.join(', ')}

@@ -23,6 +23,8 @@ import {
   Wrench,
   Gauge,
   TrendingDown,
+  ClipboardList,
+  BarChart3,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -56,13 +58,22 @@ const navItems: NavItem[] = [
     children: [
       { href: '/deslocamento', label: 'Deslocamento', icon: Route },
       { href: '/analise-maquinas', label: 'Analise Maquinas', icon: Wrench },
+      { href: '/analise-operadores', label: 'Analise Operadores', icon: UserCog },
       { href: '/disponibilidade', label: 'DM & UF', icon: Gauge },
       { href: '/improdutividade', label: 'Improdutividade', icon: TrendingDown },
       { href: '/mapa', label: 'Mapa', icon: Map },
     ],
   },
   { href: '/perguntas-pre-operacao', label: 'Pre-Operacao', icon: HelpCircle },
-  { href: '/inspecao-comportamental', label: 'Inspeção Comportamental', icon: ShieldCheck },
+  {
+    label: 'Inspeção Comportamental',
+    icon: ShieldCheck,
+    children: [
+      { href: '/inspecao-comportamental', label: 'Inspeções', icon: ShieldCheck },
+      { href: '/dashboard-inspecoes', label: 'Dashboard Inspeções', icon: BarChart3 },
+    ],
+  },
+  { href: '/planos-acao', label: 'Planos de Ação', icon: ClipboardList },
   { href: '/organograma', label: 'Organograma', icon: Network },
   { href: '/manutencao', label: 'Manutenção', icon: Wrench },
   { href: '/usuarios', label: 'Usuários', icon: UserCog },
@@ -158,7 +169,7 @@ export function Sidebar() {
                   />
                 </button>
                 {isExpanded && (
-                  <div className="mt-1 ml-7 space-y-1 border-l border-border/60 pl-4">
+                  <div className="mt-1 ml-4 space-y-1 border-l border-border/60 pl-2">
                     {item.children.map(({ href, label, icon: ChildIcon }) => {
                       const active = isActive(pathname, href);
                       return (

@@ -62,8 +62,17 @@ export function QuestionFormModal({ machine, item, nextOrder, supabase, onClose,
     };
 
     if (item) {
-      const { error: upErr } = await supabase.from('machine_checklist_items').update(payload).eq('id', item.id);
+      const { data, error: upErr } = await supabase
+        .from('machine_checklist_items')
+        .update(payload)
+        .eq('id', item.id)
+        .select('id');
       if (upErr) { setError(upErr.message); setSaving(false); return; }
+      if (!data || data.length === 0) {
+        setError('Sem permissao para alterar esta pergunta.');
+        setSaving(false);
+        return;
+      }
     } else {
       const { error: insErr } = await supabase.from('machine_checklist_items').insert(payload);
       if (insErr) { setError(insErr.message); setSaving(false); return; }

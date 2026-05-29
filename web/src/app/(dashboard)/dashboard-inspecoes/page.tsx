@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import {
   Card,
@@ -9,6 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import {
   Loader2,
   ShieldCheck,
@@ -17,7 +19,9 @@ import {
   Eye,
   TrendingUp,
   Users,
+  ExternalLink,
 } from 'lucide-react';
+import { PieChart, BarChart, TimelineChart } from '../dashboard/charts';
 
 type Period = '7d' | '30d' | '90d';
 type Classification = 'safe' | 'attention' | 'critical';
@@ -117,6 +121,8 @@ export default function DashboardInspecoesPage() {
   const [items, setItems] = useState<InspectionItem[]>([]);
   const [deviations, setDeviations] = useState<Deviation[]>([]);
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
+  const [filterObserver, setFilterObserver] = useState('');
+  const [filterOperator, setFilterOperator] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -188,17 +194,45 @@ export default function DashboardInspecoesPage() {
     load();
   }, [load]);
 
+  // ── Filter options ──
+  const observerOptions = useMemo(() => {
+    const ids = [...new Set(inspections.map((i) => i.observer_id))];
+    return ids
+      .map((id) => ({ id, name: profiles[id]?.full_name ?? 'Desconhecido' }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [inspections, profiles]);
+
+  const operatorOptions = useMemo(() => {
+    const ids = [...new Set(inspections.map((i) => i.operator_id))];
+    return ids
+      .map((id) => ({ id, name: profiles[id]?.full_name ?? 'Desconhecido' }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [inspections, profiles]);
+
+  // ── Filtered data ──
+  const filtered = useMemo(() => {
+    let fi = inspections;
+    if (filterObserver) fi = fi.filter((i) => i.observer_id === filterObserver);
+    if (filterOperator) fi = fi.filter((i) => i.operator_id === filterOperator);
+    const ids = new Set(fi.map((i) => i.id));
+    return {
+      inspections: fi,
+      items: items.filter((it) => ids.has(it.inspection_id)),
+      deviations: deviations.filter((d) => ids.has(d.inspection_id)),
+    };
+  }, [inspections, items, deviations, filterObserver, filterOperator]);
+
   // ── Computed stats ──
   const stats = useMemo(() => {
-    const total = inspections.length;
-    const safe = inspections.filter((i) => i.overall_classification === 'safe').length;
-    const attention = inspections.filter((i) => i.overall_classification === 'attention').length;
-    const critical = inspections.filter((i) => i.overall_classification === 'critical').length;
-    const totalDeviations = deviations.length;
-    const openDeviations = deviations.filter((d) => d.status === 'open').length;
+    const total = filtered.inspections.length;
+    const safe = filtered.inspections.filter((i) => i.overall_classification === 'safe').length;
+    const attention = filtered.inspections.filter((i) => i.overall_classification === 'attention').length;
+    const critical = filtered.inspections.filter((i) => i.overall_classification === 'critical').length;
+    const totalDeviations = filtered.deviations.length;
+    const openDeviations = filtered.deviations.filter((d) => d.status === 'open').length;
     const safeRate = total > 0 ? Math.round((safe / total) * 100) : 0;
-    const uniqueObservers = new Set(inspections.map((i) => i.observer_id)).size;
-    const uniqueOperators = new Set(inspections.map((i) => i.operator_id)).size;
+    const uniqueObservers = new Set(filtered.inspections.map((i) => i.observer_id)).size;
+    const uniqueOperators = new Set(filtered.inspections.map((i) => i.operator_id)).size;
     return {
       total,
       safe,
@@ -210,14 +244,14 @@ export default function DashboardInspecoesPage() {
       uniqueObservers,
       uniqueOperators,
     };
-  }, [inspections, deviations]);
+  }, [filtered]);
 
   // NC rate by category
   const ncByCategory = useMemo(() => {
     const catMap: Record<Category, { total: number; nao: number }> = {} as Record<Category, { total: number; nao: number }>;
     const cats = Object.keys(CATEGORY_LABELS) as Category[];
     cats.forEach((c) => (catMap[c] = { total: 0, nao: 0 }));
-    items.forEach((it) => {
+    filtered.items.forEach((it) => {
       if (catMap[it.category]) {
         catMap[it.category].total++;
         if (it.status === 'nao') catMap[it.category].nao++;
@@ -230,12 +264,12 @@ export default function DashboardInspecoesPage() {
       nao: catMap[c].nao,
       rate: catMap[c].total > 0 ? Math.round((catMap[c].nao / catMap[c].total) * 100) : 0,
     }));
-  }, [items]);
+  }, [filtered.items]);
 
   // Deviations by risk level
   const devsByRisk = useMemo(() => {
     const map: Record<RiskLevel, number> = { low: 0, medium: 0, high: 0, critical: 0 };
-    deviations.forEach((d) => {
+    filtered.deviations.forEach((d) => {
       if (map[d.risk_level as RiskLevel] !== undefined) map[d.risk_level as RiskLevel]++;
     });
     return (Object.entries(map) as [RiskLevel, number][]).map(([k, v]) => ({
@@ -244,12 +278,12 @@ export default function DashboardInspecoesPage() {
       count: v,
       color: RISK_COLORS[k],
     }));
-  }, [deviations]);
+  }, [filtered.deviations]);
 
   // Classification distribution
   const classificationDist = useMemo(() => {
     const map: Record<Classification, number> = { safe: 0, attention: 0, critical: 0 };
-    inspections.forEach((i) => {
+    filtered.inspections.forEach((i) => {
       if (i.overall_classification && map[i.overall_classification] !== undefined)
         map[i.overall_classification]++;
     });
@@ -259,25 +293,25 @@ export default function DashboardInspecoesPage() {
       count: v,
       color: CLASSIFICATION_COLORS[k],
     }));
-  }, [inspections]);
+  }, [filtered.inspections]);
 
   // Inspections per day
   const days = useMemo(() => fillDays(period), [period]);
   const inspByDay = useMemo(() => {
     const map: Record<string, number> = {};
-    inspections.forEach((i) => {
+    filtered.inspections.forEach((i) => {
       map[i.date] = (map[i.date] || 0) + 1;
     });
     return map;
-  }, [inspections]);
+  }, [filtered.inspections]);
 
   // Top operators with most deviations
   const topOperatorsDeviations = useMemo(() => {
     const inspMap = new Map<string, string>();
-    inspections.forEach((i) => inspMap.set(i.id, i.operator_id));
+    filtered.inspections.forEach((i) => inspMap.set(i.id, i.operator_id));
 
     const countMap = new Map<string, number>();
-    deviations.forEach((d) => {
+    filtered.deviations.forEach((d) => {
       const opId = inspMap.get(d.inspection_id);
       if (opId) countMap.set(opId, (countMap.get(opId) || 0) + 1);
     });
@@ -289,12 +323,12 @@ export default function DashboardInspecoesPage() {
       }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
-  }, [deviations, inspections, profiles]);
+  }, [filtered.deviations, filtered.inspections, profiles]);
 
   // Top observers
   const topObservers = useMemo(() => {
     const map = new Map<string, number>();
-    inspections.forEach((i) => map.set(i.observer_id, (map.get(i.observer_id) || 0) + 1));
+    filtered.inspections.forEach((i) => map.set(i.observer_id, (map.get(i.observer_id) || 0) + 1));
     return [...map.entries()]
       .map(([id, count]) => ({
         name: profiles[id]?.full_name ?? 'Desconhecido',
@@ -302,7 +336,17 @@ export default function DashboardInspecoesPage() {
       }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
-  }, [inspections, profiles]);
+  }, [filtered.inspections, profiles]);
+
+  const [listClassFilter, setListClassFilter] = useState<'all' | Classification>('all');
+
+  const listedInspections = useMemo(() => {
+    let list = filtered.inspections;
+    if (listClassFilter !== 'all') {
+      list = list.filter((i) => i.overall_classification === listClassFilter);
+    }
+    return list.slice(0, 50);
+  }, [filtered.inspections, listClassFilter]);
 
   const periodLabels: Record<Period, string> = { '7d': '7 dias', '30d': '30 dias', '90d': '90 dias' };
 
@@ -317,7 +361,7 @@ export default function DashboardInspecoesPage() {
             Análise de desvios, conformidade e tendências comportamentais
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {(['7d', '30d', '90d'] as Period[]).map((p) => (
             <button
               key={p}
@@ -331,6 +375,37 @@ export default function DashboardInspecoesPage() {
               {periodLabels[p]}
             </button>
           ))}
+
+          <select
+            value={filterObserver}
+            onChange={(e) => setFilterObserver(e.target.value)}
+            className="rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground"
+          >
+            <option value="">Todos observadores</option>
+            {observerOptions.map((o) => (
+              <option key={o.id} value={o.id}>{o.name}</option>
+            ))}
+          </select>
+
+          <select
+            value={filterOperator}
+            onChange={(e) => setFilterOperator(e.target.value)}
+            className="rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground"
+          >
+            <option value="">Todos observados</option>
+            {operatorOptions.map((o) => (
+              <option key={o.id} value={o.id}>{o.name}</option>
+            ))}
+          </select>
+
+          {(filterObserver || filterOperator) && (
+            <button
+              onClick={() => { setFilterObserver(''); setFilterOperator(''); }}
+              className="rounded-full px-2 py-1.5 text-xs font-medium border border-border text-muted-foreground hover:bg-muted transition-colors"
+            >
+              Limpar filtros
+            </button>
+          )}
         </div>
       </div>
 
@@ -343,15 +418,15 @@ export default function DashboardInspecoesPage() {
           {/* KPIs */}
           <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
             {[
-              { label: 'Total Inspeções', value: stats.total, icon: Eye, color: 'text-foreground' },
-              { label: 'Comportamento Seguro', value: `${stats.safeRate}%`, icon: TrendingUp, color: 'text-emerald-600' },
-              { label: 'Seguros', value: stats.safe, icon: CheckCircle2, color: 'text-emerald-600' },
-              { label: 'Atenção', value: stats.attention, icon: AlertTriangle, color: 'text-yellow-600' },
-              { label: 'Risco', value: stats.critical, icon: ShieldCheck, color: 'text-red-600' },
-              { label: 'Total Desvios', value: stats.totalDeviations, icon: AlertTriangle, color: 'text-red-600' },
-              { label: 'Desvios Abertos', value: stats.openDeviations, icon: AlertTriangle, color: 'text-orange-600' },
-              { label: 'Observadores', value: stats.uniqueObservers, icon: Users, color: 'text-blue-600' },
-              { label: 'Observados', value: stats.uniqueOperators, icon: Users, color: 'text-purple-600' },
+              { label: 'Inspeções realizadas', value: stats.total, icon: Eye, color: 'text-foreground' },
+              { label: '% Comportamento Seguro', value: `${stats.safeRate}%`, icon: TrendingUp, color: 'text-emerald-600' },
+              { label: 'Classificadas como Seguras', value: stats.safe, icon: CheckCircle2, color: 'text-emerald-600' },
+              { label: 'Oportunidades de Melhoria', value: stats.attention, icon: AlertTriangle, color: 'text-yellow-600' },
+              { label: 'Comportamento de Risco', value: stats.critical, icon: ShieldCheck, color: 'text-red-600' },
+              { label: 'Desvios registrados', value: stats.totalDeviations, icon: AlertTriangle, color: 'text-red-600' },
+              { label: 'Desvios ainda abertos', value: stats.openDeviations, icon: AlertTriangle, color: 'text-orange-600' },
+              { label: 'Pessoas que inspecionaram', value: stats.uniqueObservers, icon: Users, color: 'text-blue-600' },
+              { label: 'Colaboradores observados', value: stats.uniqueOperators, icon: Users, color: 'text-purple-600' },
             ].map(({ label, value, icon: Icon, color }) => (
               <Card key={label}>
                 <CardContent className="p-4">
@@ -369,16 +444,25 @@ export default function DashboardInspecoesPage() {
           <div className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Classificação das Inspeções</CardTitle>
-                <CardDescription>Distribuição por resultado</CardDescription>
+                <CardTitle className="text-base">Resultado geral das inspeções</CardTitle>
+                <CardDescription>Quantas inspeções foram classificadas como seguras, oportunidade de melhoria ou comportamento de risco</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  {classificationDist.map((c) => {
-                    const pct = stats.total > 0 ? (c.count / stats.total) * 100 : 0;
-                    return (
-                      <div key={c.key}>
-                        <div className="flex items-center justify-between text-sm mb-1">
+                <div className="flex items-center gap-6">
+                  <PieChart
+                    segments={classificationDist.map((c) => ({
+                      value: c.count,
+                      color: c.color,
+                      label: c.label,
+                    }))}
+                    size={160}
+                    centerLabel={`${stats.total}`}
+                  />
+                  <div className="space-y-2 flex-1">
+                    {classificationDist.map((c) => {
+                      const pct = stats.total > 0 ? Math.round((c.count / stats.total) * 100) : 0;
+                      return (
+                        <div key={c.key} className="flex items-center justify-between text-sm">
                           <span className="flex items-center gap-2">
                             <span
                               className="h-3 w-3 rounded-sm shrink-0"
@@ -388,28 +472,20 @@ export default function DashboardInspecoesPage() {
                           </span>
                           <span className="font-semibold">
                             {c.count}{' '}
-                            <span className="text-muted-foreground font-normal">
-                              ({Math.round(pct)}%)
-                            </span>
+                            <span className="text-muted-foreground font-normal">({pct}%)</span>
                           </span>
                         </div>
-                        <div className="h-2 rounded-full bg-muted overflow-hidden">
-                          <div
-                            className="h-full rounded-full transition-all"
-                            style={{ width: `${pct}%`, backgroundColor: c.color }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Desvios por Nível de Risco</CardTitle>
-                <CardDescription>Classificação dos desvios registrados</CardDescription>
+                <CardTitle className="text-base">Gravidade dos desvios encontrados</CardTitle>
+                <CardDescription>Quantidade de desvios agrupados por nível de risco (baixo, médio, alto, crítico)</CardDescription>
               </CardHeader>
               <CardContent>
                 {stats.totalDeviations === 0 ? (
@@ -417,15 +493,21 @@ export default function DashboardInspecoesPage() {
                     Nenhum desvio registrado no período.
                   </p>
                 ) : (
-                  <div className="space-y-3">
-                    {devsByRisk.map((d) => {
-                      const pct =
-                        stats.totalDeviations > 0
-                          ? (d.count / stats.totalDeviations) * 100
-                          : 0;
-                      return (
-                        <div key={d.level}>
-                          <div className="flex items-center justify-between text-sm mb-1">
+                  <div className="flex items-center gap-6">
+                    <PieChart
+                      segments={devsByRisk.map((d) => ({
+                        value: d.count,
+                        color: d.color,
+                        label: d.label,
+                      }))}
+                      size={160}
+                      centerLabel={`${stats.totalDeviations}`}
+                    />
+                    <div className="space-y-2 flex-1">
+                      {devsByRisk.map((d) => {
+                        const pct = stats.totalDeviations > 0 ? Math.round((d.count / stats.totalDeviations) * 100) : 0;
+                        return (
+                          <div key={d.level} className="flex items-center justify-between text-sm">
                             <span className="flex items-center gap-2">
                               <span
                                 className="h-3 w-3 rounded-sm shrink-0"
@@ -435,20 +517,12 @@ export default function DashboardInspecoesPage() {
                             </span>
                             <span className="font-semibold">
                               {d.count}{' '}
-                              <span className="text-muted-foreground font-normal">
-                                ({Math.round(pct)}%)
-                              </span>
+                              <span className="text-muted-foreground font-normal">({pct}%)</span>
                             </span>
                           </div>
-                          <div className="h-2 rounded-full bg-muted overflow-hidden">
-                            <div
-                              className="h-full rounded-full transition-all"
-                              style={{ width: `${pct}%`, backgroundColor: d.color }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </CardContent>
@@ -459,89 +533,37 @@ export default function DashboardInspecoesPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base">
-                Taxa de Não Conformidade por Categoria
+                Onde estão os problemas? (% de &quot;Não&quot; por categoria)
               </CardTitle>
               <CardDescription>
-                Percentual de respostas &quot;Não&quot; por categoria do checklist comportamental
+                Mostra em quais áreas do checklist comportamental os colaboradores mais descumprem — quanto maior a barra, mais respostas negativas naquela categoria
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {ncByCategory.map((cat) => (
-                  <div key={cat.category}>
-                    <div className="flex items-center justify-between text-sm mb-1">
-                      <span className="font-medium">{cat.label}</span>
-                      <span className="text-muted-foreground">
-                        {cat.nao}/{cat.total} ({cat.rate}%)
-                      </span>
-                    </div>
-                    <div className="h-3 rounded-full bg-muted overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all"
-                        style={{
-                          width: `${cat.rate}%`,
-                          backgroundColor:
-                            cat.rate > 30
-                              ? '#ef4444'
-                              : cat.rate > 15
-                                ? '#f97316'
-                                : cat.rate > 5
-                                  ? '#eab308'
-                                  : '#10b981',
-                        }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <BarChart
+                data={ncByCategory.map((cat) => ({
+                  label: `${cat.label} (${cat.rate}%)`,
+                  value: cat.rate,
+                }))}
+                color="#f97316"
+                labelWidth={200}
+              />
             </CardContent>
           </Card>
 
           {/* Timeline */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Inspeções por Dia</CardTitle>
-              <CardDescription>Volume de inspeções realizadas no período</CardDescription>
+              <CardTitle className="text-base">Volume diário de inspeções</CardTitle>
+              <CardDescription>Quantidade de inspeções realizadas por dia — mostra a frequência e regularidade das observações em campo</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex items-end gap-[2px] h-32">
-                {(() => {
-                  const maxVal = Math.max(...days.map((d) => inspByDay[d] || 0), 1);
-                  return days.map((day) => {
-                  const count = inspByDay[day] || 0;
-                  const height = (count / maxVal) * 100;
-                  return (
-                    <div
-                      key={day}
-                      className="flex-1 group relative"
-                      title={`${new Date(day + 'T12:00:00').toLocaleDateString('pt-BR')}: ${count}`}
-                    >
-                      <div
-                        className="w-full rounded-t bg-primary/70 hover:bg-primary transition-colors"
-                        style={{
-                          height: `${Math.max(height, count > 0 ? 4 : 0)}%`,
-                          minHeight: count > 0 ? '4px' : '0',
-                        }}
-                      />
-                    </div>
-                  );
-                });
-                })()}
-              </div>
-              <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                <span>
-                  {new Date(days[0] + 'T12:00:00').toLocaleDateString('pt-BR', {
-                    day: '2-digit',
-                    month: 'short',
-                  })}
-                </span>
-                <span>
-                  {new Date(days[days.length - 1] + 'T12:00:00').toLocaleDateString('pt-BR', {
-                    day: '2-digit',
-                    month: 'short',
-                  })}
-                </span>
-              </div>
+              <TimelineChart
+                days={days}
+                values={inspByDay}
+                color="hsl(var(--primary))"
+                label="Inspeções"
+              />
             </CardContent>
           </Card>
 
@@ -550,9 +572,9 @@ export default function DashboardInspecoesPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">
-                  Operadores com Mais Desvios
+                  Colaboradores com mais desvios
                 </CardTitle>
-                <CardDescription>Top 10 colaboradores observados</CardDescription>
+                <CardDescription>Top 10 operadores que mais tiveram desvios comportamentais registrados — indica onde focar treinamento e acompanhamento</CardDescription>
               </CardHeader>
               <CardContent>
                 {topOperatorsDeviations.length === 0 ? (
@@ -560,36 +582,22 @@ export default function DashboardInspecoesPage() {
                     Nenhum desvio registrado no período.
                   </p>
                 ) : (
-                  <div className="space-y-2">
-                    {topOperatorsDeviations.map((op, idx) => {
-                      const maxCount = topOperatorsDeviations[0]?.count || 1;
-                      const pct = (op.count / maxCount) * 100;
-                      return (
-                        <div key={idx}>
-                          <div className="flex items-center justify-between text-sm mb-1">
-                            <span className="truncate flex-1 mr-2">{op.name}</span>
-                            <span className="font-semibold text-red-600 shrink-0">
-                              {op.count}
-                            </span>
-                          </div>
-                          <div className="h-2 rounded-full bg-muted overflow-hidden">
-                            <div
-                              className="h-full rounded-full bg-red-400 transition-all"
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <BarChart
+                    data={topOperatorsDeviations.map((op) => ({
+                      label: op.name,
+                      value: op.count,
+                    }))}
+                    color="#ef4444"
+                    labelWidth={140}
+                  />
                 )}
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Top Observadores</CardTitle>
-                <CardDescription>Quem mais realizou inspeções</CardDescription>
+                <CardTitle className="text-base">Quem mais inspecionou</CardTitle>
+                <CardDescription>Top 10 pessoas que mais realizaram inspeções comportamentais no período — mostra engajamento com segurança</CardDescription>
               </CardHeader>
               <CardContent>
                 {topObservers.length === 0 ? (
@@ -597,32 +605,89 @@ export default function DashboardInspecoesPage() {
                     Nenhuma inspeção no período.
                   </p>
                 ) : (
-                  <div className="space-y-2">
-                    {topObservers.map((ob, idx) => {
-                      const maxCount = topObservers[0]?.count || 1;
-                      const pct = (ob.count / maxCount) * 100;
-                      return (
-                        <div key={idx}>
-                          <div className="flex items-center justify-between text-sm mb-1">
-                            <span className="truncate flex-1 mr-2">{ob.name}</span>
-                            <span className="font-semibold text-blue-600 shrink-0">
-                              {ob.count}
-                            </span>
-                          </div>
-                          <div className="h-2 rounded-full bg-muted overflow-hidden">
-                            <div
-                              className="h-full rounded-full bg-blue-400 transition-all"
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <BarChart
+                    data={topObservers.map((ob) => ({
+                      label: ob.name,
+                      value: ob.count,
+                    }))}
+                    color="#3b82f6"
+                    labelWidth={140}
+                  />
                 )}
               </CardContent>
             </Card>
           </div>
+
+          {/* Inspection List */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Inspeções realizadas no período</CardTitle>
+              <CardDescription>Clique em uma inspeção para ver os detalhes na página de inspeções</CardDescription>
+              <div className="flex gap-2 flex-wrap pt-2">
+                {([
+                  ['all', 'Todas'],
+                  ['safe', 'Seguras'],
+                  ['attention', 'Oportunidade de Melhoria'],
+                  ['critical', 'Comportamento de Risco'],
+                ] as ['all' | Classification, string][]).map(([v, l]) => (
+                  <button
+                    key={v}
+                    onClick={() => setListClassFilter(v)}
+                    className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
+                      listClassFilter === v
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-background text-muted-foreground border-border hover:bg-muted'
+                    }`}
+                  >
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {listedInspections.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-8 text-center">
+                  Nenhuma inspeção encontrada com os filtros selecionados.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {listedInspections.map((insp) => {
+                    const cls = insp.overall_classification;
+                    const badgeVariant = cls === 'safe' ? 'success' : cls === 'attention' ? 'warning' : cls === 'critical' ? 'danger' : 'outline';
+                    const badgeLabel = cls ? CLASSIFICATION_LABELS[cls] : 'Sem classificação';
+                    return (
+                      <Link
+                        key={insp.id}
+                        href={`/inspecao-comportamental?id=${insp.id}`}
+                        className="flex items-center justify-between gap-4 rounded-md border p-3 hover:bg-muted/50 transition-colors group"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-sm">
+                              {profiles[insp.operator_id]?.full_name ?? 'Desconhecido'}
+                            </span>
+                            <Badge variant={badgeVariant}>{badgeLabel}</Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {insp.date}
+                            {profiles[insp.observer_id]?.full_name
+                              ? ` • Observador: ${profiles[insp.observer_id].full_name}`
+                              : ''}
+                          </p>
+                        </div>
+                        <ExternalLink className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                      </Link>
+                    );
+                  })}
+                  {filtered.inspections.length > 50 && (
+                    <p className="text-xs text-muted-foreground text-center pt-2">
+                      Mostrando as 50 mais recentes de {filtered.inspections.length} inspeções.
+                    </p>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </>
       )}
     </div>

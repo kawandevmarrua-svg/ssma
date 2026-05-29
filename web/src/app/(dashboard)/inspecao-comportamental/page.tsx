@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -9,9 +10,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Plus, ChevronLeft, Download, LockOpen, Lock, FileText, ClipboardCheck, Briefcase, AlertTriangle } from 'lucide-react';
+import { Loader2, Plus, ChevronLeft, Download, FileText, ClipboardCheck, Briefcase, AlertTriangle } from 'lucide-react';
 import { generateInspectionPdf } from '@/lib/inspection-pdf';
 import { resolveSignedUrl } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
@@ -145,9 +145,20 @@ function monthStartStr() {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
+interface DetailData {
+  inspection: Inspection;
+  items: { category: string; description: string; status: string }[];
+  deviations: { description: string; risk_level: string; immediate_action: string | null; immediate_action_description: string | null; corrective_action: string | null; responsible: string | null; deadline: string | null; status: string }[];
+}
+
 export default function InspecaoComportamentalPage() {
   const supabase = useMemo(() => createClient(), []);
-  const [view, setView] = useState<'list' | 'form'>('list');
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const highlightId = searchParams.get('id');
+  const [view, setView] = useState<'list' | 'form' | 'detail'>('list');
+  const [detailData, setDetailData] = useState<DetailData | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [inspections, setInspections] = useState<Inspection[]>([]);
   const [operators, setOperators] = useState<Profile[]>([]);
   const [machines, setMachines] = useState<Machine[]>([]);
@@ -160,7 +171,9 @@ export default function InspecaoComportamentalPage() {
   const [pdfLoading, setPdfLoading] = useState<Set<string>>(new Set());
 
   // List filters
-  const [filterStatus, setFilterStatus] = useState<'all' | 'open' | 'closed'>('all');
+  const [filterObserver, setFilterObserver] = useState('');
+  const [filterOperator, setFilterOperator] = useState('');
+  const [filterClassification, setFilterClassification] = useState('');
 
   // Export state
   const [showExport, setShowExport] = useState(false);
@@ -224,21 +237,27 @@ export default function InspecaoComportamentalPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const canManage = ['admin', 'manager', 'encarregado'].includes(currentUserRole ?? '');
+  // Load detail when ?id= is present
+  useEffect(() => {
+    if (!highlightId || loading) return;
+    const insp = inspections.find(i => i.id === highlightId);
+    if (!insp) return;
 
-  async function handleToggleStatus(insp: Inspection) {
-    const newStatus: InspectionStatus = insp.status === 'open' ? 'closed' : 'open';
-    const { error } = await supabase
-      .from('behavioral_inspections')
-      .update({ status: newStatus })
-      .eq('id', insp.id);
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    setInspections(prev => prev.map(i => i.id === insp.id ? { ...i, status: newStatus } : i));
-    toast.success(newStatus === 'closed' ? 'Inspeção encerrada.' : 'Inspeção reaberta.');
-  }
+    setDetailLoading(true);
+    setView('detail');
+
+    Promise.all([
+      supabase.from('behavioral_inspection_items').select('category, description, status').eq('inspection_id', highlightId),
+      supabase.from('behavioral_deviations').select('description, risk_level, immediate_action, immediate_action_description, corrective_action, responsible, deadline, status').eq('inspection_id', highlightId),
+    ]).then(([itemsRes, devsRes]) => {
+      setDetailData({
+        inspection: insp,
+        items: (itemsRes.data ?? []) as DetailData['items'],
+        deviations: (devsRes.data ?? []) as DetailData['deviations'],
+      });
+      setDetailLoading(false);
+    });
+  }, [highlightId, inspections, loading, supabase]);
 
   async function handleDownloadPdf(insp: Inspection) {
     setPageError(null);
@@ -375,10 +394,198 @@ export default function InspecaoComportamentalPage() {
     load();
   }
 
+  // ── Filter options & filtered list ──
+  const observerOptions = useMemo(() => {
+    const ids = [...new Set(inspections.map((i) => i.observer_id))];
+    return ids
+      .map((id) => {
+        const p = inspections.find((i) => i.observer_id === id)?.observer;
+        return { id, name: p?.full_name ?? 'Desconhecido' };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [inspections]);
+
+  const operatorOptions = useMemo(() => {
+    const ids = [...new Set(inspections.map((i) => i.operator_id))];
+    return ids
+      .map((id) => {
+        const p = inspections.find((i) => i.operator_id === id)?.operator;
+        return { id, name: p?.full_name ?? 'Desconhecido' };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [inspections]);
+
   const filteredInspections = useMemo(() => {
-    if (filterStatus === 'all') return inspections;
-    return inspections.filter(i => (i.status ?? 'open') === filterStatus);
-  }, [inspections, filterStatus]);
+    let fi = inspections;
+    if (filterObserver) fi = fi.filter((i) => i.observer_id === filterObserver);
+    if (filterOperator) fi = fi.filter((i) => i.operator_id === filterOperator);
+    if (filterClassification) fi = fi.filter((i) => i.overall_classification === filterClassification);
+    return fi;
+  }, [inspections, filterObserver, filterOperator, filterClassification]);
+
+  const hasActiveFilters = filterObserver || filterOperator || filterClassification;
+
+  // ── DETAIL VIEW ────────────────────────────────────────────────────────────
+  if (view === 'detail') {
+    const goBack = () => {
+      setView('list');
+      setDetailData(null);
+      router.replace('/inspecao-comportamental', { scroll: false });
+    };
+
+    if (detailLoading || !detailData) {
+      return (
+        <div className="space-y-4">
+          <Button variant="outline" size="sm" onClick={goBack} className="gap-1">
+            <ChevronLeft className="h-4 w-4" /> Voltar
+          </Button>
+          <div className="flex justify-center py-20">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        </div>
+      );
+    }
+
+    const { inspection: insp, items: detailItems, deviations: detailDevs } = detailData;
+
+    const obsTypeLabels: Record<string, string> = {
+      routine: 'Rotina',
+      critical_activity: 'Atividade crítica',
+      post_incident: 'Pós-incidente',
+      deviation_followup: 'Acompanhamento de desvio',
+      scheduled_audit: 'Auditoria programada',
+    };
+
+    const riskLabels: Record<string, string> = {
+      low: 'Baixo', medium: 'Médio', high: 'Alto', critical: 'Crítico',
+    };
+
+    const actionLabels: Record<string, string> = {
+      verbal_guidance: 'Orientação verbal',
+      activity_intervention: 'Intervenção na atividade',
+      activity_stoppage: 'Paralisação da atividade',
+      immediate_correction: 'Correção imediata realizada',
+    };
+
+    const devStatusLabels: Record<string, string> = {
+      open: 'Aberto', in_progress: 'Em andamento', completed: 'Concluído',
+    };
+
+    // Group items by category
+    const itemsByCategory: Record<string, typeof detailItems> = {};
+    detailItems.forEach(it => {
+      if (!itemsByCategory[it.category]) itemsByCategory[it.category] = [];
+      itemsByCategory[it.category].push(it);
+    });
+
+    return (
+      <div className="mx-auto max-w-3xl space-y-4 pb-12">
+        <div className="flex items-center gap-3">
+          <Button variant="outline" size="sm" onClick={goBack} className="gap-1">
+            <ChevronLeft className="h-4 w-4" /> Voltar
+          </Button>
+          <h1 className="text-xl font-semibold tracking-tight">Detalhes da Inspeção</h1>
+        </div>
+
+        {/* Header info */}
+        <Card>
+          <CardContent className="p-5 space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-semibold">{insp.operator?.full_name ?? '—'}</span>
+              <ClassificationBadge value={insp.overall_classification} />
+              <ObsTypeBadge value={insp.observation_type} />
+            </div>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+              <div><span className="text-muted-foreground">Data:</span> {insp.date}{insp.time ? ` às ${insp.time}` : ''}</div>
+              <div><span className="text-muted-foreground">Observador:</span> {insp.observer?.full_name ?? '—'}</div>
+              {insp.observation_type && (
+                <div><span className="text-muted-foreground">Tipo:</span> {obsTypeLabels[insp.observation_type] ?? insp.observation_type}</div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Checklist items */}
+        {detailItems.length > 0 && (
+          <Card>
+            <CardContent className="p-5">
+              <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-4">Checklist Comportamental</h2>
+              <div className="space-y-5">
+                {CATEGORIES.filter(cat => itemsByCategory[cat]?.length).map(cat => (
+                  <div key={cat}>
+                    <p className="text-sm font-semibold mb-2">{CHECKLIST[cat].label}</p>
+                    <div className="space-y-1.5">
+                      {itemsByCategory[cat].map((it, idx) => (
+                        <div key={idx} className="flex items-center justify-between gap-3 rounded-md border p-2.5">
+                          <span className="text-sm flex-1">{it.description}</span>
+                          <Badge variant={it.status === 'sim' ? 'success' : it.status === 'nao' ? 'danger' : 'muted'}>
+                            {it.status === 'sim' ? 'Sim' : it.status === 'nao' ? 'Não' : 'NA'}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Deviations */}
+        {detailDevs.length > 0 && (
+          <Card>
+            <CardContent className="p-5">
+              <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-4">
+                Desvios Registrados ({detailDevs.length})
+              </h2>
+              <div className="space-y-4">
+                {detailDevs.map((dev, idx) => (
+                  <div key={idx} className="rounded-md border p-4 space-y-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-sm">Desvio {idx + 1}</span>
+                      <Badge variant={dev.risk_level === 'critical' || dev.risk_level === 'high' ? 'danger' : dev.risk_level === 'medium' ? 'warning' : 'info'}>
+                        {riskLabels[dev.risk_level] ?? dev.risk_level}
+                      </Badge>
+                      <Badge variant={dev.status === 'completed' ? 'success' : dev.status === 'in_progress' ? 'warning' : 'muted'}>
+                        {devStatusLabels[dev.status] ?? dev.status}
+                      </Badge>
+                    </div>
+                    <p className="text-sm">{dev.description}</p>
+                    {dev.immediate_action && (
+                      <p className="text-sm text-muted-foreground">
+                        <span className="font-medium">Ação imediata:</span> {actionLabels[dev.immediate_action] ?? dev.immediate_action}
+                        {dev.immediate_action_description ? ` — ${dev.immediate_action_description}` : ''}
+                      </p>
+                    )}
+                    {dev.corrective_action && (
+                      <p className="text-sm text-muted-foreground">
+                        <span className="font-medium">Ação corretiva:</span> {dev.corrective_action}
+                      </p>
+                    )}
+                    {dev.responsible && (
+                      <p className="text-sm text-muted-foreground">
+                        <span className="font-medium">Responsável:</span> {dev.responsible}
+                        {dev.deadline ? ` • Prazo: ${dev.deadline}` : ''}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* No items and no deviations */}
+        {detailItems.length === 0 && detailDevs.length === 0 && (
+          <Card>
+            <CardContent className="py-12 text-center text-muted-foreground">
+              Nenhum item ou desvio registrado nesta inspeção.
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  }
 
   // ── LIST VIEW ──────────────────────────────────────────────────────────────
   if (view === 'list') {
@@ -456,23 +663,53 @@ export default function InspecaoComportamentalPage() {
           </Card>
         )}
 
-        {/* Status filter tabs */}
-        <Tabs value={filterStatus} onValueChange={(v) => setFilterStatus(v as 'all' | 'open' | 'closed')}>
-          <TabsList>
-            {([
-              ['all', 'Todas'],
-              ['open', 'Abertas'],
-              ['closed', 'Fechadas'],
-            ] as ['all' | 'open' | 'closed', string][]).map(([v, l]) => (
-              <TabsTrigger key={v} value={v}>
-                {l}
-                <span className="ml-1.5 text-xs text-muted-foreground">
-                  ({v === 'all' ? inspections.length : inspections.filter(i => (i.status ?? 'open') === v).length})
-                </span>
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+
+        {/* Filters */}
+        {!loading && inspections.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={filterObserver}
+              onChange={(e) => setFilterObserver(e.target.value)}
+              className="rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground"
+            >
+              <option value="">Todos observadores</option>
+              {observerOptions.map((o) => (
+                <option key={o.id} value={o.id}>{o.name}</option>
+              ))}
+            </select>
+            <select
+              value={filterOperator}
+              onChange={(e) => setFilterOperator(e.target.value)}
+              className="rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground"
+            >
+              <option value="">Todos observados</option>
+              {operatorOptions.map((o) => (
+                <option key={o.id} value={o.id}>{o.name}</option>
+              ))}
+            </select>
+            <select
+              value={filterClassification}
+              onChange={(e) => setFilterClassification(e.target.value)}
+              className="rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground"
+            >
+              <option value="">Todas classificações</option>
+              <option value="safe">Seguro</option>
+              <option value="attention">Atenção</option>
+              <option value="critical">Risco</option>
+            </select>
+            {hasActiveFilters && (
+              <button
+                onClick={() => { setFilterObserver(''); setFilterOperator(''); setFilterClassification(''); }}
+                className="rounded-full px-2 py-1.5 text-xs font-medium border border-border text-muted-foreground hover:bg-muted transition-colors"
+              >
+                Limpar filtros
+              </button>
+            )}
+            <span className="text-xs text-muted-foreground ml-auto">
+              {filteredInspections.length} de {inspections.length}
+            </span>
+          </div>
+        )}
 
         {loading ? (
           <div className="flex justify-center py-12">
@@ -481,17 +718,13 @@ export default function InspecaoComportamentalPage() {
         ) : filteredInspections.length === 0 ? (
           <Card>
             <CardContent className="py-12 text-center text-muted-foreground">
-              {filterStatus === 'all' ? 'Nenhuma inspeção registrada ainda.' : `Nenhuma inspeção ${filterStatus === 'open' ? 'aberta' : 'fechada'}.`}
+              {hasActiveFilters ? 'Nenhuma inspeção encontrada com os filtros selecionados.' : 'Nenhuma inspeção registrada ainda.'}
             </CardContent>
           </Card>
         ) : (
           <div className="space-y-2">
-            {filteredInspections.map(insp => {
-              const isClosed = (insp.status ?? 'open') === 'closed';
-              const isOwner = insp.observer_id === currentUserId;
-              const canToggle = canManage || isOwner;
-              return (
-                <Card key={insp.id} className={isClosed ? 'opacity-70' : ''}>
+            {filteredInspections.map(insp => (
+                <Card key={insp.id}>
                   <CardContent className="p-4">
                     <div className="flex items-center gap-4 flex-wrap">
                       <div className="flex-1 min-w-0">
@@ -499,7 +732,6 @@ export default function InspecaoComportamentalPage() {
                           <span className="font-semibold text-sm">{insp.operator?.full_name ?? '—'}</span>
                           <ClassificationBadge value={insp.overall_classification} />
                           <ObsTypeBadge value={insp.observation_type} />
-                          <InspectionStatusBadge status={insp.status ?? 'open'} />
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">
                           {insp.date}{insp.time ? ` • ${insp.time}` : ''}
@@ -518,29 +750,10 @@ export default function InspecaoComportamentalPage() {
                           : <FileText className="h-4 w-4" />
                         }
                       </button>
-                      {canToggle && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleToggleStatus(insp)}
-                          className={cn(
-                            'gap-1.5 shrink-0',
-                            isClosed
-                              ? 'border-green-300 text-green-700 hover:bg-green-50'
-                              : 'border-slate-300 text-slate-600 hover:bg-slate-50'
-                          )}
-                        >
-                          {isClosed
-                            ? <><LockOpen className="h-3.5 w-3.5" />Reabrir</>
-                            : <><Lock className="h-3.5 w-3.5" />Fechar</>
-                          }
-                        </Button>
-                      )}
                     </div>
                   </CardContent>
                 </Card>
-              );
-            })}
+              ))}
           </div>
         )}
       </div>
@@ -976,11 +1189,6 @@ function ObsTypeBadge({ value }: { value: string }) {
   );
 }
 
-function InspectionStatusBadge({ status }: { status: InspectionStatus }) {
-  return status === 'open'
-    ? <Badge variant="info">Aberta</Badge>
-    : <Badge variant="muted">Fechada</Badge>;
-}
 
 // ─── Operator Daily Snapshot ─────────────────────────────────────────────────
 

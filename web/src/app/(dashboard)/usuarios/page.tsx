@@ -892,7 +892,7 @@ export default function UsuariosPage() {
           <div className="overflow-x-auto">
             <Table className="text-sm">
               <TableHeader>
-                <TableRow className="border-b bg-muted/30 text-[11px] font-medium uppercase tracking-wider text-muted-foreground hover:bg-transparent">
+                <TableRow className="border-b bg-muted/30 text-xs font-medium uppercase tracking-wider text-muted-foreground hover:bg-transparent">
                   <TableHead className="text-left px-4 py-2.5 font-medium">Usuário</TableHead>
                   <TableHead className="text-left px-4 py-2.5 font-medium hidden md:table-cell">Cargo</TableHead>
                   <TableHead className="text-left px-4 py-2.5 font-medium hidden lg:table-cell">Contato</TableHead>

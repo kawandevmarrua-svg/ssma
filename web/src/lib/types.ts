@@ -45,6 +45,8 @@ export interface ActivityRow {
   equipment_photo_url: string | null;
   start_photo_url: string | null;
   end_photo_url: string | null;
+  start_photo_urls: string[] | null;
+  end_photo_urls: string[] | null;
   created_at: string;
   operator_id: string;
   checklist_id: string | null;

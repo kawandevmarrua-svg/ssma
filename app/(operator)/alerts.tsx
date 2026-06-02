@@ -19,7 +19,7 @@ import { useAuth } from "../../src/contexts/AuthContext";
 import { useFormValidation } from "../../src/hooks/useFormValidation";
 import { supabase } from "../../src/lib/supabase";
 import { alertResponseSchema } from "../../src/schemas";
-import { colors, radius, spacing } from "../../src/theme/colors";
+import { colors, radius, spacing, fontSize } from "../../src/theme/colors";
 import { SafetyAlert } from "../../src/types/database";
 
 type AlertWithCreator = SafetyAlert & {
@@ -794,7 +794,7 @@ const styles = StyleSheet.create({
   },
   brandLogo: { width: 28, height: 28, borderRadius: 6 },
   brandName: {
-    fontSize: 16,
+    fontSize: fontSize.base,
     fontWeight: "800",
     letterSpacing: 2,
     color: TECH_TEXT,
@@ -835,7 +835,7 @@ const styles = StyleSheet.create({
   },
   bellBadgeText: {
     color: "#FFFFFF",
-    fontSize: 10,
+    fontSize: fontSize['2xs'],
     lineHeight: 12,
     fontWeight: "800" as const,
     textAlign: "center" as const,
@@ -859,7 +859,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontSize: 14,
+    fontSize: fontSize.sm,
     color: TECH_TEXT,
     padding: 0,
   },
@@ -876,7 +876,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   filterText: {
-    fontSize: 13,
+    fontSize: fontSize.sm,
     fontWeight: "600",
     color: TECH_TEXT_MUTED,
     letterSpacing: -0.1,
@@ -886,7 +886,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   filterCountInline: {
-    fontSize: 12,
+    fontSize: fontSize.xs,
     fontWeight: "500",
     color: TECH_TEXT_MUTED,
   },
@@ -938,24 +938,24 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   senderName: {
-    fontSize: 13,
+    fontSize: fontSize.sm,
     fontWeight: "700",
     color: TECH_TEXT,
     flexShrink: 1,
   },
   metaSep: {
-    fontSize: 11,
+    fontSize: fontSize.xs,
     color: "#CBD5E1",
     fontWeight: "400",
   },
   metaTime: {
-    fontSize: 10.5,
+    fontSize: fontSize['2xs'],
     fontWeight: "500",
     color: "#777777",
   },
   unreadDot: { width: 7, height: 7, borderRadius: 4 },
   cardTitle: {
-    fontSize: 13,
+    fontSize: fontSize.sm,
     fontWeight: "700",
     color: TECH_TEXT,
     lineHeight: 18,
@@ -963,7 +963,7 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   cardMessage: {
-    fontSize: 12,
+    fontSize: fontSize.xs,
     lineHeight: 17,
     color: TECH_TEXT_MUTED,
     marginBottom: 8,
@@ -975,14 +975,14 @@ const styles = StyleSheet.create({
   },
   severityRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   severityDot: { width: 6, height: 6, borderRadius: 3 },
-  severityLabel: { fontSize: 11, fontWeight: "600" },
+  severityLabel: { fontSize: fontSize.xs, fontWeight: "600" },
   confirmBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
   },
   confirmBtnText: {
-    fontSize: 13,
+    fontSize: fontSize.sm,
     fontWeight: "700",
     color: colors.primary,
   },
@@ -992,7 +992,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   confirmedText: {
-    fontSize: 12,
+    fontSize: fontSize.xs,
     fontWeight: "600",
     color: "#10B981",
   },
@@ -1015,14 +1015,14 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   emptyTitle: {
-    fontSize: 16,
+    fontSize: fontSize.base,
     fontWeight: "800",
     color: TECH_TEXT,
     letterSpacing: -0.2,
     marginBottom: 6,
   },
   emptyMessage: {
-    fontSize: 13,
+    fontSize: fontSize.sm,
     color: TECH_TEXT_MUTED,
     textAlign: "center",
     lineHeight: 20,
@@ -1056,13 +1056,13 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   modalSender: {
-    fontSize: 12,
+    fontSize: fontSize.xs,
     fontWeight: "500",
     color: TECH_TEXT_MUTED,
     marginBottom: 1,
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: fontSize.lg,
     fontWeight: "800",
     color: TECH_TEXT,
     letterSpacing: -0.4,
@@ -1090,13 +1090,13 @@ const styles = StyleSheet.create({
     minHeight: 20,
   },
   alertPreviewTitle: {
-    fontSize: 13,
+    fontSize: fontSize.sm,
     fontWeight: "700",
     color: TECH_TEXT,
     marginBottom: 3,
   },
   alertPreviewMsg: {
-    fontSize: 12,
+    fontSize: fontSize.xs,
     color: TECH_TEXT_MUTED,
     lineHeight: 17,
   },
@@ -1107,13 +1107,13 @@ const styles = StyleSheet.create({
     borderColor: TECH_BORDER,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    fontSize: 14,
+    fontSize: fontSize.sm,
     color: TECH_TEXT,
     minHeight: 120,
   },
   inputError: { borderColor: "#DC2626" },
   inputErrorText: {
-    fontSize: 12,
+    fontSize: fontSize.xs,
     color: "#DC2626",
     marginTop: -8,
   },
@@ -1128,7 +1128,7 @@ const styles = StyleSheet.create({
   },
   submitBtnText: {
     color: "#fff",
-    fontSize: 15,
+    fontSize: fontSize.base,
     fontWeight: "700",
     letterSpacing: -0.2,
   },
@@ -1147,13 +1147,13 @@ const styles = StyleSheet.create({
     backgroundColor: TECH_BG_SOFT,
   },
   severityBtnText: {
-    fontSize: 12,
+    fontSize: fontSize.xs,
     fontWeight: "700",
     color: TECH_TEXT_MUTED,
   },
 
   recipientLabel: {
-    fontSize: 11,
+    fontSize: fontSize.xs,
     fontWeight: "700",
     letterSpacing: 1.1,
     color: TECH_TEXT_MUTED,
@@ -1181,7 +1181,7 @@ const styles = StyleSheet.create({
   },
   recipientName: {
     flex: 1,
-    fontSize: 13,
+    fontSize: fontSize.sm,
     fontWeight: "600",
     color: TECH_TEXT,
   },

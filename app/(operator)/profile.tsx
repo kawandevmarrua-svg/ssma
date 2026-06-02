@@ -5,7 +5,7 @@ import { router } from 'expo-router';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { supabase } from '../../src/lib/supabase';
 import { OperatorScore } from '../../src/types/database';
-import { colors, radius, spacing } from '../../src/theme/colors';
+import { colors, radius, spacing, fontSize } from '../../src/theme/colors';
 import { commonStyles } from '../../src/theme/commonStyles';
 import { Avatar, Text } from '../../src/components/ui';
 import { AppHeader } from '../../src/components/AppHeader';
@@ -140,7 +140,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FEF2F2',
   },
   logoutText: {
-    fontSize: 12,
+    fontSize: fontSize.xs,
     fontWeight: '700',
     color: colors.danger,
     letterSpacing: 0.2,
@@ -153,14 +153,14 @@ const styles = StyleSheet.create({
     paddingBottom: spacing['2xl'],
   },
   name: {
-    fontSize: 22,
+    fontSize: fontSize.xl,
     fontWeight: '800',
     color: colors.text,
     letterSpacing: -0.4,
     marginTop: spacing.md,
   },
   role: {
-    fontSize: 11,
+    fontSize: fontSize.xs,
     fontWeight: '700',
     color: colors.textSecondary,
     letterSpacing: 1.6,
@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   contactText: {
-    fontSize: 13,
+    fontSize: fontSize.sm,
     color: colors.textSecondary,
     fontWeight: '500',
   },
@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   sectionLabel: {
-    fontSize: 11,
+    fontSize: fontSize.xs,
     fontWeight: '800',
     color: colors.textSecondary,
     letterSpacing: 1.6,
@@ -211,14 +211,14 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   statValue: {
-    fontSize: 22,
+    fontSize: fontSize.xl,
     fontWeight: '800',
     color: colors.text,
     letterSpacing: -0.5,
     lineHeight: 26,
   },
   statLabel: {
-    fontSize: 11,
+    fontSize: fontSize.xs,
     fontWeight: '600',
     color: colors.textSecondary,
     letterSpacing: 0.4,
@@ -239,7 +239,7 @@ const styles = StyleSheet.create({
   },
   actionText: {
     flex: 1,
-    fontSize: 15,
+    fontSize: fontSize.base,
     fontWeight: '600',
     color: colors.text,
     letterSpacing: -0.1,

@@ -66,10 +66,10 @@ export default function AtividadesPage() {
   // Detail view
   const [selected, setSelected] = useState<ActivityRow | null>(null);
   const [photoModal, setPhotoModal] = useState<string | null>(null);
-  const [resolvedPhotos, setResolvedPhotos] = useState<Record<string, string>>({});
+  const [resolvedPhotos, setResolvedPhotos] = useState<{ label: string; url: string }[]>([]);
   const [deepLinked, setDeepLinked] = useState(false);
 
-  const ACTIVITY_COLUMNS = 'id, date, location, description, start_time, end_time, equipment_tag, had_interference, interference_notes, notes, transit_start, transit_end, equipment_photo_url, start_photo_url, end_photo_url, created_at, operator_id, checklist_id, machine_id, activity_type_id, profiles(full_name), machines(id, name, tag), activity_types(id, code, description, allow_custom)';
+  const ACTIVITY_COLUMNS = 'id, date, location, description, start_time, end_time, equipment_tag, had_interference, interference_notes, notes, transit_start, transit_end, equipment_photo_url, start_photo_url, end_photo_url, start_photo_urls, end_photo_urls, created_at, operator_id, checklist_id, machine_id, activity_type_id, profiles(full_name), machines(id, name, tag), activity_types(id, code, description, allow_custom)';
 
   const loadActivities = useCallback(async (term = '') => {
     let query = supabase
@@ -156,20 +156,30 @@ export default function AtividadesPage() {
 
   async function openDetail(activity: ActivityRow) {
     setSelected(activity);
-    setResolvedPhotos({});
-    const allPaths = [
-      { key: 'equipment', path: activity.equipment_photo_url },
-      { key: 'start', path: activity.start_photo_url },
-      { key: 'end', path: activity.end_photo_url },
-    ];
-    const urlMap: Record<string, string> = {};
-    await Promise.all(
-      allPaths.map(async ({ key, path }) => {
+    setResolvedPhotos([]);
+
+    // Prefere as colunas array; cai para a escalar antiga quando vazias.
+    const startPaths = activity.start_photo_urls?.length
+      ? activity.start_photo_urls
+      : (activity.start_photo_url ? [activity.start_photo_url] : []);
+    const endPaths = activity.end_photo_urls?.length
+      ? activity.end_photo_urls
+      : (activity.end_photo_url ? [activity.end_photo_url] : []);
+
+    const entries: { label: string; path: string }[] = [];
+    if (activity.equipment_photo_url) entries.push({ label: 'Equipamento', path: activity.equipment_photo_url });
+    startPaths.forEach((path, i) =>
+      entries.push({ label: startPaths.length > 1 ? `Início ${i + 1}` : 'Início', path }));
+    endPaths.forEach((path, i) =>
+      entries.push({ label: endPaths.length > 1 ? `Fim ${i + 1}` : 'Fim', path }));
+
+    const resolved = await Promise.all(
+      entries.map(async ({ label, path }) => {
         const url = await resolveSignedUrl(supabase, 'activity-photos', path);
-        if (url) urlMap[key] = url;
+        return url ? { label, url } : null;
       }),
     );
-    setResolvedPhotos(urlMap);
+    setResolvedPhotos(resolved.filter((p): p is { label: string; url: string } => !!p));
   }
 
   const operators = useMemo(() => {
@@ -202,18 +212,14 @@ export default function AtividadesPage() {
     const sk = getStatusKey(selected);
     const cfg = STATUS_CONFIG[sk];
     const Icon = cfg.icon;
-    const photos = [
-      { label: 'Equipamento', url: resolvedPhotos['equipment'] },
-      { label: 'Início', url: resolvedPhotos['start'] },
-      { label: 'Fim', url: resolvedPhotos['end'] },
-    ].filter((p) => p.url);
+    const photos = resolvedPhotos;
 
     return (
       <div className="space-y-6">
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => { setSelected(null); setResolvedPhotos({}); }}
+          onClick={() => { setSelected(null); setResolvedPhotos([]); }}
           className="-ml-2 gap-1 text-muted-foreground hover:text-foreground"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -356,13 +362,13 @@ export default function AtividadesPage() {
               Fotos Anexadas ({photos.length})
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {photos.map((p) => (
+              {photos.map((p, i) => (
                 <button
-                  key={p.label}
-                  onClick={() => setPhotoModal(p.url!)}
+                  key={`${p.label}-${i}`}
+                  onClick={() => setPhotoModal(p.url)}
                   className="group relative aspect-square rounded-lg border overflow-hidden hover:ring-2 hover:ring-primary transition-all"
                 >
-                  <Image src={p.url!} alt={p.label} fill className="object-cover" sizes="(min-width: 640px) 33vw, 50vw" />
+                  <Image src={p.url} alt={p.label} fill className="object-cover" sizes="(min-width: 640px) 33vw, 50vw" />
                   <div className="absolute inset-x-0 bottom-0 bg-black/60 px-2 py-1">
                     <p className="text-xs text-white font-medium truncate">{p.label}</p>
                   </div>

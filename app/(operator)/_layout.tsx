@@ -9,7 +9,7 @@ import { Avatar } from "../../src/components/ui";
 import { useAuth } from "../../src/contexts/AuthContext";
 import { useLocationTracking } from "../../src/hooks/useLocationTracking";
 import { supabase } from "../../src/lib/supabase";
-import { colors } from "../../src/theme/colors";
+import { colors, fontSize } from "../../src/theme/colors";
 import { SafetyAlert } from "../../src/types/database";
 
 const isExpoGo = Constants.executionEnvironment === "storeClient";
@@ -194,7 +194,7 @@ export default function OperatorLayout() {
         headerTintColor: colors.text,
         headerTitleStyle: {
           fontWeight: "700",
-          fontSize: 17,
+          fontSize: fontSize.md,
         },
         headerShadowVisible: false,
       }}

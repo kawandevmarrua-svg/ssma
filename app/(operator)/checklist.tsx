@@ -84,7 +84,7 @@ interface ChecklistRow {
   encarregado_confirmed_notes: string | null;
 }
 
-type RequiredSlot = 'equipment_1' | 'equipment_2' | 'equipment_3' | 'equipment_4' | 'environment';
+type RequiredSlot = 'equipment_1' | 'equipment_2' | 'equipment_3' | 'equipment_4';
 
 type PhotoSlotCardProps = {
   uri: string | null;
@@ -201,9 +201,8 @@ export default function ChecklistScreen() {
   const [itemsLoading, setItemsLoading] = useState(false);
   const [responses, setResponses] = useState<Record<string, ItemResponse>>({});
 
-  // Required photos: 4 do equipamento + 1 do ambiente
+  // Required photos: 4 do equipamento
   const [equipmentPhotos, setEquipmentPhotos] = useState<(string | null)[]>([null, null, null, null]);
-  const [environmentPhoto, setEnvironmentPhoto] = useState<string | null>(null);
   // Preview em tela cheia das fotos tiradas
   const [previewUri, setPreviewUri] = useState<string | null>(null);
 
@@ -311,7 +310,6 @@ export default function ChecklistScreen() {
     setSelectedEncarregadoId(null);
     setTemplateItems([]); setItemsLoading(false); setResponses({});
     setEquipmentPhotos([null, null, null, null]);
-    setEnvironmentPhoto(null);
     setScanned(false);
   }
 
@@ -321,23 +319,15 @@ export default function ChecklistScreen() {
     const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.5, allowsEditing: false });
     if (result.canceled || !result.assets[0]) return;
     const uri = result.assets[0].uri;
-    if (slot === 'environment') {
-      setEnvironmentPhoto(uri);
-    } else {
-      const idx = parseInt(slot.split('_')[1], 10) - 1;
-      setEquipmentPhotos((prev) => {
-        const copy = [...prev];
-        copy[idx] = uri;
-        return copy;
-      });
-    }
+    const idx = parseInt(slot.split('_')[1], 10) - 1;
+    setEquipmentPhotos((prev) => {
+      const copy = [...prev];
+      copy[idx] = uri;
+      return copy;
+    });
   }, []);
 
   const clearRequiredPhoto = useCallback((slot: RequiredSlot) => {
-    if (slot === 'environment') {
-      setEnvironmentPhoto(null);
-      return;
-    }
     const idx = parseInt(slot.split('_')[1], 10) - 1;
     setEquipmentPhotos((prev) => {
       const copy = [...prev];
@@ -358,7 +348,7 @@ export default function ChecklistScreen() {
   }, [clearRequiredPhoto]);
 
   function allRequiredPhotosTaken() {
-    return equipmentPhotos.every((p) => !!p) && !!environmentPhoto;
+    return equipmentPhotos.every((p) => !!p);
   }
 
   function setItemStatus(id: string, status: 'C' | 'NC' | 'NA') {
@@ -659,7 +649,7 @@ export default function ChecklistScreen() {
       return;
     }
     if (!allRequiredPhotosTaken()) {
-      Alert.alert('Atencao', 'Anexe as 4 fotos do equipamento e a foto do ambiente antes de salvar.');
+      Alert.alert('Atencao', 'Anexe as 4 fotos do equipamento antes de salvar.');
       return;
     }
 
@@ -680,12 +670,6 @@ export default function ChecklistScreen() {
         uploadedPaths.push(path);
         return path;
       });
-
-      let environmentPath: string | null = null;
-      if (environmentPhoto) {
-        environmentPath = await uploadPhoto(environmentPhoto, checklistId, 'environment', 'Ambiente');
-        uploadedPaths.push(environmentPath);
-      }
 
       // 2) Subir fotos por item (mesmo limite de concorrencia)
       const entries = Object.entries(responses);
@@ -727,7 +711,7 @@ export default function ChecklistScreen() {
         equipment_photo_2_url: equipmentPaths[1],
         equipment_photo_3_url: equipmentPaths[2],
         equipment_photo_4_url: equipmentPaths[3],
-        environment_photo_url: environmentPath,
+        environment_photo_url: null,
       });
       if (clErr) {
         if (isDev()) console.log('[Checklist] Insert erro:', clErr.message);
@@ -1210,7 +1194,7 @@ export default function ChecklistScreen() {
     );
   }
 
-  // PHOTOS — 4 fotos do equipamento + 1 do ambiente
+  // PHOTOS — 4 fotos do equipamento
   if (view === 'photos') {
     const equipmentLabels = [
       'Frente',
@@ -1218,8 +1202,8 @@ export default function ChecklistScreen() {
       'Lateral esquerda',
       'Lateral direita',
     ];
-    const taken = equipmentPhotos.filter((p) => !!p).length + (environmentPhoto ? 1 : 0);
-    const totalSlots = 5;
+    const taken = equipmentPhotos.filter((p) => !!p).length;
+    const totalSlots = 4;
     const progressPct = Math.round((taken / totalSlots) * 100);
 
     return (
@@ -1262,31 +1246,16 @@ export default function ChecklistScreen() {
             ))}
           </View>
 
-          <Text style={[st.sectionTitle, { marginTop: 0, marginBottom: 0, lineHeight: 14 }]}>Ambiente de trabalho</Text>
-          <PhotoSlotCard
-            uri={environmentPhoto}
-            label="Local onde você vai operar"
-            slot="environment"
-            wide
-            onTake={takeRequiredPhoto}
-            onConfirmClear={confirmClearPhoto}
-            onPreview={setPreviewUri}
-          />
-
           <TouchableOpacity
             style={[st.nextBtn, (!allRequiredPhotosTaken() || saving) && st.btnDisabled]}
             onPress={() => {
               if (saving) return;
               if (!allRequiredPhotosTaken()) {
                 const missingEq = equipmentPhotos.findIndex((p) => !p);
-                if (missingEq !== -1) {
-                  Alert.alert(
-                    'Foto faltando',
-                    `Tire a foto "${equipmentLabels[missingEq]}" do equipamento antes de finalizar.`,
-                  );
-                } else {
-                  Alert.alert('Foto faltando', 'Tire a foto do ambiente antes de finalizar.');
-                }
+                Alert.alert(
+                  'Foto faltando',
+                  `Tire a foto "${equipmentLabels[missingEq]}" do equipamento antes de finalizar.`,
+                );
                 return;
               }
               handleSave();
@@ -1832,7 +1801,7 @@ const st = StyleSheet.create({
     marginBottom: spacing.sm,
     marginLeft: 32,
   },
-  blockText: { fontSize: 10, fontWeight: '700', color: colors.danger, letterSpacing: 0.4, textTransform: 'uppercase' },
+  blockText: { fontSize: fontSize['2xs'], fontWeight: '700', color: colors.danger, letterSpacing: 0.4, textTransform: 'uppercase' },
 
   // Sim / Não / N.A. — outlined com cor de ação no estado ativo
   statusRow: {
@@ -2102,7 +2071,7 @@ const st = StyleSheet.create({
     backgroundColor: colors.text, paddingVertical: spacing.sm + 4,
     borderRadius: radius.full, gap: spacing.xs, marginTop: spacing.md,
   },
-  finishBtnText: { fontSize: 12, fontWeight: '700', color: colors.white, letterSpacing: 0.2 },
+  finishBtnText: { fontSize: fontSize.xs, fontWeight: '700', color: colors.white, letterSpacing: 0.2 },
   encarregadoNotesBanner: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -2117,7 +2086,7 @@ const st = StyleSheet.create({
     borderColor: '#A7F3D0',
   },
   encarregadoNotesLabel: {
-    fontSize: 10,
+    fontSize: fontSize['2xs'],
     fontWeight: '700',
     color: '#059669',
     letterSpacing: 0.5,
@@ -2125,7 +2094,7 @@ const st = StyleSheet.create({
     marginBottom: 2,
   },
   encarregadoNotesText: {
-    fontSize: 13,
+    fontSize: fontSize.sm,
     color: '#065F46',
     lineHeight: 18,
   },
@@ -2143,7 +2112,7 @@ const st = StyleSheet.create({
     borderColor: '#FDE68A',
   },
   encarregadoPendingText: {
-    fontSize: 12,
+    fontSize: fontSize.xs,
     color: '#92400E',
     fontWeight: '600',
   },
@@ -2164,7 +2133,7 @@ const st = StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   sectionHeaderLabel: {
-    fontSize: 11,
+    fontSize: fontSize.xs,
     letterSpacing: 1.6,
     fontWeight: '800',
     color: colors.textSecondary,
@@ -2175,7 +2144,7 @@ const st = StyleSheet.create({
     backgroundColor: '#E5E7EB',
   },
   sectionHeaderCount: {
-    fontSize: 11,
+    fontSize: fontSize.xs,
     letterSpacing: 1,
     fontWeight: '700',
     color: colors.textLight,
@@ -2231,19 +2200,19 @@ const st = StyleSheet.create({
     borderRadius: 4,
   },
   statusLabel: {
-    fontSize: 12,
+    fontSize: fontSize.xs,
     fontWeight: '700',
     color: colors.text,
     letterSpacing: -0.1,
   },
   dateText: {
-    fontSize: 11,
+    fontSize: fontSize.xs,
     fontWeight: '600',
     color: colors.textSecondary,
     letterSpacing: 0.2,
   },
   machineName: {
-    fontSize: 15,
+    fontSize: fontSize.base,
     fontWeight: '800',
     color: colors.text,
     letterSpacing: -0.3,
@@ -2261,13 +2230,13 @@ const st = StyleSheet.create({
     gap: 4,
   },
   metaText: {
-    fontSize: 12,
+    fontSize: fontSize.xs,
     fontWeight: '500',
     color: colors.textSecondary,
     letterSpacing: 0.1,
   },
   metaSep: {
-    fontSize: 12,
+    fontSize: fontSize.xs,
     color: colors.textLight,
     fontWeight: '400',
   },
@@ -2300,14 +2269,14 @@ const st = StyleSheet.create({
     marginBottom: spacing.md,
   },
   emptyTitle: {
-    fontSize: 16,
+    fontSize: fontSize.base,
     fontWeight: '800',
     color: colors.text,
     letterSpacing: -0.2,
     marginBottom: 6,
   },
   emptyMessage: {
-    fontSize: 13,
+    fontSize: fontSize.sm,
     color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 19,

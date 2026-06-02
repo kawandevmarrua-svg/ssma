@@ -20,7 +20,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { supabase } from '../../src/lib/supabase';
 import { todayLocal } from '../../src/lib/dates';
-import { colors, spacing, radius } from '../../src/theme/colors';
+import { colors, spacing, radius, fontSize } from '../../src/theme/colors';
 import { Text, Avatar } from '../../src/components/ui';
 
 type ChecklistRow = {
@@ -92,7 +92,7 @@ export default function EquipeScreen() {
   const [ncDetails, setNcDetails] = useState<Record<string, NcItem[]>>({});
   const [ncLoading, setNcLoading] = useState<Record<string, boolean>>({});
   const [expandedActivity, setExpandedActivity] = useState<string | null>(null);
-  const [confirmingChecklist, setConfirmingChecklist] = useState<{ id: string; isNc: boolean } | null>(null);
+  const [confirmingChecklist, setConfirmingChecklist] = useState<{ id: string } | null>(null);
   const [confirmNotes, setConfirmNotes] = useState('');
   const [confirmSubmitting, setConfirmSubmitting] = useState(false);
   const router = useRouter();
@@ -227,20 +227,8 @@ export default function EquipeScreen() {
   }
 
   function confirmChecklist(c: ChecklistRow) {
-    const isNc = c.result === 'not_released';
-    if (isNc) {
-      setConfirmNotes('');
-      setConfirmingChecklist({ id: c.id, isNc: true });
-    } else {
-      Alert.alert(
-        'Confirmar checklist',
-        'Confirmar que você revisou e aprovou este checklist?',
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          { text: 'Confirmar', onPress: () => doConfirm(c.id, null) },
-        ],
-      );
-    }
+    setConfirmNotes('');
+    setConfirmingChecklist({ id: c.id });
   }
 
   async function doConfirm(checklistId: string, notes: string | null) {
@@ -341,7 +329,7 @@ export default function EquipeScreen() {
           </View>
         )}
 
-        {isPending && (
+        {isPending && isNc && (
           c.encarregado_confirmed ? (
             <View style={st.confirmedBadge}>
               <Ionicons name="checkmark-circle" size={13} color={colors.success} />
@@ -611,14 +599,14 @@ const st = StyleSheet.create({
   },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   brandLogo: { width: 28, height: 28, borderRadius: 6 },
-  brandName: { fontSize: 16, fontWeight: '800', letterSpacing: 2, color: '#0F172A' },
+  brandName: { fontSize: fontSize.base, fontWeight: '800', letterSpacing: 2, color: '#0F172A' },
   headerBadge: {
     backgroundColor: colors.danger,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: radius.full,
   },
-  headerBadgeText: { fontSize: 12, fontWeight: '700', color: '#fff' },
+  headerBadgeText: { fontSize: fontSize.xs, fontWeight: '700', color: '#fff' },
   bellBtn: {
     width: 40,
     height: 40,
@@ -645,7 +633,7 @@ const st = StyleSheet.create({
   },
   bellBadgeText: {
     color: '#FFFFFF',
-    fontSize: 10,
+    fontSize: fontSize['2xs'],
     lineHeight: 12,
     fontWeight: '800',
     textAlign: 'center',
@@ -665,7 +653,7 @@ const st = StyleSheet.create({
     backgroundColor: '#F1F5F9',
     alignItems: 'center', justifyContent: 'center',
   },
-  dateLabel: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
+  dateLabel: { fontSize: fontSize.base, fontWeight: '700', color: '#0F172A' },
 
   listContent: {
     padding: spacing.lg,
@@ -695,8 +683,8 @@ const st = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
-  operatorName: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
-  operatorMeta: { fontSize: 12, color: '#64748B', marginTop: 1 },
+  operatorName: { fontSize: fontSize.sm, fontWeight: '700', color: '#0F172A' },
+  operatorMeta: { fontSize: fontSize.xs, color: '#64748B', marginTop: 1 },
 
   ncBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 3,
@@ -704,18 +692,18 @@ const st = StyleSheet.create({
     paddingHorizontal: 8, paddingVertical: 3,
     borderRadius: radius.full,
   },
-  ncBadgeText: { fontSize: 11, fontWeight: '700', color: '#fff' },
+  ncBadgeText: { fontSize: fontSize.xs, fontWeight: '700', color: '#fff' },
   okBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 3,
     backgroundColor: colors.success,
     paddingHorizontal: 8, paddingVertical: 3,
     borderRadius: radius.full,
   },
-  okBadgeText: { fontSize: 11, fontWeight: '700', color: '#fff' },
+  okBadgeText: { fontSize: fontSize.xs, fontWeight: '700', color: '#fff' },
 
   section: { borderTopWidth: 1, borderTopColor: '#F1F5F9' },
   sectionLabel: {
-    fontSize: 10,
+    fontSize: fontSize['2xs'],
     fontWeight: '700',
     letterSpacing: 1.2,
     color: '#94A3B8',
@@ -734,15 +722,15 @@ const st = StyleSheet.create({
   activityRowLeft: {
     flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm,
   },
-  activityLabel: { fontSize: 13, fontWeight: '600', color: '#0F172A' },
-  activityMeta: { fontSize: 11, color: '#64748B', marginTop: 1 },
+  activityLabel: { fontSize: fontSize.sm, fontWeight: '600', color: '#0F172A' },
+  activityMeta: { fontSize: fontSize.xs, color: '#64748B', marginTop: 1 },
   activityNcBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 3,
     backgroundColor: '#FEE2E2',
     paddingHorizontal: 7, paddingVertical: 2,
     borderRadius: radius.full,
   },
-  activityNcBadgeText: { fontSize: 11, fontWeight: '700', color: colors.danger },
+  activityNcBadgeText: { fontSize: fontSize.xs, fontWeight: '700', color: colors.danger },
 
   checklistRow: {
     paddingHorizontal: spacing.md,
@@ -754,19 +742,19 @@ const st = StyleSheet.create({
   checklistRowLeft: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
   },
-  checklistMachine: { fontSize: 13, fontWeight: '600', color: '#0F172A' },
-  checklistMeta: { fontSize: 11, color: '#64748B', marginTop: 1 },
+  checklistMachine: { fontSize: fontSize.sm, fontWeight: '600', color: '#0F172A' },
+  checklistMeta: { fontSize: fontSize.xs, color: '#64748B', marginTop: 1 },
 
   ncDetails: {
     marginTop: spacing.sm,
     marginLeft: 24,
     gap: 4,
   },
-  ncNone: { fontSize: 12, color: '#64748B', fontStyle: 'italic' },
+  ncNone: { fontSize: fontSize.xs, color: '#64748B', fontStyle: 'italic' },
   ncItem: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 4,
   },
-  ncItemText: { flex: 1, fontSize: 12, color: '#7F1D1D', lineHeight: 16 },
+  ncItemText: { flex: 1, fontSize: fontSize.xs, color: '#7F1D1D', lineHeight: 16 },
 
   confirmBtn: {
     flexDirection: 'row',
@@ -782,7 +770,7 @@ const st = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   confirmBtnText: {
-    fontSize: 12,
+    fontSize: fontSize.xs,
     fontWeight: '700',
     color: colors.primary,
   },
@@ -794,7 +782,7 @@ const st = StyleSheet.create({
     marginLeft: 24,
   },
   confirmedBadgeText: {
-    fontSize: 11,
+    fontSize: fontSize.xs,
     color: colors.success,
     fontWeight: '600',
   },
@@ -822,13 +810,13 @@ const st = StyleSheet.create({
     marginBottom: 4,
   },
   modalTitle: {
-    fontSize: 17,
+    fontSize: fontSize.md,
     fontWeight: '800',
     color: '#0F172A',
     letterSpacing: -0.3,
   },
   modalSubtitle: {
-    fontSize: 13,
+    fontSize: fontSize.sm,
     color: '#64748B',
     lineHeight: 19,
     marginTop: -6,
@@ -840,7 +828,7 @@ const st = StyleSheet.create({
     borderColor: '#E5E7EB',
     paddingHorizontal: 14,
     paddingVertical: 12,
-    fontSize: 14,
+    fontSize: fontSize.sm,
     color: '#0F172A',
     minHeight: 110,
   },
@@ -852,7 +840,7 @@ const st = StyleSheet.create({
   },
   modalConfirmBtnText: {
     color: '#fff',
-    fontSize: 15,
+    fontSize: fontSize.base,
     fontWeight: '700',
   },
   modalCancelBtn: {
@@ -860,7 +848,7 @@ const st = StyleSheet.create({
     paddingVertical: 8,
   },
   modalCancelBtnText: {
-    fontSize: 14,
+    fontSize: fontSize.sm,
     color: '#64748B',
     fontWeight: '600',
   },
@@ -877,6 +865,6 @@ const st = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     marginBottom: spacing.md,
   },
-  emptyTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A', letterSpacing: -0.2, marginBottom: 6 },
-  emptyMessage: { fontSize: 13, color: '#64748B', textAlign: 'center', lineHeight: 20 },
+  emptyTitle: { fontSize: fontSize.base, fontWeight: '800', color: '#0F172A', letterSpacing: -0.2, marginBottom: 6 },
+  emptyMessage: { fontSize: fontSize.sm, color: '#64748B', textAlign: 'center', lineHeight: 20 },
 });

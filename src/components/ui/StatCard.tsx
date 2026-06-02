@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, View, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, elevation, radius, spacing } from '../../theme/colors';
+import { colors, elevation, radius, spacing, fontSize } from '../../theme/colors';
 import { Text } from './Text';
 
 type Tone = 'primary' | 'success' | 'danger' | 'warning' | 'info' | 'neutral';
@@ -117,7 +117,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   value: {
-    fontSize: 32,
+    fontSize: fontSize['3xl'],
     lineHeight: 36,
     fontWeight: '800',
     letterSpacing: -0.5,
@@ -128,5 +128,5 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingBottom: 4,
   },
-  trendText: { fontSize: 11, fontWeight: '700' },
+  trendText: { fontSize: fontSize.xs, fontWeight: '700' },
 });

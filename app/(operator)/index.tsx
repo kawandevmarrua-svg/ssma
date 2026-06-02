@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { supabase } from '../../src/lib/supabase';
 import { todayLocal } from '../../src/lib/dates';
-import { colors, radius, spacing } from '../../src/theme/colors';
+import { colors, radius, spacing, fontSize } from '../../src/theme/colors';
 import { Text } from '../../src/components/ui';
 import { AppHeader } from '../../src/components/AppHeader';
 import { useOfflineQueueSize, useDeadLetterCount } from '../../src/hooks/useOfflineQueueSize';
@@ -517,7 +517,7 @@ const reminderCardStyles = StyleSheet.create({
     backgroundColor: '#F0FDF4',
   },
   timeText: {
-    fontSize: 12,
+    fontSize: fontSize.xs,
     fontWeight: '800',
     color: colors.primary,
     letterSpacing: 0.3,
@@ -527,7 +527,7 @@ const reminderCardStyles = StyleSheet.create({
   },
   title: {
     flex: 1,
-    fontSize: 13,
+    fontSize: fontSize.sm,
     fontWeight: '600',
     color: '#0F172A',
   },
@@ -539,7 +539,7 @@ const reminderCardStyles = StyleSheet.create({
     justifyContent: 'center',
   },
   more: {
-    fontSize: 11,
+    fontSize: fontSize.xs,
     color: '#94A3B8',
     fontWeight: '600',
     textAlign: 'center',
@@ -559,7 +559,7 @@ const reminderCardStyles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
   },
   footerText: {
-    fontSize: 11,
+    fontSize: fontSize.xs,
     fontWeight: '700',
     color: colors.primary,
   },
@@ -641,7 +641,7 @@ const styles = StyleSheet.create({
   },
   brandTagText: {
     color: '#fff',
-    fontSize: 10,
+    fontSize: fontSize['2xs'],
     letterSpacing: 1.4,
     fontWeight: '800',
   },
@@ -655,7 +655,7 @@ const styles = StyleSheet.create({
   },
   counterText: {
     color: TECH_TEXT_MUTED,
-    fontSize: 10,
+    fontSize: fontSize['2xs'],
     letterSpacing: 1.2,
     fontWeight: '700',
   },
@@ -666,14 +666,14 @@ const styles = StyleSheet.create({
   },
   heroEyebrow: {
     color: colors.primary,
-    fontSize: 11,
+    fontSize: fontSize.xs,
     letterSpacing: 1.6,
     fontWeight: '800',
     marginBottom: spacing.sm,
   },
   heroTitle: {
     color: TECH_TEXT,
-    fontSize: 28,
+    fontSize: fontSize['2xl'],
     lineHeight: 34,
     fontWeight: '800',
     letterSpacing: -0.7,
@@ -688,7 +688,7 @@ const styles = StyleSheet.create({
   },
   heroMessage: {
     color: TECH_TEXT_MUTED,
-    fontSize: 14,
+    fontSize: fontSize.sm,
     lineHeight: 22,
     maxWidth: WINDOW_WIDTH * 0.82,
   },
@@ -722,7 +722,7 @@ const styles = StyleSheet.create({
   },
   ctaText: {
     color: '#fff',
-    fontSize: 11,
+    fontSize: fontSize.xs,
     fontWeight: '800',
     letterSpacing: 1,
   },
@@ -764,7 +764,7 @@ const styles = StyleSheet.create({
   },
   sectionLabel: {
     color: TECH_TEXT_MUTED,
-    fontSize: 11,
+    fontSize: fontSize.xs,
     letterSpacing: 1.8,
     fontWeight: '800',
   },
@@ -806,7 +806,7 @@ const statStyles = StyleSheet.create({
     backgroundColor: TECH_BG,
   },
   value: {
-    fontSize: 28,
+    fontSize: fontSize['2xl'],
     lineHeight: 32,
     fontWeight: '800',
     letterSpacing: -1,
@@ -814,7 +814,7 @@ const statStyles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   label: {
-    fontSize: 10,
+    fontSize: fontSize['2xs'],
     letterSpacing: 1.2,
     fontWeight: '700',
     color: TECH_TEXT_MUTED,
@@ -859,7 +859,7 @@ const shortcutStyles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   label: {
-    fontSize: 11,
+    fontSize: fontSize.xs,
     fontWeight: '700',
     color: TECH_TEXT,
     letterSpacing: 0.1,

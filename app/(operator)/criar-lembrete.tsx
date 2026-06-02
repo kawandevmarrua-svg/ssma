@@ -22,7 +22,7 @@ import {
 } from '../../src/lib/reminders';
 import { AppHeader } from '../../src/components/AppHeader';
 import { Text } from '../../src/components/ui';
-import { colors, radius, spacing } from '../../src/theme/colors';
+import { colors, radius, spacing, fontSize } from '../../src/theme/colors';
 
 const TECH_BG = '#FFFFFF';
 const TECH_BG_SOFT = '#F8FAFC';
@@ -268,20 +268,20 @@ const styles = StyleSheet.create({
   },
 
   pageTitle: {
-    fontSize: 24,
+    fontSize: fontSize.xl,
     fontWeight: '800',
     color: TECH_TEXT,
     letterSpacing: -0.5,
     marginBottom: 2,
   },
   pageSubtitle: {
-    fontSize: 13,
+    fontSize: fontSize.sm,
     color: TECH_TEXT_MUTED,
     marginBottom: spacing.sm,
   },
 
   label: {
-    fontSize: 11,
+    fontSize: fontSize.xs,
     fontWeight: '700',
     letterSpacing: 1.1,
     color: TECH_TEXT_MUTED,
@@ -296,7 +296,7 @@ const styles = StyleSheet.create({
     borderColor: TECH_BORDER,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    fontSize: 15,
+    fontSize: fontSize.base,
     color: TECH_TEXT,
     minHeight: 52,
   },
@@ -322,7 +322,7 @@ const styles = StyleSheet.create({
     backgroundColor: TECH_BG_SOFT,
   },
   pillText: {
-    fontSize: 13,
+    fontSize: fontSize.sm,
     fontWeight: '700',
     color: TECH_TEXT_MUTED,
   },
@@ -341,13 +341,13 @@ const styles = StyleSheet.create({
     backgroundColor: TECH_BG_SOFT,
   },
   dayLetter: {
-    fontSize: 13,
+    fontSize: fontSize.sm,
     fontWeight: '800',
     color: TECH_TEXT_MUTED,
     lineHeight: 16,
   },
   daySub: {
-    fontSize: 8,
+    fontSize: fontSize['2xs'],
     fontWeight: '600',
     color: TECH_TEXT_MUTED,
     lineHeight: 11,
@@ -370,7 +370,7 @@ const styles = StyleSheet.create({
   },
   saveBtnText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: fontSize.base,
     fontWeight: '700',
     letterSpacing: -0.2,
   },

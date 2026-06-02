@@ -224,5 +224,5 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: radius.full,
   },
-  customText: { fontSize: 10, fontWeight: '700', color: colors.warningDark, letterSpacing: 0.3 },
+  customText: { fontSize: fontSize['2xs'], fontWeight: '700', color: colors.warningDark, letterSpacing: 0.3 },
 });

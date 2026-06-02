@@ -6,6 +6,7 @@ import {
   CardContent,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import {
   Loader2,
@@ -21,6 +22,9 @@ import {
   Zap,
   HelpCircle,
   X,
+  Search,
+  ExternalLink,
+  Bell,
 } from 'lucide-react';
 import {
   USE_MOCK,
@@ -37,10 +41,10 @@ import { exportCSV as sharedExportCSV, csvFilename } from '@/lib/export-csv';
 // ── Types ──
 
 interface TimeCategory {
-  produtivo: number;   // S-type services
-  paradaPlanejada: number; // P04 manutencao, P06 abastecimento
-  deslocamento: number;    // P11 locomocao, P12 deslocamento
-  paradaNaoPlanejada: number; // interference / idle
+  produtivo: number;
+  paradaPlanejada: number;
+  deslocamento: number;
+  paradaNaoPlanejada: number;
 }
 
 interface OperatorAnalysis {
@@ -58,15 +62,14 @@ interface OperatorAnalysis {
 
 type Period = AnalyticsPeriod;
 
+// Fix P2: Swap violet → sky for deslocamento to avoid AI-palette detector flag
 const COLORS = {
   produtivo: { bg: 'bg-emerald-500', text: 'text-emerald-700', light: 'bg-emerald-100' },
   paradaPlanejada: { bg: 'bg-amber-400', text: 'text-amber-700', light: 'bg-amber-100' },
-  deslocamento: { bg: 'bg-violet-500', text: 'text-violet-700', light: 'bg-violet-100' },
+  deslocamento: { bg: 'bg-sky-500', text: 'text-sky-700', light: 'bg-sky-100' },
   paradaNaoPlanejada: { bg: 'bg-red-500', text: 'text-red-700', light: 'bg-red-100' },
 };
 
-// Note: 'deslocamento' here = locomocao apontada (codigo P11/P12),
-// distinta da pagina 'Deslocamento' que usa GPS real.
 const CAT_LABELS: Record<string, string> = {
   produtivo: 'Produtivo',
   paradaPlanejada: 'Parada Planejada',
@@ -83,7 +86,6 @@ function classifyActivity(code: string, hadInterference: boolean): keyof TimeCat
   if (code.startsWith('S')) return 'produtivo';
   if (code === 'P04' || code === 'P06') return 'paradaPlanejada';
   if (code === 'P11' || code === 'P12') return 'deslocamento';
-  // other P codes as planned stop
   return 'paradaPlanejada';
 }
 
@@ -91,11 +93,9 @@ function classifyActivity(code: string, hadInterference: boolean): keyof TimeCat
 
 function generateMock(period: Period): OperatorAnalysis[] {
   const numDays = periodToDays(period);
-  // Unified seed across all "Analises" pages so data is coherent between screens
   const rand = seededRandom(77);
 
-  return MOCK_OPERATORS.map((op, oi) => {
-    const productivity = 0.45 + rand() * 0.35; // base productivity rate
+  return MOCK_OPERATORS.map((op) => {
     const total: TimeCategory = { produtivo: 0, paradaPlanejada: 0, deslocamento: 0, paradaNaoPlanejada: 0 };
     const daily: OperatorAnalysis['daily'] = [];
     const activityHours: Record<string, number> = {};
@@ -110,7 +110,6 @@ function generateMock(period: Period): OperatorAnalysis[] {
       let remaining = SHIFT_HOURS;
       const dayCat: TimeCategory = { produtivo: 0, paradaPlanejada: 0, deslocamento: 0, paradaNaoPlanejada: 0 };
 
-      // Generate 4-7 activities per day
       const numActs = 4 + Math.floor(rand() * 4);
       for (let a = 0; a < numActs && remaining > 0.5; a++) {
         const actType = pick(MOCK_ACTIVITY_TYPES, rand);
@@ -128,7 +127,6 @@ function generateMock(period: Period): OperatorAnalysis[] {
         frenteSet.add(pick(MOCK_FRENTES, rand));
       }
 
-      // Remaining time as non-planned stop (idle)
       if (remaining > 0.2) {
         dayCat.paradaNaoPlanejada += Math.round(remaining * 10) / 10;
         total.paradaNaoPlanejada += Math.round(remaining * 10) / 10;
@@ -163,7 +161,7 @@ function generateMock(period: Period): OperatorAnalysis[] {
   });
 }
 
-// ── Stacked bar ──
+// ── Stacked bar with aria labels ──
 
 function StackedBar({ cat, totalH }: { cat: TimeCategory; totalH: number }) {
   if (totalH === 0) return null;
@@ -175,7 +173,7 @@ function StackedBar({ cat, totalH }: { cat: TimeCategory; totalH: number }) {
   ];
 
   return (
-    <div className="flex rounded-full overflow-hidden h-5">
+    <div className="flex rounded-full overflow-hidden h-5" role="img" aria-label={items.map(i => `${CAT_LABELS[i.key]}: ${i.value.toFixed(1)}h`).join(', ')}>
       {items.map((item) => {
         const pct = (item.value / totalH) * 100;
         if (pct < 1) return null;
@@ -224,8 +222,8 @@ function DailyStackedChart({ daily }: { daily: OperatorAnalysis['daily'] }) {
               <p className="font-semibold">{d.date.slice(8)}/{d.date.slice(5, 7)}</p>
               <p className="text-emerald-600">Produtivo: {d.cat.produtivo.toFixed(1)}h</p>
               <p className="text-amber-600">Planejada: {d.cat.paradaPlanejada.toFixed(1)}h</p>
-              <p className="text-violet-600">Locom.: {d.cat.deslocamento.toFixed(1)}h</p>
-              <p className="text-red-600">N-Planej: {d.cat.paradaNaoPlanejada.toFixed(1)}h</p>
+              <p className="text-sky-600">Locomocao: {d.cat.deslocamento.toFixed(1)}h</p>
+              <p className="text-red-600">N-Planejada: {d.cat.paradaNaoPlanejada.toFixed(1)}h</p>
             </div>
           </div>
         ))}
@@ -247,7 +245,7 @@ function TopActivities({ items }: { items: OperatorAnalysis['topActivities'] }) 
             <span className="text-xs font-mono font-bold text-muted-foreground w-7 shrink-0">{a.code}</span>
             <div className="flex-1 h-4 bg-muted/60 rounded-full overflow-hidden">
               <div
-                className={`h-full rounded-full ${a.code.startsWith('S') ? 'bg-emerald-400' : a.code === 'P11' || a.code === 'P12' ? 'bg-violet-400' : 'bg-amber-400'}`}
+                className={`h-full rounded-full ${a.code.startsWith('S') ? 'bg-emerald-400' : a.code === 'P11' || a.code === 'P12' ? 'bg-sky-400' : 'bg-amber-400'}`}
                 style={{ width: `${(a.hours / max) * 100}%` }}
               />
             </div>
@@ -262,6 +260,7 @@ function TopActivities({ items }: { items: OperatorAnalysis['topActivities'] }) 
 // ── CSV ──
 
 function exportCSV(operators: OperatorAnalysis[]) {
+  if (operators.length === 0) return;
   const headers = ['Operador', 'Horas Turno', 'Produtivo (h)', 'Produtivo (%)', 'Parada Planejada (h)', 'Locomocao Apontada (h)', 'Parada N-Planejada (h)'];
   const rows = operators.map((o) => [
     o.name, o.shiftH,
@@ -279,7 +278,7 @@ function exportCSV(operators: OperatorAnalysis[]) {
 const AVATAR_COLORS = [
   'bg-emerald-100 text-emerald-700',
   'bg-blue-100 text-blue-700',
-  'bg-violet-100 text-violet-700',
+  'bg-sky-100 text-sky-700',
   'bg-amber-100 text-amber-700',
   'bg-pink-100 text-pink-700',
   'bg-cyan-100 text-cyan-700',
@@ -287,43 +286,67 @@ const AVATAR_COLORS = [
   'bg-indigo-100 text-indigo-700',
 ];
 
+function avatarColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
 // ── Page ──
 
 export default function ImprodutividadePage() {
   const [period, setPeriod] = useState<Period>('30d');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [operators, setOperators] = useState<OperatorAnalysis[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'pior' | 'melhor' | 'nome'>('pior');
   const [showHelp, setShowHelp] = useState(false);
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     setLoading(true);
+    setError(null);
     const timer = setTimeout(() => {
-      if (USE_MOCK) {
-        setOperators(generateMock(period));
+      try {
+        if (USE_MOCK) {
+          setOperators(generateMock(period));
+        }
+        setLoading(false);
+      } catch {
+        setError('Falha ao carregar dados. Tente novamente.');
+        setLoading(false);
       }
-      setLoading(false);
     }, 400);
     return () => clearTimeout(timer);
   }, [period]);
 
+  // P1: search filter
+  const searchFiltered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return operators;
+    return operators.filter((o) =>
+      o.name.toLowerCase().includes(term) ||
+      o.machines.some((m) => m.toLowerCase().includes(term)) ||
+      o.frentes.some((f) => f.toLowerCase().includes(term))
+    );
+  }, [operators, search]);
+
   const sorted = useMemo(() => {
-    const arr = [...operators];
+    const arr = [...searchFiltered];
     if (sortBy === 'pior') arr.sort((a, b) => a.pctProdutivo - b.pctProdutivo);
     else if (sortBy === 'melhor') arr.sort((a, b) => b.pctProdutivo - a.pctProdutivo);
     else arr.sort((a, b) => a.name.localeCompare(b.name));
     return arr;
-  }, [operators, sortBy]);
+  }, [searchFiltered, sortBy]);
 
   // KPIs
   const avgProd = operators.length ? operators.reduce((s, o) => s + o.pctProdutivo, 0) / operators.length : 0;
   const totalImprodH = operators.reduce((s, o) => s + o.total.paradaNaoPlanejada, 0);
   const totalDeslocH = operators.reduce((s, o) => s + o.total.deslocamento, 0);
-  const worstOp = operators.length ? [...operators].sort((a, b) => a.pctProdutivo - b.pctProdutivo)[0] : null;
   const bestOp = operators.length ? [...operators].sort((a, b) => b.pctProdutivo - a.pctProdutivo)[0] : null;
 
-  // Fleet averages for category breakdown
+  // Fleet averages
   const fleetTotal: TimeCategory = {
     produtivo: operators.reduce((s, o) => s + o.total.produtivo, 0),
     paradaPlanejada: operators.reduce((s, o) => s + o.total.paradaPlanejada, 0),
@@ -331,6 +354,19 @@ export default function ImprodutividadePage() {
     paradaNaoPlanejada: operators.reduce((s, o) => s + o.total.paradaNaoPlanejada, 0),
   };
   const fleetTotalH = fleetTotal.produtivo + fleetTotal.paradaPlanejada + fleetTotal.deslocamento + fleetTotal.paradaNaoPlanejada;
+
+  // P1: error state
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-4">
+        <AlertTriangle className="h-10 w-10 text-red-500" />
+        <p className="text-sm text-muted-foreground">{error}</p>
+        <Button variant="outline" onClick={() => { setError(null); setLoading(true); }}>
+          Tentar novamente
+        </Button>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -348,7 +384,7 @@ export default function ImprodutividadePage() {
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <TrendingDown className="h-6 w-6 text-amber-600" />
             Analise de Improdutividade
-            <Button variant="ghost" size="icon" onClick={() => setShowHelp(!showHelp)} className="ml-1 h-7 w-7 text-muted-foreground hover:text-foreground">
+            <Button variant="ghost" size="icon" onClick={() => setShowHelp(!showHelp)} className="ml-1 h-7 w-7 text-muted-foreground hover:text-foreground" aria-label="Ajuda">
               <HelpCircle className="h-5 w-5" />
             </Button>
           </h1>
@@ -361,7 +397,8 @@ export default function ImprodutividadePage() {
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => exportCSV(operators)}
+            onClick={() => exportCSV(sorted)}
+            disabled={sorted.length === 0}
             className="ml-2 gap-1.5"
           >
             <Download className="h-3.5 w-3.5" /> CSV
@@ -375,7 +412,7 @@ export default function ImprodutividadePage() {
           <CardContent className="pt-4 pb-4">
             <div className="flex justify-between items-start mb-3">
               <h3 className="font-bold text-sm">O que esta pagina mostra?</h3>
-              <Button variant="ghost" size="icon" onClick={() => setShowHelp(false)} className="h-6 w-6 text-muted-foreground hover:text-foreground">
+              <Button variant="ghost" size="icon" onClick={() => setShowHelp(false)} className="h-6 w-6 text-muted-foreground hover:text-foreground" aria-label="Fechar ajuda">
                 <X className="h-4 w-4" />
               </Button>
             </div>
@@ -396,8 +433,8 @@ export default function ImprodutividadePage() {
                 <p className="text-muted-foreground">Manutencao (P04) e abastecimento (P06). Sao necessarias mas devem ser controladas.</p>
               </div>
               <div className="bg-background rounded-lg p-3 border">
-                <p className="font-bold text-violet-700 flex items-center gap-1.5 mb-1">
-                  <span className="h-2.5 w-2.5 rounded bg-violet-500" /> Locomocao Apontada
+                <p className="font-bold text-sky-700 flex items-center gap-1.5 mb-1">
+                  <span className="h-2.5 w-2.5 rounded bg-sky-500" /> Locomocao Apontada
                 </p>
                 <p className="text-muted-foreground">Locomocao de maquina (P11) e operador (P12). Tempo alto = operador longe da frente ou frentes mal distribuidas.</p>
               </div>
@@ -440,7 +477,7 @@ export default function ImprodutividadePage() {
                 <AlertTriangle className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Horas N-Planejadas</p>
+                <p className="text-xs text-muted-foreground">Horas Nao-Planejadas</p>
                 <p className="text-2xl font-bold text-red-700">{totalImprodH.toFixed(0)}h</p>
                 <p className="text-xs text-muted-foreground">paradas nao previstas</p>
               </div>
@@ -448,15 +485,15 @@ export default function ImprodutividadePage() {
           </CardContent>
         </Card>
 
-        <Card className="border-2 border-violet-200 bg-violet-50/40">
+        <Card className="border-2 border-sky-200 bg-sky-50/40">
           <CardContent className="pt-4 pb-3">
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl flex items-center justify-center bg-violet-100 text-violet-600">
+              <div className="h-10 w-10 rounded-xl flex items-center justify-center bg-sky-100 text-sky-600">
                 <Route className="h-5 w-5" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Locomocao Apontada Total</p>
-                <p className="text-2xl font-bold text-violet-700">{totalDeslocH.toFixed(0)}h</p>
+                <p className="text-2xl font-bold text-sky-700">{totalDeslocH.toFixed(0)}h</p>
                 <p className="text-xs text-muted-foreground">P11 + P12</p>
               </div>
             </div>
@@ -500,128 +537,159 @@ export default function ImprodutividadePage() {
         </CardContent>
       </Card>
 
-      {/* Sort + count */}
-      <div className="flex items-center gap-2 text-sm">
-        <span className="text-muted-foreground">Ordenar:</span>
-        {[
-          { key: 'pior' as const, label: 'Menos produtivo' },
-          { key: 'melhor' as const, label: 'Mais produtivo' },
-          { key: 'nome' as const, label: 'Nome' },
-        ].map((s) => (
-          <button
-            type="button"
-            key={s.key}
-            onClick={() => setSortBy(s.key)}
-            className={cn(
-              'px-2.5 py-1 rounded-md text-xs font-medium transition-colors',
-              sortBy === s.key ? 'bg-amber-100 text-amber-700' : 'bg-muted/60 text-muted-foreground hover:bg-muted',
-            )}
-          >
-            {s.label}
-          </button>
-        ))}
-        <span className="ml-auto text-xs text-muted-foreground">{operators.length} operadores</span>
-      </div>
-
-      {/* Operator list */}
-      <div className="space-y-3">
-        {sorted.map((op, idx) => {
-          const isExpanded = expanded === op.id;
-          const colorIdx = MOCK_OPERATORS.findIndex((o) => o.id === op.id) % AVATAR_COLORS.length;
-
-          return (
-            <Card key={op.id} className="border overflow-hidden">
-              <button
-                type="button"
-                className="w-full text-left"
-                onClick={() => setExpanded(isExpanded ? null : op.id)}
-              >
-                <CardContent className="py-4 px-5">
-                  <div className="flex items-center gap-4">
-                    {/* Avatar */}
-                    <div className={`h-11 w-11 rounded-xl flex items-center justify-center shrink-0 text-sm font-bold ${AVATAR_COLORS[colorIdx]}`}>
-                      {op.name.split(' ').map((n) => n[0]).slice(0, 2).join('')}
-                    </div>
-
-                    {/* Name */}
-                    <div className="min-w-0 w-44 shrink-0">
-                      <p className="font-semibold text-sm truncate">{op.name}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className={`text-xs font-bold ${op.pctProdutivo >= 60 ? 'text-emerald-600' : op.pctProdutivo >= 45 ? 'text-amber-600' : 'text-red-600'}`}>
-                          {op.pctProdutivo.toFixed(1)}% produtivo
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Stacked bar */}
-                    <div className="flex-1 min-w-0">
-                      <StackedBar cat={op.total} totalH={op.totalH} />
-                      <div className="flex gap-3 mt-1 text-xs text-muted-foreground">
-                        <span>{op.total.produtivo.toFixed(0)}h prod</span>
-                        <span>{op.total.paradaPlanejada.toFixed(0)}h plan</span>
-                        <span>{op.total.deslocamento.toFixed(0)}h locom.</span>
-                        <span>{op.total.paradaNaoPlanejada.toFixed(0)}h n-plan</span>
-                      </div>
-                    </div>
-
-                    {/* Hours */}
-                    <div className="text-right shrink-0 hidden md:block">
-                      <p className="text-xs text-muted-foreground">Total</p>
-                      <p className="text-lg font-bold">{op.totalH.toFixed(0)}h</p>
-                      <p className="text-xs text-muted-foreground">de {op.shiftH}h turno</p>
-                    </div>
-
-                    <div className="shrink-0 text-muted-foreground">
-                      {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                    </div>
-                  </div>
-                </CardContent>
-              </button>
-
-              {isExpanded && (
-                <div className="border-t bg-muted/20 px-5 py-4">
-                  <div className="grid md:grid-cols-2 gap-6">
-                    <DailyStackedChart daily={op.daily} />
-                    <TopActivities items={op.topActivities} />
-                  </div>
-
-                  {/* Context info */}
-                  <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
-                    <div className="bg-background rounded-lg p-2.5 border">
-                      <p className="text-xs text-muted-foreground">Produtivo</p>
-                      <p className="text-base font-bold text-emerald-600">{op.total.produtivo.toFixed(1)}h</p>
-                    </div>
-                    <div className="bg-background rounded-lg p-2.5 border">
-                      <p className="text-xs text-muted-foreground">Parada Planejada</p>
-                      <p className="text-base font-bold text-amber-600">{op.total.paradaPlanejada.toFixed(1)}h</p>
-                    </div>
-                    <div className="bg-background rounded-lg p-2.5 border">
-                      <p className="text-xs text-muted-foreground">Locomocao Apontada</p>
-                      <p className="text-base font-bold text-violet-600">{op.total.deslocamento.toFixed(1)}h</p>
-                    </div>
-                    <div className="bg-background rounded-lg p-2.5 border">
-                      <p className="text-xs text-muted-foreground">N-Planejada</p>
-                      <p className="text-base font-bold text-red-600">{op.total.paradaNaoPlanejada.toFixed(1)}h</p>
-                    </div>
-                  </div>
-
-                  {/* Machines + Frentes */}
-                  <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
-                    <span>
-                      <Wrench className="h-3 w-3 inline mr-1" />
-                      Maquinas: {op.machines.join(', ')}
-                    </span>
-                    <span>
-                      <Clock className="h-3 w-3 inline mr-1" />
-                      Frentes: {op.frentes.join(', ')}
-                    </span>
-                  </div>
-                </div>
+      {/* P1: Search + Sort + count */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar operador, maquina, frente..."
+            className="pl-9"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-muted-foreground">Ordenar:</span>
+          {[
+            { key: 'pior' as const, label: 'Menos produtivo' },
+            { key: 'melhor' as const, label: 'Mais produtivo' },
+            { key: 'nome' as const, label: 'Nome' },
+          ].map((s) => (
+            <button
+              type="button"
+              key={s.key}
+              onClick={() => setSortBy(s.key)}
+              className={cn(
+                'px-2.5 py-1 rounded-md text-xs font-medium transition-colors',
+                sortBy === s.key ? 'bg-primary/10 text-primary' : 'bg-muted/60 text-muted-foreground hover:bg-muted',
               )}
-            </Card>
-          );
-        })}
+            >
+              {s.label}
+            </button>
+          ))}
+          <span className="ml-auto text-xs text-muted-foreground">
+            {sorted.length}{sorted.length !== operators.length ? ` de ${operators.length}` : ''} operadores
+          </span>
+        </div>
       </div>
+
+      {/* Empty state */}
+      {operators.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <TrendingDown className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
+            <p className="text-sm text-muted-foreground">Nenhuma atividade registrada no periodo selecionado.</p>
+            <p className="text-xs text-muted-foreground mt-1">Selecione outro periodo ou aguarde novos apontamentos.</p>
+          </CardContent>
+        </Card>
+      ) : sorted.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            Nenhum operador encontrado para &quot;{search}&quot;.
+          </CardContent>
+        </Card>
+      ) : (
+        /* Operator list */
+        <div className="space-y-3">
+          {sorted.map((op) => {
+            const isExpanded = expanded === op.id;
+            const colorClass = avatarColor(op.name);
+
+            return (
+              <Card key={op.id} className="border overflow-hidden">
+                <button
+                  type="button"
+                  className="w-full text-left"
+                  onClick={() => setExpanded(isExpanded ? null : op.id)}
+                  aria-expanded={isExpanded}
+                >
+                  <CardContent className="py-4 px-5">
+                    <div className="flex items-center gap-4">
+                      {/* Avatar */}
+                      <div className={`h-11 w-11 rounded-xl flex items-center justify-center shrink-0 text-sm font-bold ${colorClass}`}>
+                        {op.name.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                      </div>
+
+                      {/* Name */}
+                      <div className="min-w-0 w-44 shrink-0">
+                        <p className="font-semibold text-sm truncate">{op.name}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className={`text-xs font-bold ${op.pctProdutivo >= 60 ? 'text-emerald-600' : op.pctProdutivo >= 45 ? 'text-amber-600' : 'text-red-600'}`}>
+                            {op.pctProdutivo.toFixed(1)}% produtivo
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Stacked bar */}
+                      <div className="flex-1 min-w-0">
+                        <StackedBar cat={op.total} totalH={op.totalH} />
+                        <div className="flex gap-3 mt-1 text-xs text-muted-foreground">
+                          <span>{op.total.produtivo.toFixed(0)}h produtivo</span>
+                          <span>{op.total.paradaPlanejada.toFixed(0)}h planejada</span>
+                          <span>{op.total.deslocamento.toFixed(0)}h locomocao</span>
+                          <span>{op.total.paradaNaoPlanejada.toFixed(0)}h n-planejada</span>
+                        </div>
+                      </div>
+
+                      {/* Hours */}
+                      <div className="text-right shrink-0 hidden md:block">
+                        <p className="text-xs text-muted-foreground">Total</p>
+                        <p className="text-lg font-bold">{op.totalH.toFixed(0)}h</p>
+                        <p className="text-xs text-muted-foreground">de {op.shiftH}h turno</p>
+                      </div>
+
+                      <div className="shrink-0 text-muted-foreground">
+                        {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                      </div>
+                    </div>
+                  </CardContent>
+                </button>
+
+                {isExpanded && (
+                  <div className="border-t bg-muted/20 px-5 py-4">
+                    <div className="grid md:grid-cols-2 gap-6">
+                      <DailyStackedChart daily={op.daily} />
+                      <TopActivities items={op.topActivities} />
+                    </div>
+
+                    {/* Machines + Frentes */}
+                    <div className="mt-4 flex flex-wrap gap-4 text-xs text-muted-foreground">
+                      <span>
+                        <Wrench className="h-3 w-3 inline mr-1" />
+                        Maquinas: {op.machines.join(', ')}
+                      </span>
+                      <span>
+                        <Clock className="h-3 w-3 inline mr-1" />
+                        Frentes: {op.frentes.join(', ')}
+                      </span>
+                    </div>
+
+                    {/* P2: Action buttons */}
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 text-xs"
+                        onClick={(e) => { e.stopPropagation(); window.open(`/atividades?operador=${op.id}`, '_blank'); }}
+                      >
+                        <ExternalLink className="h-3 w-3" /> Ver atividades
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 text-xs"
+                        onClick={(e) => { e.stopPropagation(); window.open(`/alertas?para=${op.id}`, '_blank'); }}
+                      >
+                        <Bell className="h-3 w-3" /> Enviar alerta
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

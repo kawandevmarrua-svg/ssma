@@ -26,6 +26,8 @@ import { Text } from '../../src/components/ui';
 import { AppHeader } from '../../src/components/AppHeader';
 import { LocationPicker } from '../../src/components/LocationPicker';
 
+const MAX_START_PHOTOS = 5;
+
 type ActivityAnswers = Record<string, boolean | null>;
 type ActivityNcDescriptions = Record<string, string>;
 type ActivityNcPhotos = Record<string, string | null>;
@@ -44,7 +46,7 @@ export default function ServicoScreen() {
   const [locationPickerVisible, setLocationPickerVisible] = useState(false);
   const [description, setDescription] = useState('');
   const [equipmentPhotoUri, setEquipmentPhotoUri] = useState<string | null>(null);
-  const [startPhotoUri, setStartPhotoUri] = useState<string | null>(null);
+  const [startPhotoUris, setStartPhotoUris] = useState<string[]>([]);
   const [preopAnswers, setPreopAnswers] = useState<ActivityAnswers>({});
   const [preopNcDescriptions, setPreopNcDescriptions] = useState<ActivityNcDescriptions>({});
   const [preopNcPhotos, setPreopNcPhotos] = useState<ActivityNcPhotos>({});
@@ -73,12 +75,12 @@ export default function ServicoScreen() {
       setSelectedLocation(null);
       setDescription('');
       setEquipmentPhotoUri(null);
-      setStartPhotoUri(null);
+      setStartPhotoUris([]);
       setPreopAnswers({});
       setPreopNcDescriptions({});
       setPreopNcPhotos({});
 
-      const [typeRes, clRes, qRes] = await Promise.all([
+      const [typeRes, clRes] = await Promise.all([
         supabase.from('activity_types').select('*').eq('id', type_id).single(),
         supabase
           .from('checklists')
@@ -86,13 +88,6 @@ export default function ServicoScreen() {
           .eq('operator_id', userId)
           .eq('date', today)
           .order('created_at', { ascending: false }),
-        isEncarregado
-          ? Promise.resolve({ data: null, error: null })
-          : supabase
-              .from('activity_questions')
-              .select('*')
-              .eq('active', true)
-              .order('order_index', { ascending: true }),
       ]);
       if (cancelled) return;
 
@@ -100,6 +95,24 @@ export default function ServicoScreen() {
         Alert.alert('Erro', 'Tipo de atividade nao encontrado.');
         router.replace('/(operator)/atividade');
         return;
+      }
+
+      const type = typeRes.data as ActivityType;
+
+      // Perguntas: quando o tipo usa conjunto proprio, carrega as do tipo;
+      // senao, carrega as globais (comportamento padrao). Encarregado nao responde pre-op.
+      let qRes: { data: ActivityQuestion[] | null; error: { message: string } | null } = { data: null, error: null };
+      if (!isEncarregado) {
+        let qQuery = supabase
+          .from('activity_questions')
+          .select('*')
+          .eq('active', true)
+          .order('order_index', { ascending: true });
+        qQuery = type.use_custom_questions
+          ? qQuery.eq('activity_type_id', type.id)
+          : qQuery.eq('is_global', true).is('activity_type_id', null);
+        qRes = await qQuery;
+        if (cancelled) return;
       }
 
       const allToday = clRes.data ?? [];
@@ -144,7 +157,7 @@ export default function ServicoScreen() {
 
       const autoChecklistId = isEncarregado ? null : (eligibleMapped[0]?.id ?? null);
 
-      setActivityType(typeRes.data as ActivityType);
+      setActivityType(type);
       setQuestions(qList);
       setAvailableChecklists(isEncarregado ? [] : eligibleMapped);
       setSelectedChecklistId(autoChecklistId);
@@ -264,15 +277,16 @@ export default function ServicoScreen() {
         uploadedPaths.push(equipmentPath);
       }
 
-      let startPath: string | null = null;
-      if (startPhotoUri) {
-        startPath = await uploadPhoto(
-          startPhotoUri,
+      const startPaths: string[] = [];
+      for (let i = 0; i < startPhotoUris.length; i++) {
+        const path = await uploadPhoto(
+          startPhotoUris[i],
           'activity-photos',
-          `${user.id}/${activityId}/start`,
+          `${user.id}/${activityId}/start/${i}`,
         );
-        if (!startPath) throw new Error('Falha ao enviar foto de inicio. Tente novamente.');
-        uploadedPaths.push(startPath);
+        if (!path) throw new Error('Falha ao enviar foto de inicio. Tente novamente.');
+        startPaths.push(path);
+        uploadedPaths.push(path);
       }
 
       // FASE 2 — activities
@@ -292,7 +306,8 @@ export default function ServicoScreen() {
         description: finalDescription,
         start_time: now,
         equipment_photo_url: equipmentPath,
-        start_photo_url: startPath,
+        start_photo_url: startPaths[0] ?? null,
+        start_photo_urls: startPaths,
       });
       if (actErr) throw new Error(actErr.message);
 
@@ -608,23 +623,37 @@ export default function ServicoScreen() {
                 </>
               )}
             </TouchableOpacity>
-            <TouchableOpacity
-              style={st.photoPicker}
-              onPress={async () => {
-                const uri = await pickPhoto();
-                if (uri) setStartPhotoUri(uri);
-              }}
-              activeOpacity={0.85}
-            >
-              {startPhotoUri ? (
-                <Image source={{ uri: startPhotoUri }} style={st.photoPreview} />
-              ) : (
-                <>
-                  <Ionicons name="camera" size={24} color={colors.textLight} />
-                  <Text style={st.photoLabel}>Início</Text>
-                </>
-              )}
-            </TouchableOpacity>
+            <View style={st.photoPicker} />
+          </View>
+
+          {/* Fotos de Início — múltiplas (máx. MAX_START_PHOTOS) */}
+          <Text style={st.photoGridLabel}>Início ({startPhotoUris.length}/{MAX_START_PHOTOS})</Text>
+          <View style={st.photoGrid}>
+            {startPhotoUris.map((uri, idx) => (
+              <View key={`${uri}-${idx}`} style={st.photoThumb}>
+                <Image source={{ uri }} style={st.photoPreview} />
+                <TouchableOpacity
+                  style={st.photoRemove}
+                  onPress={() => setStartPhotoUris((prev) => prev.filter((_, i) => i !== idx))}
+                  hitSlop={8}
+                >
+                  <Ionicons name="close-circle" size={22} color={colors.white} />
+                </TouchableOpacity>
+              </View>
+            ))}
+            {startPhotoUris.length < MAX_START_PHOTOS && (
+              <TouchableOpacity
+                style={[st.photoThumb, st.photoAdd]}
+                onPress={async () => {
+                  const uri = await pickPhoto();
+                  if (uri) setStartPhotoUris((prev) => [...prev, uri]);
+                }}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="camera" size={24} color={colors.textLight} />
+                <Text style={st.photoLabel}>Adicionar</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           <TouchableOpacity
@@ -892,7 +921,7 @@ const st = StyleSheet.create({
     marginBottom: spacing.sm,
     marginLeft: 32,
   },
-  criticalText: { fontSize: 10, fontWeight: '700', color: colors.danger, letterSpacing: 0.4, textTransform: 'uppercase' },
+  criticalText: { fontSize: fontSize['2xs'], fontWeight: '700', color: colors.danger, letterSpacing: 0.4, textTransform: 'uppercase' },
 
   // Sim / Nao
   answerRow: { flexDirection: 'row', gap: spacing.sm },
@@ -955,6 +984,36 @@ const st = StyleSheet.create({
   },
   photoPreview: { width: '100%', height: '100%', borderRadius: radius.md },
   photoLabel: { fontSize: fontSize.xs, color: colors.textSecondary, marginTop: spacing.xs, fontWeight: '600' },
+  photoGridLabel: {
+    fontSize: fontSize['2xs'],
+    fontWeight: '700',
+    color: colors.textSecondary,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: spacing.sm,
+  },
+  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md },
+  photoThumb: {
+    width: 92,
+    height: 92,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceMuted,
+    overflow: 'hidden',
+  },
+  photoAdd: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  photoRemove: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    borderRadius: 12,
+  },
 
   // CTA
   cta: {

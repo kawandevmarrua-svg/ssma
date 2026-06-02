@@ -340,13 +340,25 @@ export default function DashboardInspecoesPage() {
 
   const [listClassFilter, setListClassFilter] = useState<'all' | Classification>('all');
 
-  const listedInspections = useMemo(() => {
+  const groupedByOperator = useMemo(() => {
     let list = filtered.inspections;
     if (listClassFilter !== 'all') {
       list = list.filter((i) => i.overall_classification === listClassFilter);
     }
-    return list.slice(0, 50);
-  }, [filtered.inspections, listClassFilter]);
+    const groups: Record<string, Inspection[]> = {};
+    list.forEach((insp) => {
+      const opId = insp.operator_id;
+      if (!groups[opId]) groups[opId] = [];
+      groups[opId].push(insp);
+    });
+    return Object.entries(groups)
+      .map(([opId, insps]) => ({
+        operatorId: opId,
+        operatorName: profiles[opId]?.full_name ?? 'Desconhecido',
+        inspections: insps,
+      }))
+      .sort((a, b) => a.operatorName.localeCompare(b.operatorName));
+  }, [filtered.inspections, listClassFilter, profiles]);
 
   const periodLabels: Record<Period, string> = { '7d': '7 dias', '30d': '30 dias', '90d': '90 dias' };
 
@@ -645,45 +657,48 @@ export default function DashboardInspecoesPage() {
               </div>
             </CardHeader>
             <CardContent>
-              {listedInspections.length === 0 ? (
+              {groupedByOperator.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-8 text-center">
                   Nenhuma inspeção encontrada com os filtros selecionados.
                 </p>
               ) : (
-                <div className="space-y-2">
-                  {listedInspections.map((insp) => {
-                    const cls = insp.overall_classification;
-                    const badgeVariant = cls === 'safe' ? 'success' : cls === 'attention' ? 'warning' : cls === 'critical' ? 'danger' : 'outline';
-                    const badgeLabel = cls ? CLASSIFICATION_LABELS[cls] : 'Sem classificação';
-                    return (
-                      <Link
-                        key={insp.id}
-                        href={`/inspecao-comportamental?id=${insp.id}`}
-                        className="flex items-center justify-between gap-4 rounded-md border p-3 hover:bg-muted/50 transition-colors group"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold text-sm">
-                              {profiles[insp.operator_id]?.full_name ?? 'Desconhecido'}
-                            </span>
-                            <Badge variant={badgeVariant}>{badgeLabel}</Badge>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {insp.date}
-                            {profiles[insp.observer_id]?.full_name
-                              ? ` • Observador: ${profiles[insp.observer_id].full_name}`
-                              : ''}
-                          </p>
-                        </div>
-                        <ExternalLink className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                      </Link>
-                    );
-                  })}
-                  {filtered.inspections.length > 50 && (
-                    <p className="text-xs text-muted-foreground text-center pt-2">
-                      Mostrando as 50 mais recentes de {filtered.inspections.length} inspeções.
-                    </p>
-                  )}
+                <div className="space-y-6">
+                  {groupedByOperator.map((group) => (
+                    <div key={group.operatorId}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Users className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-semibold text-sm">{group.operatorName}</span>
+                        <span className="text-xs text-muted-foreground">({group.inspections.length})</span>
+                      </div>
+                      <div className="space-y-1.5 pl-6">
+                        {group.inspections.map((insp) => {
+                          const cls = insp.overall_classification;
+                          const badgeVariant = cls === 'safe' ? 'success' : cls === 'attention' ? 'warning' : cls === 'critical' ? 'danger' : 'outline';
+                          const badgeLabel = cls ? CLASSIFICATION_LABELS[cls] : 'Sem classificação';
+                          return (
+                            <Link
+                              key={insp.id}
+                              href={`/inspecao-comportamental?id=${insp.id}`}
+                              className="flex items-center justify-between gap-4 rounded-md border p-2.5 hover:bg-muted/50 transition-colors group"
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <Badge variant={badgeVariant}>{badgeLabel}</Badge>
+                                  <span className="text-xs text-muted-foreground">
+                                    {insp.date}
+                                    {profiles[insp.observer_id]?.full_name
+                                      ? ` • Observador: ${profiles[insp.observer_id].full_name}`
+                                      : ''}
+                                  </span>
+                                </div>
+                              </div>
+                              <ExternalLink className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </CardContent>

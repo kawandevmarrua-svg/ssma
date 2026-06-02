@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, Fragment } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import {
   Card,
@@ -32,6 +32,9 @@ import {
   HelpCircle,
   X,
   ArrowUpDown,
+  TrendingDown,
+  Minus,
+  ChevronDown,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -103,7 +106,24 @@ interface OperatorMetrics {
   releaseRate: number;
   completionRate: number;
   score: number;
+  scoreParts: ScoreParts;
 }
+
+interface ScoreParts {
+  hours: number;
+  release: number;
+  activity: number;
+  inspection: number;
+  interf: number;
+}
+
+const SCORE_DIMENSIONS: { key: keyof ScoreParts; label: string; max: number; color: string }[] = [
+  { key: 'hours', label: 'Horas trabalhadas', max: 40, color: '#f97316' },
+  { key: 'release', label: 'Liberação de checklists', max: 20, color: '#10b981' },
+  { key: 'activity', label: 'Atividades concluídas', max: 20, color: '#3b82f6' },
+  { key: 'inspection', label: 'Inspeções registradas', max: 10, color: '#8b5cf6' },
+  { key: 'interf', label: 'Sem interferência', max: 10, color: '#64748b' },
+];
 
 type SortKey = 'score' | 'hours' | 'activities' | 'checklists' | 'inspections' | 'interferences';
 
@@ -127,23 +147,141 @@ function getPeriodFrom(period: Period) {
   return d.toISOString().split('T')[0];
 }
 
-// Composite productivity score 0-100
-function computeScore(m: Omit<OperatorMetrics, 'score' | 'releaseRate' | 'completionRate'>, maxHours: number, maxActivities: number, maxInspections: number) {
-  const hoursScore = maxHours > 0 ? (m.hours / maxHours) * 40 : 0;
+// Composite productivity score 0-100, with per-dimension breakdown
+function computeScore(m: OperatorMetrics, maxHours: number, maxActivities: number, maxInspections: number): { total: number; parts: ScoreParts } {
   const releaseRate = m.checklistsCount > 0 ? m.checklistsReleased / m.checklistsCount : 1;
-  const releaseScore = releaseRate * 20;
-  const activityScore = maxActivities > 0 ? (m.activitiesCompleted / maxActivities) * 20 : 0;
-  const inspectionScore = maxInspections > 0 ? (m.inspectionsCount / maxInspections) * 10 : 0;
   const interfRate = (m.activitiesCount + m.checklistsCount) > 0
     ? m.interferenceCount / (m.activitiesCount + m.checklistsCount) : 0;
-  const interfScore = (1 - Math.min(interfRate, 1)) * 10;
-  return Math.round(hoursScore + releaseScore + activityScore + inspectionScore + interfScore);
+  const parts: ScoreParts = {
+    hours: maxHours > 0 ? (m.hours / maxHours) * 40 : 0,
+    release: releaseRate * 20,
+    activity: maxActivities > 0 ? (m.activitiesCompleted / maxActivities) * 20 : 0,
+    inspection: maxInspections > 0 ? (m.inspectionsCount / maxInspections) * 10 : 0,
+    interf: (1 - Math.min(interfRate, 1)) * 10,
+  };
+  const total = Math.round(parts.hours + parts.release + parts.activity + parts.inspection + parts.interf);
+  return { total, parts };
+}
+
+// Pure metric builder — reusable for current and previous periods
+function buildMetrics(
+  operators: OperatorRow[],
+  activities: ActivityRow[],
+  checklists: ChecklistRow[],
+  inspections: InspectionRow[],
+): OperatorMetrics[] {
+  if (operators.length === 0) return [];
+  const map = new Map<string, OperatorMetrics>();
+  for (const op of operators) {
+    map.set(op.id, {
+      id: op.id,
+      name: op.full_name || 'Sem nome',
+      hours: 0,
+      activitiesCount: 0,
+      activitiesCompleted: 0,
+      checklistsCount: 0,
+      checklistsReleased: 0,
+      checklistsBlocked: 0,
+      inspectionsCount: 0,
+      interferenceCount: 0,
+      releaseRate: 0,
+      completionRate: 0,
+      score: 0,
+      scoreParts: { hours: 0, release: 0, activity: 0, inspection: 0, interf: 0 },
+    });
+  }
+  for (const a of activities) {
+    const m = map.get(a.operator_id);
+    if (!m) continue;
+    m.activitiesCount++;
+    if (a.start_time && a.end_time) {
+      const dur = new Date(a.end_time).getTime() - new Date(a.start_time).getTime();
+      if (dur > 0 && dur < 86400000) {
+        m.hours += msToH(dur);
+        m.activitiesCompleted++;
+      }
+    }
+    if (a.had_interference) m.interferenceCount++;
+  }
+  for (const c of checklists) {
+    const m = map.get(c.operator_id);
+    if (!m) continue;
+    m.checklistsCount++;
+    if (c.created_at && c.ended_at) {
+      const dur = new Date(c.ended_at).getTime() - new Date(c.created_at).getTime();
+      if (dur > 0 && dur < 86400000) m.hours += msToH(dur);
+    }
+    if (c.result === 'released') m.checklistsReleased++;
+    else if (c.result === 'not_released') m.checklistsBlocked++;
+    if (c.had_interference) m.interferenceCount++;
+  }
+  for (const i of inspections) {
+    const m = map.get(i.operator_id);
+    if (m) m.inspectionsCount++;
+  }
+  const all = [...map.values()];
+  const maxHours = Math.max(...all.map((m) => m.hours), 0.01);
+  const maxActivities = Math.max(...all.map((m) => m.activitiesCompleted), 1);
+  const maxInspections = Math.max(...all.map((m) => m.inspectionsCount), 1);
+  for (const m of all) {
+    m.releaseRate = m.checklistsCount > 0 ? m.checklistsReleased / m.checklistsCount : 0;
+    m.completionRate = m.activitiesCount > 0 ? m.activitiesCompleted / m.activitiesCount : 0;
+    const res = computeScore(m, maxHours, maxActivities, maxInspections);
+    m.score = res.total;
+    m.scoreParts = res.parts;
+  }
+  return all.filter((m) => m.activitiesCount > 0 || m.checklistsCount > 0 || m.inspectionsCount > 0);
 }
 
 function scoreColor(score: number): string {
   if (score >= 75) return 'text-emerald-700 bg-emerald-50 border-emerald-200';
   if (score >= 50) return 'text-amber-700 bg-amber-50 border-amber-200';
   return 'text-red-700 bg-red-50 border-red-200';
+}
+
+const KPI_TONES = {
+  good: 'text-emerald-700 [&_.kpi-icon]:text-emerald-500',
+  warn: 'text-amber-700 [&_.kpi-icon]:text-amber-500',
+  bad: 'text-red-700 [&_.kpi-icon]:text-red-500',
+  neutral: 'text-foreground [&_.kpi-icon]:text-muted-foreground',
+} as const;
+
+function KpiCard({ icon, label, value, hint, tone }: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  hint: string;
+  tone: keyof typeof KPI_TONES;
+}) {
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
+          <span className="kpi-icon">{icon}</span>
+          <span className="truncate">{label}</span>
+        </div>
+        <p className={cn('text-2xl font-bold leading-none tabular-nums', KPI_TONES[tone])}>{value}</p>
+        <p className="text-xs text-muted-foreground mt-1.5 truncate" title={hint}>{hint}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Trend pill comparing to previous period. `delta` in score points.
+function DeltaBadge({ delta, className }: { delta: number | null; className?: string }) {
+  if (delta == null) {
+    return <span className={cn('inline-flex items-center gap-1 text-xs text-muted-foreground', className)}><Minus className="h-3 w-3" />sem base anterior</span>;
+  }
+  if (delta === 0) {
+    return <span className={cn('inline-flex items-center gap-1 text-xs text-muted-foreground', className)}><Minus className="h-3 w-3" />estável</span>;
+  }
+  const up = delta > 0;
+  return (
+    <span className={cn('inline-flex items-center gap-0.5 text-xs font-medium', up ? 'text-emerald-600' : 'text-red-600', className)}>
+      {up ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+      {up ? '+' : ''}{delta} pts
+    </span>
+  );
 }
 
 function ChartTooltip({ active, payload, label }: any) {
@@ -168,99 +306,63 @@ export default function AnaliseOperadoresPage() {
   const [activities, setActivities] = useState<ActivityRow[]>([]);
   const [checklists, setChecklists] = useState<ChecklistRow[]>([]);
   const [inspections, setInspections] = useState<InspectionRow[]>([]);
+  const [prevActivities, setPrevActivities] = useState<ActivityRow[]>([]);
+  const [prevChecklists, setPrevChecklists] = useState<ChecklistRow[]>([]);
+  const [prevInspections, setPrevInspections] = useState<InspectionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [period, setPeriod] = useState<Period>('30d');
   const [sortKey, setSortKey] = useState<SortKey>('score');
   const [showHelp, setShowHelp] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const periodFrom = useMemo(() => getPeriodFrom(period), [period]);
+  // Previous window of equal length, immediately before periodFrom
+  const prevFrom = useMemo(() => {
+    const d = new Date(periodFrom);
+    d.setDate(d.getDate() - periodToDays(period));
+    return d.toISOString().split('T')[0];
+  }, [periodFrom, period]);
   const periodInline = fmtPeriodInline(period);
   const periodLabel = fmtPeriodLabel(period);
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [opRes, actRes, clRes, insRes] = await Promise.all([
+    const [opRes, actRes, clRes, insRes, pActRes, pClRes, pInsRes] = await Promise.all([
       supabase.from('profiles').select('id, full_name').eq('role', 'operator').eq('active', true).order('full_name'),
       supabase.from('activities').select('id, operator_id, date, start_time, end_time, had_interference').gte('date', periodFrom),
       supabase.from('checklists').select('id, operator_id, date, created_at, ended_at, result, had_interference').gte('date', periodFrom),
       supabase.from('behavioral_inspections').select('id, operator_id, date').gte('date', periodFrom),
+      supabase.from('activities').select('id, operator_id, date, start_time, end_time, had_interference').gte('date', prevFrom).lt('date', periodFrom),
+      supabase.from('checklists').select('id, operator_id, date, created_at, ended_at, result, had_interference').gte('date', prevFrom).lt('date', periodFrom),
+      supabase.from('behavioral_inspections').select('id, operator_id, date').gte('date', prevFrom).lt('date', periodFrom),
     ]);
     setOperators((opRes.data as OperatorRow[] | null) ?? []);
     setActivities((actRes.data as ActivityRow[] | null) ?? []);
     setChecklists((clRes.data as ChecklistRow[] | null) ?? []);
     setInspections((insRes.data as InspectionRow[] | null) ?? []);
+    setPrevActivities((pActRes.data as ActivityRow[] | null) ?? []);
+    setPrevChecklists((pClRes.data as ChecklistRow[] | null) ?? []);
+    setPrevInspections((pInsRes.data as InspectionRow[] | null) ?? []);
     setLoading(false);
-  }, [supabase, periodFrom]);
+  }, [supabase, periodFrom, prevFrom]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Compute metrics per operator
-  const metrics = useMemo<OperatorMetrics[]>(() => {
-    if (operators.length === 0) return [];
-
-    const map = new Map<string, OperatorMetrics>();
-    for (const op of operators) {
-      map.set(op.id, {
-        id: op.id,
-        name: op.full_name || 'Sem nome',
-        hours: 0,
-        activitiesCount: 0,
-        activitiesCompleted: 0,
-        checklistsCount: 0,
-        checklistsReleased: 0,
-        checklistsBlocked: 0,
-        inspectionsCount: 0,
-        interferenceCount: 0,
-        releaseRate: 0,
-        completionRate: 0,
-        score: 0,
-      });
-    }
-
-    for (const a of activities) {
-      const m = map.get(a.operator_id);
-      if (!m) continue;
-      m.activitiesCount++;
-      if (a.start_time && a.end_time) {
-        const dur = new Date(a.end_time).getTime() - new Date(a.start_time).getTime();
-        if (dur > 0 && dur < 86400000) {
-          m.hours += msToH(dur);
-          m.activitiesCompleted++;
-        }
-      }
-      if (a.had_interference) m.interferenceCount++;
-    }
-    for (const c of checklists) {
-      const m = map.get(c.operator_id);
-      if (!m) continue;
-      m.checklistsCount++;
-      if (c.created_at && c.ended_at) {
-        const dur = new Date(c.ended_at).getTime() - new Date(c.created_at).getTime();
-        if (dur > 0 && dur < 86400000) m.hours += msToH(dur);
-      }
-      if (c.result === 'released') m.checklistsReleased++;
-      else if (c.result === 'not_released') m.checklistsBlocked++;
-      if (c.had_interference) m.interferenceCount++;
-    }
-    for (const i of inspections) {
-      const m = map.get(i.operator_id);
-      if (m) m.inspectionsCount++;
-    }
-
-    const all = [...map.values()];
-    const maxHours = Math.max(...all.map((m) => m.hours), 0.01);
-    const maxActivities = Math.max(...all.map((m) => m.activitiesCompleted), 1);
-    const maxInspections = Math.max(...all.map((m) => m.inspectionsCount), 1);
-
-    for (const m of all) {
-      m.releaseRate = m.checklistsCount > 0 ? m.checklistsReleased / m.checklistsCount : 0;
-      m.completionRate = m.activitiesCount > 0 ? m.activitiesCompleted / m.activitiesCount : 0;
-      m.score = computeScore(m, maxHours, maxActivities, maxInspections);
-    }
-
-    return all.filter((m) => m.activitiesCount > 0 || m.checklistsCount > 0 || m.inspectionsCount > 0);
-  }, [operators, activities, checklists, inspections]);
+  // Compute metrics per operator (current + previous period)
+  const metrics = useMemo(
+    () => buildMetrics(operators, activities, checklists, inspections),
+    [operators, activities, checklists, inspections],
+  );
+  const prevMetrics = useMemo(
+    () => buildMetrics(operators, prevActivities, prevChecklists, prevInspections),
+    [operators, prevActivities, prevChecklists, prevInspections],
+  );
+  const prevScoreById = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const m of prevMetrics) map.set(m.id, m.score);
+    return map;
+  }, [prevMetrics]);
 
   const sorted = useMemo(() => {
     const arr = [...metrics];
@@ -284,14 +386,29 @@ export default function AnaliseOperadoresPage() {
   }, [sorted, search]);
 
   const summary = useMemo(() => {
+    const n = metrics.length;
     const totalH = metrics.reduce((s, m) => s + m.hours, 0);
     const totalAct = metrics.reduce((s, m) => s + m.activitiesCompleted, 0);
+    const totalActAll = metrics.reduce((s, m) => s + m.activitiesCount, 0);
     const totalCl = metrics.reduce((s, m) => s + m.checklistsCount, 0);
+    const totalClReleased = metrics.reduce((s, m) => s + m.checklistsReleased, 0);
+    const totalClBlocked = metrics.reduce((s, m) => s + m.checklistsBlocked, 0);
     const totalIns = metrics.reduce((s, m) => s + m.inspectionsCount, 0);
     const totalInterf = metrics.reduce((s, m) => s + m.interferenceCount, 0);
-    const avgScore = metrics.length > 0 ? Math.round(metrics.reduce((s, m) => s + m.score, 0) / metrics.length) : 0;
-    return { totalH, totalAct, totalCl, totalIns, totalInterf, avgScore };
-  }, [metrics]);
+    const avgScore = n > 0 ? Math.round(metrics.reduce((s, m) => s + m.score, 0) / n) : 0;
+    const avgHours = n > 0 ? totalH / n : 0;
+    const releaseRate = totalCl > 0 ? (totalClReleased / totalCl) * 100 : 0;
+    const completionRate = totalActAll > 0 ? (totalAct / totalActAll) * 100 : 0;
+    const interfRate = (totalActAll + totalCl) > 0 ? (totalInterf / (totalActAll + totalCl)) * 100 : 0;
+    const pn = prevMetrics.length;
+    const prevAvgScore = pn > 0 ? Math.round(prevMetrics.reduce((s, m) => s + m.score, 0) / pn) : null;
+    const scoreDelta = prevAvgScore == null ? null : avgScore - prevAvgScore;
+    return {
+      n, totalH, totalAct, totalActAll, totalCl, totalClReleased, totalClBlocked,
+      totalIns, totalInterf, avgScore, avgHours, releaseRate, completionRate, interfRate,
+      prevAvgScore, scoreDelta,
+    };
+  }, [metrics, prevMetrics]);
 
   const top3 = useMemo(() => sorted.slice(0, 3), [sorted]);
 
@@ -342,7 +459,7 @@ export default function AnaliseOperadoresPage() {
     const maxAct = Math.max(...metrics.map((m) => m.activitiesCompleted), 1);
     const maxCl = Math.max(...metrics.map((m) => m.checklistsCount), 1);
     const maxIns = Math.max(...metrics.map((m) => m.inspectionsCount), 1);
-    const axes = ['Horas', 'Atividades', 'Checklists', 'Inspecoes', 'Sem Interf.'];
+    const axes = ['Horas', 'Atividades', 'Checklists', 'Inspeções', 'Sem Interf.'];
     return axes.map((axis) => {
       const row: Record<string, number | string> = { axis };
       top5.forEach((m) => {
@@ -352,7 +469,7 @@ export default function AnaliseOperadoresPage() {
         if (axis === 'Horas') v = (m.hours / maxH) * 100;
         else if (axis === 'Atividades') v = (m.activitiesCompleted / maxAct) * 100;
         else if (axis === 'Checklists') v = (m.checklistsCount / maxCl) * 100;
-        else if (axis === 'Inspecoes') v = (m.inspectionsCount / maxIns) * 100;
+        else if (axis === 'Inspeções') v = (m.inspectionsCount / maxIns) * 100;
         else v = (1 - Math.min(interfRate, 1)) * 100;
         row[m.id] = Math.round(v);
       });
@@ -361,7 +478,7 @@ export default function AnaliseOperadoresPage() {
   }, [metrics, sorted]);
 
   function exportCSV() {
-    const headers = ['Operador', 'Score', 'Horas', 'Atividades', 'Concluidas', 'Checklists', 'Liberados', 'Bloqueados', 'Inspecoes', 'Interferencias'];
+    const headers = ['Operador', 'Score', 'Horas', 'Atividades', 'Concluídas', 'Checklists', 'Liberados', 'Bloqueados', 'Inspeções', 'Interferências'];
     const rows = filtered.map((m) => [
       m.name, m.score, fmtH(m.hours), m.activitiesCount, m.activitiesCompleted,
       m.checklistsCount, m.checklistsReleased, m.checklistsBlocked, m.inspectionsCount, m.interferenceCount,
@@ -374,7 +491,7 @@ export default function AnaliseOperadoresPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight flex items-center gap-2">
-            Analise de Operadores
+            Análise de Operadores
             <Button
               variant="ghost"
               size="icon"
@@ -481,16 +598,38 @@ export default function AnaliseOperadoresPage() {
           {/* Summary */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Card className="md:col-span-2 bg-gradient-to-br from-orange-50 to-orange-100/40 border-orange-200/60">
-              <CardContent className="p-5">
+              <CardContent className="p-5 h-full flex flex-col">
                 <div className="flex items-center gap-2 mb-2">
                   <TrendingUp className="h-4 w-4 text-orange-700" />
                   <span className="text-xs text-orange-900/70 font-medium uppercase tracking-wide">Score Médio da Equipe</span>
                 </div>
                 <div className="flex items-end gap-4 flex-wrap">
                   <p className="text-4xl font-bold text-orange-900 leading-none">{summary.avgScore}<span className="text-xl text-orange-900/50">/100</span></p>
-                  <p className="text-xs text-orange-900/60 pb-1">
-                    {metrics.length} operadores ativos · {fmtH(summary.totalH)} totais · {periodInline}
-                  </p>
+                  <div className="pb-1 space-y-0.5">
+                    <DeltaBadge delta={summary.scoreDelta} />
+                    <p className="text-xs text-orange-900/60">
+                      {summary.n} {summary.n === 1 ? 'operador ativo' : 'operadores ativos'} · {periodInline}
+                      {summary.prevAvgScore != null && <span> · período anterior {summary.prevAvgScore}</span>}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-auto pt-4 grid grid-cols-3 gap-3 text-xs">
+                  <div className="flex flex-col">
+                    <span className="text-orange-900/60">Horas totais</span>
+                    <span className="font-semibold text-orange-900 tabular-nums">{fmtH(summary.totalH)}</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-orange-900/60">Média / operador</span>
+                    <span className="font-semibold text-orange-900 tabular-nums">{fmtH(summary.avgHours)}</span>
+                  </div>
+                  {top3[0] && (
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-orange-900/60">Melhor score</span>
+                      <span className="font-semibold text-orange-900 truncate" title={top3[0].name}>
+                        {top3[0].name.split(' ')[0]} · {top3[0].score}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -500,7 +639,7 @@ export default function AnaliseOperadoresPage() {
                   <span className="text-xs text-muted-foreground flex items-center gap-1.5">
                     <Activity className="h-3.5 w-3.5" /> Atividades
                   </span>
-                  <span className="text-lg font-semibold tabular-nums">{summary.totalAct}</span>
+                  <span className="text-lg font-semibold tabular-nums">{summary.totalAct}<span className="text-xs text-muted-foreground font-normal">/{summary.totalActAll}</span></span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground flex items-center gap-1.5">
@@ -522,6 +661,38 @@ export default function AnaliseOperadoresPage() {
                 </div>
               </CardContent>
             </Card>
+          </div>
+
+          {/* KPIs derivados */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <KpiCard
+              icon={<ShieldCheck className="h-4 w-4" />}
+              label="Taxa de liberação"
+              value={`${summary.releaseRate.toFixed(0)}%`}
+              hint={`${summary.totalClReleased} liberados${summary.totalClBlocked > 0 ? ` · ${summary.totalClBlocked} bloqueados` : ''}`}
+              tone={summary.totalCl === 0 ? 'neutral' : summary.releaseRate >= 90 ? 'good' : summary.releaseRate >= 70 ? 'warn' : 'bad'}
+            />
+            <KpiCard
+              icon={<Activity className="h-4 w-4" />}
+              label="Conclusão de atividades"
+              value={`${summary.completionRate.toFixed(0)}%`}
+              hint={`${summary.totalAct} de ${summary.totalActAll} concluídas`}
+              tone={summary.totalActAll === 0 ? 'neutral' : summary.completionRate >= 90 ? 'good' : summary.completionRate >= 70 ? 'warn' : 'bad'}
+            />
+            <KpiCard
+              icon={<Clock className="h-4 w-4" />}
+              label="Média de horas / operador"
+              value={fmtH(summary.avgHours)}
+              hint={`${fmtH(summary.totalH)} no total`}
+              tone="neutral"
+            />
+            <KpiCard
+              icon={<AlertTriangle className="h-4 w-4" />}
+              label="Taxa de interferência"
+              value={`${summary.interfRate.toFixed(0)}%`}
+              hint={`${summary.totalInterf} eventos com interferência`}
+              tone={summary.interfRate === 0 ? 'good' : summary.interfRate <= 10 ? 'warn' : 'bad'}
+            />
           </div>
 
           {/* Podium top 3 */}
@@ -639,20 +810,22 @@ export default function AnaliseOperadoresPage() {
           <div className="rounded-lg border bg-card overflow-hidden">
             <div className="border-b px-4 py-3">
               <h3 className="text-base font-semibold">Todos os Operadores</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">{filtered.length} operadores com atividade no período</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {filtered.length} operadores com atividade no período · clique numa linha para ver a composição do score
+              </p>
             </div>
             <div className="overflow-x-auto">
               <Table className="text-sm">
                 <TableHeader>
-                  <TableRow className="border-b bg-muted/30 text-[11px] font-medium uppercase tracking-wider text-muted-foreground hover:bg-transparent">
+                  <TableRow className="border-b bg-muted/30 text-xs font-medium uppercase tracking-wider text-muted-foreground hover:bg-transparent">
                     <TableHead className="text-left px-4 py-2.5 font-medium w-12">#</TableHead>
                     <TableHead className="text-left px-4 py-2.5 font-medium">Operador</TableHead>
-                    <TableHead className="text-left px-4 py-2.5 font-medium hidden md:table-cell">Horas</TableHead>
-                    <TableHead className="text-left px-4 py-2.5 font-medium hidden md:table-cell">Atividades</TableHead>
-                    <TableHead className="text-left px-4 py-2.5 font-medium hidden lg:table-cell">Checklists</TableHead>
-                    <TableHead className="text-left px-4 py-2.5 font-medium hidden lg:table-cell">Inspeções</TableHead>
-                    <TableHead className="text-left px-4 py-2.5 font-medium hidden xl:table-cell">Interf.</TableHead>
-                    <TableHead className="text-right px-4 py-2.5 font-medium">Score</TableHead>
+                    <TableHead className="text-left px-4 py-2.5 font-medium hidden md:table-cell" title="Horas trabalhadas (atividades concluídas + tempo de checklists)">Horas</TableHead>
+                    <TableHead className="text-left px-4 py-2.5 font-medium hidden md:table-cell" title="Atividades concluídas / total de atividades no período">Atividades</TableHead>
+                    <TableHead className="text-left px-4 py-2.5 font-medium hidden lg:table-cell" title="Checklists pré-operação realizados (bloqueados destacados em vermelho)">Checklists</TableHead>
+                    <TableHead className="text-left px-4 py-2.5 font-medium hidden lg:table-cell" title="Inspeções comportamentais registradas">Inspeções</TableHead>
+                    <TableHead className="text-left px-4 py-2.5 font-medium hidden xl:table-cell" title="Eventos com interferência reportada">Interf.</TableHead>
+                    <TableHead className="text-right px-4 py-2.5 font-medium" title="Score composto 0–100. Seta mostra variação vs período anterior">Score</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody className="divide-y">
@@ -660,10 +833,14 @@ export default function AnaliseOperadoresPage() {
                     const totalEv = m.activitiesCount + m.checklistsCount;
                     const interfPct = totalEv > 0 ? (m.interferenceCount / totalEv) * 100 : 0;
                     const rankColor = idx < 3 ? MEDAL_COLORS[idx] : '#94a3b8';
+                    const prevScore = prevScoreById.get(m.id);
+                    const delta = prevScore == null ? null : m.score - prevScore;
+                    const expanded = expandedId === m.id;
                     return (
+                      <Fragment key={m.id}>
                       <TableRow
-                        key={m.id}
-                        className="hover:bg-muted/40 transition-colors animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+                        onClick={() => setExpandedId(expanded ? null : m.id)}
+                        className="hover:bg-muted/40 transition-colors cursor-pointer animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
                         style={{
                           animationDuration: '420ms',
                           animationDelay: `${Math.min(idx, 15) * 40}ms`,
@@ -727,13 +904,64 @@ export default function AnaliseOperadoresPage() {
                             <span className="text-xs text-muted-foreground/50">—</span>
                           )}
                         </TableCell>
-                        <TableCell className="px-4 py-3 text-right">
-                          <Badge variant="plain" className={cn('text-sm font-bold px-2.5 py-1 border tabular-nums', scoreColor(m.score))}>
-                            <Award className="h-3.5 w-3.5" />
-                            {m.score}
-                          </Badge>
+                        <TableCell className="px-4 py-3">
+                          <div className="flex items-center justify-end gap-2">
+                            <div className="flex flex-col items-end gap-0.5">
+                              <Badge variant="plain" className={cn('text-sm font-bold px-2.5 py-1 border tabular-nums', scoreColor(m.score))}>
+                                <Award className="h-3.5 w-3.5" />
+                                {m.score}
+                              </Badge>
+                              {delta != null && delta !== 0 && (
+                                <span className={cn('inline-flex items-center gap-0.5 text-xs font-medium tabular-nums', delta > 0 ? 'text-emerald-600' : 'text-red-600')}>
+                                  {delta > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                                  {delta > 0 ? '+' : ''}{delta}
+                                </span>
+                              )}
+                            </div>
+                            <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform shrink-0', expanded && 'rotate-180')} />
+                          </div>
                         </TableCell>
                       </TableRow>
+                      {expanded && (
+                        <TableRow className="bg-muted/20 hover:bg-muted/20">
+                          <TableCell colSpan={8} className="px-4 py-4">
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between flex-wrap gap-2">
+                                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                  Composição do score — {m.name}
+                                </p>
+                                {prevScore != null && (
+                                  <span className="text-xs text-muted-foreground">
+                                    período anterior: <span className="font-medium text-foreground tabular-nums">{prevScore}</span> · <DeltaBadge delta={delta} className="align-middle" />
+                                  </span>
+                                )}
+                              </div>
+                              <div className="grid gap-2">
+                                {SCORE_DIMENSIONS.map((dim) => {
+                                  const val = m.scoreParts[dim.key];
+                                  const pct = (val / dim.max) * 100;
+                                  return (
+                                    <div key={dim.key} className="flex items-center gap-3">
+                                      <span className="text-xs text-muted-foreground w-44 shrink-0">{dim.label}</span>
+                                      <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                                        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: dim.color }} />
+                                      </div>
+                                      <span className="text-xs font-semibold tabular-nums w-16 text-right">
+                                        {val.toFixed(1)}<span className="text-muted-foreground font-normal">/{dim.max}</span>
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <div className="flex items-center justify-end gap-2 border-t pt-2 text-xs">
+                                <span className="text-muted-foreground">Total</span>
+                                <span className="font-bold tabular-nums">{m.score}/100</span>
+                              </div>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      </Fragment>
                     );
                   })}
                 </TableBody>

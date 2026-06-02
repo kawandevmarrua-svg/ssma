@@ -28,15 +28,17 @@ interface Props {
   onFinished: () => void;
 }
 
+const MAX_END_PHOTOS = 5;
+
 export function FinishActivityModal({ activity, userId, onClose, onFinished }: Props) {
-  const [endPhotoUri, setEndPhotoUri] = useState<string | null>(null);
+  const [endPhotoUris, setEndPhotoUris] = useState<string[]>([]);
   const [hadInterference, setHadInterference] = useState(false);
   const [interferenceNotes, setInterferenceNotes] = useState('');
   const [endNotes, setEndNotes] = useState('');
   const [saving, setSaving] = useState(false);
 
   function reset() {
-    setEndPhotoUri(null);
+    setEndPhotoUris([]);
     setHadInterference(false);
     setInterferenceNotes('');
     setEndNotes('');
@@ -52,28 +54,25 @@ export function FinishActivityModal({ activity, userId, onClose, onFinished }: P
     if (!activity) return;
     setSaving(true);
 
-    // Foto eh sempre tratada via fila: copiamos para diretorio persistente
+    // Fotos sao tratadas via fila: copiamos cada uma para diretorio persistente
     // (cache da camera pode ser limpo pelo OS) e o job faz upload + update
-    // atomicamente. Assim a foto nao se perde se estivermos offline.
-    let photoSpec = null;
-    if (endPhotoUri && userId) {
-      const localPath = await persistPhotoForQueue(endPhotoUri, `activity-${activity.id}-end`);
-      if (!localPath) {
-        // Falha ao persistir = foto sera perdida se prosseguirmos. Aborta
-        // para o operador refazer (disco cheio, permissao, formato invalido).
-        setSaving(false);
-        Alert.alert(
-          'Erro ao salvar foto',
-          'Nao foi possivel salvar a foto de encerramento localmente. Tire a foto novamente ou tente sem foto.',
-        );
-        return;
+    // atomicamente. Assim nao se perdem se estivermos offline.
+    const photoList: { localPath: string }[] = [];
+    if (userId) {
+      for (let i = 0; i < endPhotoUris.length; i++) {
+        const localPath = await persistPhotoForQueue(endPhotoUris[i], `activity-${activity.id}-end-${i}`);
+        if (!localPath) {
+          // Falha ao persistir = foto sera perdida se prosseguirmos. Aborta
+          // para o operador refazer (disco cheio, permissao, formato invalido).
+          setSaving(false);
+          Alert.alert(
+            'Erro ao salvar foto',
+            'Nao foi possivel salvar uma das fotos de encerramento localmente. Tire as fotos novamente ou tente sem foto.',
+          );
+          return;
+        }
+        photoList.push({ localPath });
       }
-      photoSpec = {
-        localPath,
-        bucket: 'activity-photos',
-        storagePath: `${userId}/${activity.id}/end`,
-        field: 'end_photo_url',
-      };
     }
 
     const now = new Date().toISOString();
@@ -89,7 +88,11 @@ export function FinishActivityModal({ activity, userId, onClose, onFinished }: P
           transit_end: now,
           notes: endNotes.trim() || null,
         },
-        photo: photoSpec,
+        photo: null,
+        photoList,
+        photoListBucket: 'activity-photos',
+        photoListPrefix: `${userId}/${activity.id}/end`,
+        photoListField: 'end_photo_urls',
       },
     });
     setSaving(false);
@@ -144,21 +147,32 @@ export function FinishActivityModal({ activity, userId, onClose, onFinished }: P
               </View>
             )}
 
-            <TouchableOpacity
-              style={st.photoPickerFull}
-              onPress={async () => { const uri = await pickPhoto(); if (uri) setEndPhotoUri(uri); }}
-            >
-              {endPhotoUri ? (
-                <Image source={{ uri: endPhotoUri }} style={st.photoPreviewFull} />
-              ) : (
-                <>
-                  <Ionicons name="camera-outline" size={28} color={colors.textSecondary} />
-                  <Text variant="caption" tone="muted" style={{ marginTop: spacing.xs, fontWeight: '500' }}>
-                    Foto de término
+            <Text style={commonStyles.label}>Fotos de término ({endPhotoUris.length}/{MAX_END_PHOTOS})</Text>
+            <View style={st.photoGrid}>
+              {endPhotoUris.map((uri, idx) => (
+                <View key={`${uri}-${idx}`} style={st.photoThumb}>
+                  <Image source={{ uri }} style={st.photoPreviewFull} />
+                  <TouchableOpacity
+                    style={st.photoRemove}
+                    onPress={() => setEndPhotoUris((prev) => prev.filter((_, i) => i !== idx))}
+                    hitSlop={8}
+                  >
+                    <Ionicons name="close-circle" size={22} color={colors.white} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+              {endPhotoUris.length < MAX_END_PHOTOS && (
+                <TouchableOpacity
+                  style={[st.photoThumb, st.photoAdd]}
+                  onPress={async () => { const uri = await pickPhoto(); if (uri) setEndPhotoUris((prev) => [...prev, uri]); }}
+                >
+                  <Ionicons name="camera-outline" size={26} color={colors.textSecondary} />
+                  <Text variant="caption" tone="muted" style={{ marginTop: 2, fontWeight: '500' }}>
+                    Adicionar
                   </Text>
-                </>
+                </TouchableOpacity>
               )}
-            </TouchableOpacity>
+            </View>
 
             <View style={commonStyles.inputGroup}>
               <Text style={commonStyles.label}>Houve interferência?</Text>
@@ -232,17 +246,27 @@ const st = StyleSheet.create({
     padding: spacing.md,
     marginBottom: spacing.md,
   },
-  photoPickerFull: {
-    height: 120,
+  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md, marginTop: spacing.xs },
+  photoThumb: {
+    width: 92,
+    height: 92,
+    borderRadius: radius.sm,
     backgroundColor: colors.background,
+    overflow: 'hidden',
+  },
+  photoAdd: {
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radius.sm,
     borderStyle: 'dashed',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: spacing.md,
-    overflow: 'hidden',
+  },
+  photoRemove: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    borderRadius: 12,
   },
   photoPreviewFull: { width: '100%', height: '100%' },
   toggleRow: { flexDirection: 'row', gap: spacing.sm },

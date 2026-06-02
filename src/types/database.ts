@@ -144,6 +144,7 @@ export type Database = {
           allow_custom: boolean;
           active: boolean;
           order_index: number;
+          use_custom_questions: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -154,6 +155,7 @@ export type Database = {
           allow_custom?: boolean;
           active?: boolean;
           order_index?: number;
+          use_custom_questions?: boolean;
         };
         Update: {
           code?: string;
@@ -162,6 +164,7 @@ export type Database = {
           allow_custom?: boolean;
           active?: boolean;
           order_index?: number;
+          use_custom_questions?: boolean;
         };
         Relationships: [];
       };
@@ -239,6 +242,8 @@ export type Database = {
           critical: boolean;
           order_index: number;
           active: boolean;
+          activity_type_id: string | null;
+          is_global: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -248,6 +253,8 @@ export type Database = {
           critical?: boolean;
           order_index?: number;
           active?: boolean;
+          activity_type_id?: string | null;
+          is_global?: boolean;
         };
         Update: {
           key?: string | null;
@@ -255,8 +262,18 @@ export type Database = {
           critical?: boolean;
           order_index?: number;
           active?: boolean;
+          activity_type_id?: string | null;
+          is_global?: boolean;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: 'activity_questions_activity_type_id_fkey';
+            columns: ['activity_type_id'];
+            isOneToOne: false;
+            referencedRelation: 'activity_types';
+            referencedColumns: ['id'];
+          },
+        ];
       };
       activity_answers: {
         Row: {
@@ -576,6 +593,8 @@ export type Database = {
           equipment_photo_url: string | null;
           start_photo_url: string | null;
           end_photo_url: string | null;
+          start_photo_urls: string[];
+          end_photo_urls: string[];
           had_interference: boolean;
           interference_notes: string | null;
           transit_start: string | null;
@@ -599,6 +618,8 @@ export type Database = {
           equipment_photo_url?: string | null;
           start_photo_url?: string | null;
           end_photo_url?: string | null;
+          start_photo_urls?: string[];
+          end_photo_urls?: string[];
           had_interference?: boolean;
           interference_notes?: string | null;
           transit_start?: string | null;
@@ -610,6 +631,8 @@ export type Database = {
           start_photo_url?: string | null;
           end_time?: string | null;
           end_photo_url?: string | null;
+          start_photo_urls?: string[];
+          end_photo_urls?: string[];
           had_interference?: boolean;
           interference_notes?: string | null;
           transit_start?: string | null;

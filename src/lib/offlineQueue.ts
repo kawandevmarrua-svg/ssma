@@ -41,6 +41,12 @@ export type Job =
       id: string;
       patch: Record<string, unknown>;
       photo: QueuedPhoto | null;
+      // Lista de fotos que vão para um campo array (ex.: end_photo_urls).
+      // Opcional para manter compat com jobs já assinados em disco.
+      photoList?: { localPath: string; uploadedPath?: string }[];
+      photoListBucket?: string;
+      photoListPrefix?: string;
+      photoListField?: string;
     }>
   | JobBase<'insertActivity', Record<string, unknown>>
   | JobBase<'tableUpsert', { table: string; row: Record<string, unknown>; onConflict?: string }>;
@@ -303,6 +309,29 @@ async function executeJob(job: Job): Promise<{ ok: boolean; error?: string }> {
         }
         const finalPatch: Record<string, unknown> = { ...job.payload.patch };
         if (photo && photoUrl) finalPatch[photo.field] = photoUrl;
+
+        const { photoList, photoListBucket, photoListPrefix, photoListField } = job.payload;
+        if (photoList && photoList.length > 0 && photoListBucket && photoListPrefix && photoListField) {
+          const paths: string[] = [];
+          for (let i = 0; i < photoList.length; i++) {
+            const item = photoList[i];
+            if (item.uploadedPath) {
+              paths.push(item.uploadedPath);
+              continue;
+            }
+            const r = await uploadQueuedPhoto(item.localPath, photoListBucket, `${photoListPrefix}/${i}`);
+            if (!r.ok) return { ok: false, error: `upload foto: ${r.error}` };
+            if (r.uploadedPath) {
+              // Memoiza no proprio job para o retry pular re-upload (idempotencia).
+              item.uploadedPath = r.uploadedPath;
+              paths.push(r.uploadedPath);
+            }
+          }
+          finalPatch[photoListField] = paths;
+          if (paths.length > 0 && photoListField === 'end_photo_urls') {
+            finalPatch.end_photo_url = paths[0]; // compat com coluna escalar
+          }
+        }
         const { error } = await supabase
           .from('activities')
           .update(finalPatch as never)

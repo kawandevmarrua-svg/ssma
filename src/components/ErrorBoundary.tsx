@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
-import { colors } from '../theme/colors';
+import { colors, fontSize } from '../theme/colors';
 
 type Props = { children: React.ReactNode };
 type State = { error: Error | null };
@@ -41,15 +41,15 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: colors.background, padding: 24, paddingTop: 64 },
-  title: { fontSize: 22, fontWeight: '800', color: colors.text, marginBottom: 16 },
+  title: { fontSize: fontSize.xl, fontWeight: '800', color: colors.text, marginBottom: 16 },
   body: { flex: 1, marginBottom: 16 },
-  msg: { fontSize: 14, color: colors.text, marginBottom: 12, fontWeight: '600' },
-  stack: { fontSize: 11, color: colors.textSecondary, fontFamily: 'monospace' },
+  msg: { fontSize: fontSize.sm, color: colors.text, marginBottom: 12, fontWeight: '600' },
+  stack: { fontSize: fontSize.xs, color: colors.textSecondary, fontFamily: 'monospace' },
   btn: {
     backgroundColor: colors.primary,
     padding: 14,
     borderRadius: 12,
     alignItems: 'center',
   },
-  btnText: { color: colors.white, fontWeight: '700', fontSize: 16 },
+  btnText: { color: colors.white, fontWeight: '700', fontSize: fontSize.base },
 });

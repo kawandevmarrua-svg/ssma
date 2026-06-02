@@ -5,7 +5,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { colors, radius, spacing } from '../theme/colors';
+import { colors, radius, spacing, fontSize } from '../theme/colors';
 import { Text } from './ui';
 
 type Props = {
@@ -110,7 +110,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   backLabel: {
-    fontSize: 16,
+    fontSize: fontSize.base,
     fontWeight: '600',
     color: colors.text,
   },
@@ -120,7 +120,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   brand: {
-    fontSize: 16,
+    fontSize: fontSize.base,
     fontWeight: '800',
     letterSpacing: 2,
     color: colors.text,
@@ -151,7 +151,7 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     color: colors.white,
-    fontSize: 10,
+    fontSize: fontSize['2xs'],
     lineHeight: 12,
     fontWeight: '800',
     letterSpacing: 0,
@@ -159,7 +159,7 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: fontSize.sm,
     fontWeight: '500',
     color: colors.textSecondary,
     marginTop: spacing.xs,

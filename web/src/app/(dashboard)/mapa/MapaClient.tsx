@@ -1,24 +1,22 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
   WifiOff,
   MapPin,
+  Search,
   ListChecks,
   Activity,
   AlertTriangle,
@@ -28,7 +26,6 @@ import {
   Star,
   ShieldCheck,
   ChevronDown,
-  ChevronUp,
   Zap,
   ThumbsUp,
   Eye,
@@ -90,10 +87,10 @@ const ROUTE_START_ICON = createSmallIcon('#6366f1', 'A');
 // Fonte única de verdade dos eventos de atividade/checklist: cor, sigla e rótulo.
 // Mapa, timeline e legenda derivam daqui — mesma cor significa o mesmo em todo lugar.
 const EVENT_META: Record<string, { color: string; short: string; label: string }> = {
-  pre_op_start: { color: '#f97316', short: 'P', label: 'Pre-operacao' },
-  checklist_start: { color: '#f59e0b', short: 'CL', label: 'Inicio checklist' },
+  pre_op_start: { color: '#f97316', short: 'P', label: 'Pré-operação' },
+  checklist_start: { color: '#f59e0b', short: 'CL', label: 'Início checklist' },
   checklist_end: { color: '#10b981', short: 'C✓', label: 'Fim checklist' },
-  activity_start: { color: '#3b82f6', short: 'AT', label: 'Inicio atividade' },
+  activity_start: { color: '#3b82f6', short: 'AT', label: 'Início atividade' },
   activity_end: { color: '#6366f1', short: 'A✓', label: 'Fim atividade' },
   parada: { color: '#ef4444', short: 'D', label: 'Parada' },
 };
@@ -126,6 +123,11 @@ interface ActiveInfo {
   location: string | null;
   description: string | null;
 }
+
+// Itens que o operador realizou no dia, mostrados na linha expandida da tabela "Ao vivo".
+interface DayChecklist { id: string; time: string; machine: string | null; result: string | null; interference: boolean; }
+interface DayActivity { id: string; time: string; label: string; machine: string | null; interference: boolean; }
+interface DayDetail { checklists: DayChecklist[]; activities: DayActivity[]; }
 
 interface LocationItem {
   id: string;
@@ -197,7 +199,7 @@ const STATUS_LABELS: Record<string, string> = {
 const STATUS_COLORS: Record<string, string> = {
   online: 'text-emerald-600',
   in_activity: 'text-blue-600',
-  in_checklist: 'text-yellow-600',
+  in_checklist: 'text-yellow-700',
   idle: 'text-gray-500',
   offline: 'text-red-600',
 };
@@ -210,12 +212,13 @@ const STATUS_DOT: Record<string, string> = {
   offline: 'bg-red-500',
 };
 
-const STATUS_BG: Record<string, string> = {
-  online: 'border-emerald-200 bg-emerald-50/30',
-  in_activity: 'border-blue-200 bg-blue-50/30',
-  in_checklist: 'border-yellow-200 bg-yellow-50/30',
-  idle: 'border-gray-200 bg-gray-50/30',
-  offline: 'border-red-200 bg-red-50/30',
+// Pílula de status (Badge) — fundo claro + texto do mesmo matiz, contraste AA.
+const STATUS_BADGE: Record<string, string> = {
+  online: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  in_activity: 'border-blue-200 bg-blue-50 text-blue-700',
+  in_checklist: 'border-yellow-200 bg-yellow-50 text-yellow-700',
+  idle: 'border-slate-200 bg-slate-100 text-slate-600',
+  offline: 'border-red-200 bg-red-50 text-red-700',
 };
 
 const ROUTE_COLORS = ['#6366f1', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#8b5cf6', '#14b8a6', '#f97316', '#64748b'];
@@ -309,18 +312,10 @@ function formatDuration(min: number): string {
 
 const STATUS_ORDER: Record<string, number> = { in_activity: 0, in_checklist: 1, online: 2, idle: 3, offline: 4 };
 
-const ACTION_LABELS: Record<string, string> = {
-  online: 'Online, aguardando',
-  in_activity: 'Executando atividade',
-  in_checklist: 'Preenchendo checklist',
-  idle: 'Parado / ocioso',
-  offline: 'Offline',
-};
-
 function gpsReliability(updatedAt: string, accuracy: number | null): { label: string; tone: string } {
   const ageMin = (Date.now() - new Date(updatedAt).getTime()) / 60000;
   if (ageMin > 10) return { label: 'GPS desatualizado', tone: 'text-red-600' };
-  if (accuracy != null && accuracy > 50) return { label: `GPS impreciso ~${Math.round(accuracy)}m`, tone: 'text-yellow-600' };
+  if (accuracy != null && accuracy > 50) return { label: `GPS impreciso ~${Math.round(accuracy)}m`, tone: 'text-yellow-700' };
   return { label: accuracy != null ? `GPS ~${Math.round(accuracy)}m` : 'GPS ok', tone: 'text-emerald-600' };
 }
 
@@ -362,7 +357,7 @@ function getProactivityBadges(m: OperatorMetrics, route: OperatorRoute | undefin
   }
 
   if (m.checklistsMonth >= 5 && m.ncCount === 0) {
-    badges.push({ label: 'Zero nao conformidades', color: 'text-emerald-700', bg: 'bg-emerald-100', icon: ShieldCheck });
+    badges.push({ label: 'Zero não conformidades', color: 'text-emerald-700', bg: 'bg-emerald-100', icon: ShieldCheck });
   }
 
   if (m.checklistsMonth >= 5 && m.notReleasedCount === 0) {
@@ -370,7 +365,7 @@ function getProactivityBadges(m: OperatorMetrics, route: OperatorRoute | undefin
   }
 
   if ((m.checklistsMonth + m.activitiesMonth) >= 5 && m.interferencesCount === 0) {
-    badges.push({ label: 'Zero interferencias', color: 'text-emerald-700', bg: 'bg-emerald-100', icon: ThumbsUp });
+    badges.push({ label: 'Zero interferências', color: 'text-emerald-700', bg: 'bg-emerald-100', icon: ThumbsUp });
   }
 
   if (m.score !== null && m.score >= 90) {
@@ -384,7 +379,7 @@ function getProactivityBadges(m: OperatorMetrics, route: OperatorRoute | undefin
   }
 
   if (m.inspectionsCount > 0) {
-    badges.push({ label: `${m.inspectionsCount} inspecao(oes) comportamental`, color: 'text-violet-700', bg: 'bg-violet-100', icon: Eye });
+    badges.push({ label: `${m.inspectionsCount} inspeção(ões) comportamental`, color: 'text-violet-700', bg: 'bg-violet-100', icon: Eye });
   }
 
   return badges;
@@ -392,9 +387,9 @@ function getProactivityBadges(m: OperatorMetrics, route: OperatorRoute | undefin
 
 function getProactivityAlerts(m: OperatorMetrics): { label: string; color: string; bg: string }[] {
   const alerts: { label: string; color: string; bg: string }[] = [];
-  if (m.ncCount > 5) alerts.push({ label: `${m.ncCount} nao conformidades`, color: 'text-red-700', bg: 'bg-red-100' });
-  if (m.notReleasedCount > 3) alerts.push({ label: `${m.notReleasedCount} checklists nao liberados`, color: 'text-red-700', bg: 'bg-red-100' });
-  if (m.interferencesCount > 3) alerts.push({ label: `${m.interferencesCount} interferencias`, color: 'text-orange-700', bg: 'bg-orange-100' });
+  if (m.ncCount > 5) alerts.push({ label: `${m.ncCount} não conformidades`, color: 'text-red-700', bg: 'bg-red-100' });
+  if (m.notReleasedCount > 3) alerts.push({ label: `${m.notReleasedCount} checklists não liberados`, color: 'text-red-700', bg: 'bg-red-100' });
+  if (m.interferencesCount > 3) alerts.push({ label: `${m.interferencesCount} interferências`, color: 'text-orange-700', bg: 'bg-orange-100' });
   if (m.deviationsOpen > 0) alerts.push({ label: `${m.deviationsOpen} desvio(s) em aberto`, color: 'text-red-700', bg: 'bg-red-100' });
   if (m.ncBlockingCount > 0) alerts.push({ label: `${m.ncBlockingCount} NC bloqueante(s)`, color: 'text-red-700', bg: 'bg-red-100' });
   if (m.score !== null && m.score < 50) alerts.push({ label: `Score baixo: ${m.score.toFixed(0)}`, color: 'text-red-700', bg: 'bg-red-100' });
@@ -594,8 +589,8 @@ function GlobalMap({
 
     if (bounds.length > 0 && !fittedRef.current) {
       fittedRef.current = true;
-      if (bounds.length === 1) map.setView(bounds[0], 14);
-      else map.fitBounds(bounds as L.LatLngBoundsExpression, { padding: [40, 40] });
+      if (bounds.length === 1) map.setView(bounds[0], 12);
+      else map.fitBounds(bounds as L.LatLngBoundsExpression, { padding: [40, 40], maxZoom: 12 });
     }
   }, [operators, routes, locations, showLocations, showRoutes, selectedOperatorId]);
 
@@ -649,10 +644,10 @@ function GlobalMap({
       });
 
       // Fit map to selected route
-      map.fitBounds(latlngs as L.LatLngBoundsExpression, { padding: [60, 60], maxZoom: 15 });
+      map.fitBounds(latlngs as L.LatLngBoundsExpression, { padding: [60, 60], maxZoom: 13 });
     } else {
       // Live mode (no routes): just pan to current position
-      map.setView([op.latitude, op.longitude], 15, { animate: true });
+      map.setView([op.latitude, op.longitude], 13, { animate: true });
     }
   }, [selectedOperatorId, operators, routes, showRoutes]);
 
@@ -671,22 +666,30 @@ export default function MapaClient() {
   const [loading, setLoading] = useState(true);
   const [showLocations, setShowLocations] = useState(true);
   const [filterStatus, setFilterStatus] = useState('');
-  const [expandedOps, setExpandedOps] = useState<Set<string>>(new Set());
   const [selectedOperatorId, setSelectedOperatorId] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
   const [realtimeStatus, setRealtimeStatus] = useState<'connecting' | 'live' | 'disconnected'>('connecting');
   const [viewMode, setViewMode] = useState<'live' | 'analysis'>('live');
   const [routeHistory, setRouteHistory] = useState<Map<string, HistoryRow[]>>(new Map());
   const [activeInfo, setActiveInfo] = useState<Map<string, ActiveInfo>>(new Map());
+  const [dayDetails, setDayDetails] = useState<Map<string, DayDetail>>(new Map());
+  const [expandedLive, setExpandedLive] = useState<Set<string>>(new Set());
 
   const today = new Date().toISOString().split('T')[0];
   const monthStart = today.slice(0, 7) + '-01';
+  // Dia seguinte (limite superior exclusivo das consultas por data).
+  const dayAfter = useMemo(() => {
+    const d = new Date(today + 'T00:00:00');
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split('T')[0];
+  }, [today]);
 
   const loadData = useCallback(async () => {
     const [opLocRes, locRes, checklistsRes, activitiesRes, ncRes, inspectionsRes, deviationsRes, scoresRes, historyRes] = await Promise.all([
       supabase.from('operator_locations').select('*, profiles!operator_id(full_name)').order('updated_at', { ascending: false }),
       supabase.from('locations').select('id, name, code, latitude, longitude').eq('active', true),
-      supabase.from('checklists').select('id, operator_id, date, result, had_interference, profiles(full_name)').gte('date', monthStart),
-      supabase.from('activities').select('id, operator_id, date, had_interference, profiles(full_name)').gte('date', monthStart),
+      supabase.from('checklists').select('id, operator_id, date, result, had_interference, machine_name, created_at, profiles(full_name)').gte('date', monthStart),
+      supabase.from('activities').select('id, operator_id, date, had_interference, description, created_at, machines(name), activity_types(description), profiles(full_name)').gte('date', monthStart),
       supabase.from('checklist_responses').select('id, status, checklist_id, machine_checklist_items(is_blocking), checklist_template_items(is_blocking), checklists!inner(operator_id, date)').eq('status', 'NC').gte('checklists.date', monthStart),
       supabase.from('behavioral_inspections').select('id, operator_id').gte('date', monthStart),
       supabase.from('behavioral_deviations').select('id, status, inspection_id, behavioral_inspections!inner(operator_id)').gte('behavioral_inspections.date', monthStart),
@@ -694,6 +697,7 @@ export default function MapaClient() {
       supabase.from('location_history')
         .select('operator_id, latitude, longitude, recorded_at, event_type, activity_id, checklist_id')
         .gte('recorded_at', today + 'T00:00:00.000Z')
+        .lt('recorded_at', dayAfter + 'T00:00:00.000Z')
         .order('recorded_at', { ascending: true })
         .limit(2000),
     ]);
@@ -746,21 +750,44 @@ export default function MapaClient() {
       return mMap.get(id)!;
     }
 
-    type ClRow = { id: string; operator_id: string; date: string; result: string | null; had_interference: boolean; profiles: { full_name: string } | null };
+    // Detalhamento por dia (hoje), agrupado por operador — alimenta a linha expansível.
+    const dayMap = new Map<string, DayDetail>();
+    function ensureDay(id: string): DayDetail {
+      if (!dayMap.has(id)) dayMap.set(id, { checklists: [], activities: [] });
+      return dayMap.get(id)!;
+    }
+    const hhmm = (iso: string | null) => iso ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+
+    type ClRow = { id: string; operator_id: string; date: string; result: string | null; had_interference: boolean; machine_name: string | null; created_at: string | null; profiles: { full_name: string } | null };
     for (const c of (checklistsRes.data as ClRow[] | null) ?? []) {
       const m = ensureOp(c.operator_id, c.profiles?.full_name || 'Operador');
-      m.checklistsMonth++; if (c.date === today) m.checklistsToday++;
+      m.checklistsMonth++;
+      if (c.date === today) {
+        m.checklistsToday++;
+        ensureDay(c.operator_id).checklists.push({ id: c.id, time: hhmm(c.created_at), machine: c.machine_name, result: c.result, interference: c.had_interference });
+      }
       if (c.result === 'released') m.releasedCount++;
       if (c.result === 'not_released') m.notReleasedCount++;
       if (c.had_interference) m.interferencesCount++;
     }
 
-    type ActRow = { id: string; operator_id: string; date: string; had_interference: boolean; profiles: { full_name: string } | null };
+    type ActRow = { id: string; operator_id: string; date: string; had_interference: boolean; description: string | null; created_at: string | null; machines: { name: string } | null; activity_types: { description: string } | null; profiles: { full_name: string } | null };
     for (const a of (activitiesRes.data as ActRow[] | null) ?? []) {
       const m = ensureOp(a.operator_id, a.profiles?.full_name || 'Operador');
-      m.activitiesMonth++; if (a.date === today) m.activitiesToday++;
+      m.activitiesMonth++;
+      if (a.date === today) {
+        m.activitiesToday++;
+        ensureDay(a.operator_id).activities.push({ id: a.id, time: hhmm(a.created_at), label: a.activity_types?.description ?? a.description ?? 'Atividade', machine: a.machines?.name ?? null, interference: a.had_interference });
+      }
       if (a.had_interference) m.interferencesCount++;
     }
+
+    // Mais recente primeiro dentro de cada grupo.
+    for (const d of dayMap.values()) {
+      d.checklists.sort((x, y) => y.time.localeCompare(x.time));
+      d.activities.sort((x, y) => y.time.localeCompare(x.time));
+    }
+    setDayDetails(dayMap);
 
     type NcRow = { id: string; status: string; checklist_id: string; machine_checklist_items: { is_blocking: boolean } | null; checklist_template_items: { is_blocking: boolean } | null; checklists: { operator_id: string; date: string } };
     for (const nc of (ncRes.data as NcRow[] | null) ?? []) {
@@ -804,7 +831,7 @@ export default function MapaClient() {
     setRouteHistory(hMap);
 
     setLoading(false);
-  }, [supabase, today, monthStart]);
+  }, [supabase, today, monthStart, dayAfter]);
 
   useEffect(() => {
     loadData();
@@ -832,7 +859,7 @@ export default function MapaClient() {
           points: [{
             lat: op.latitude,
             lng: op.longitude,
-            label: 'Posicao atual',
+            label: 'Posição atual',
             time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
             eventType: 'breadcrumb',
           }],
@@ -847,10 +874,14 @@ export default function MapaClient() {
     return map;
   }, [operatorLocations, routeHistory]);
 
-  const filtered = useMemo(
-    () => filterStatus ? operatorLocations.filter((o) => o.current_status === filterStatus) : operatorLocations,
-    [operatorLocations, filterStatus]
-  );
+  const filtered = useMemo(() => {
+    let list = filterStatus
+      ? operatorLocations.filter((o) => o.current_status === filterStatus)
+      : operatorLocations;
+    const q = search.trim().toLowerCase();
+    if (q) list = list.filter((o) => (o.profiles?.full_name || '').toLowerCase().includes(q));
+    return list;
+  }, [operatorLocations, filterStatus, search]);
 
   const statusCounts = useMemo(() => {
     const c: Record<string, number> = { online: 0, in_activity: 0, in_checklist: 0, idle: 0, offline: 0 };
@@ -870,149 +901,140 @@ export default function MapaClient() {
     [filtered],
   );
 
-  const liveCounts = useMemo(() => {
-    let active = 0;
-    let offline = 0;
-    for (const o of filtered) {
-      if (o.current_status === 'offline') offline++;
-      else active++;
-    }
-    return { active, offline };
-  }, [filtered]);
 
-  function toggleExpanded(id: string) {
-    setExpandedOps((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+
+  function toggleLive(id: string) {
+    setExpandedLive((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   }
 
   const isLive = viewMode === 'live';
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Mapa de Operadores</h1>
           <p className="text-xs sm:text-sm text-muted-foreground flex items-center gap-2 flex-wrap">
             <RealtimeBadge status={realtimeStatus} />
             <span>·</span>
-            <span>{isLive ? 'Posicao em tempo real dos operadores em campo.' : 'Rotas percorridas, metricas e proatividade do mes.'}</span>
+            <span>{isLive ? 'Posição e atividade dos operadores em campo, em tempo real.' : 'Rotas percorridas, métricas e proatividade do mês.'}</span>
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => { setLoading(true); loadData(); }}
-          className="gap-2 bg-card"
-        >
-          <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
-          Atualizar
-        </Button>
-      </div>
-
-      {/* View mode tabs */}
-      <div className="inline-flex rounded-lg border bg-card p-1 text-sm">
-        <button
-          type="button"
-          onClick={() => { setViewMode('live'); setSelectedOperatorId(null); }}
-          className={cn(
-            'inline-flex items-center gap-2 rounded-md px-3 py-1.5 font-medium transition-colors',
-            FOCUS_RING,
-            isLive ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
-          )}
-        >
-          <MapPin className="h-4 w-4" />
-          Ao vivo
-        </button>
-        <button
-          type="button"
-          onClick={() => { setViewMode('analysis'); setSelectedOperatorId(null); }}
-          className={cn(
-            'inline-flex items-center gap-2 rounded-md px-3 py-1.5 font-medium transition-colors',
-            FOCUS_RING,
-            !isLive ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
-          )}
-        >
-          <Route className="h-4 w-4" />
-          Rotas e Analise
-        </button>
-      </div>
-
-      {/* Status filter */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        {Object.entries(STATUS_LABELS).map(([key, label]) => (
-          <button type="button" key={key} onClick={() => setFilterStatus(filterStatus === key ? '' : key)}
-            className={cn(
-              'rounded-lg border p-3 text-center transition-colors',
-              FOCUS_RING,
-              filterStatus === key ? 'ring-2 ring-primary border-primary' : 'hover:bg-muted',
-            )}>
-            {loading
-              ? <Skeleton className="mx-auto mb-1 h-6 w-8" />
-              : <p className={`text-xl font-bold ${STATUS_COLORS[key]}`}>{statusCounts[key] || 0}</p>}
-            <p className="text-xs text-muted-foreground">{label}</p>
-          </button>
-        ))}
-      </div>
-
-      {/* Controls */}
-      <div className="flex items-center gap-4 text-sm flex-wrap">
-        {!isLive && (
-          <label className="flex items-center gap-2 cursor-pointer">
-            <Checkbox checked={showLocations} onCheckedChange={(c) => setShowLocations(c === true)} />
-            <MapPin className="h-4 w-4 text-violet-500" />
-            Localidades
-          </label>
-        )}
-        {filterStatus && (
-          <Button variant="link" size="sm" onClick={() => setFilterStatus('')} className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground">Limpar filtro</Button>
-        )}
-        {!isLive && (
-          <div className="ml-auto flex gap-2">
-            <Button variant="link" size="sm" onClick={() => setExpandedOps(new Set(filtered.map((o) => o.operator_id)))} className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground">Expandir todos</Button>
-            <Button variant="link" size="sm" onClick={() => setExpandedOps(new Set())} className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground">Recolher todos</Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="inline-flex rounded-lg border bg-card p-1 text-sm">
+            <button
+              type="button"
+              onClick={() => { setViewMode('live'); setSelectedOperatorId(null); }}
+              className={cn(
+                'inline-flex items-center gap-2 rounded-md px-3 py-1.5 font-medium transition-colors',
+                FOCUS_RING,
+                isLive ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              <MapPin className="h-4 w-4" />
+              Ao vivo
+            </button>
+            <button
+              type="button"
+              onClick={() => { setViewMode('analysis'); setSelectedOperatorId(null); }}
+              className={cn(
+                'inline-flex items-center gap-2 rounded-md px-3 py-1.5 font-medium transition-colors',
+                FOCUS_RING,
+                !isLive ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              <Route className="h-4 w-4" />
+              Rotas e Análise
+            </button>
           </div>
-        )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => { setLoading(true); loadData(); }}
+            className="gap-2 bg-card"
+          >
+            <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin')} />
+            Atualizar
+          </Button>
+        </div>
       </div>
+
+      {/* Filtros — fora do card da tabela, sem fundo */}
+      {!loading && (
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative min-w-[200px] flex-1">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar operador..."
+              className="h-9 bg-card pl-8"
+            />
+          </div>
+          <Select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            aria-label="Filtrar por status"
+            className="h-9 w-auto min-w-[150px] bg-card"
+          >
+            <option value="">Todos os status</option>
+            {Object.entries(STATUS_LABELS).map(([k, l]) => (
+              <option key={k} value={k}>{l} ({statusCounts[k] || 0})</option>
+            ))}
+          </Select>
+          {(search || filterStatus) && (
+            <Button variant="ghost" size="sm" onClick={() => { setSearch(''); setFilterStatus(''); }} className="h-9 text-muted-foreground">
+              Limpar
+            </Button>
+          )}
+          {!isLive && (
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <Checkbox checked={showLocations} onCheckedChange={(c) => setShowLocations(c === true)} />
+              <MapPin className="h-4 w-4 text-violet-500" />
+              Localidades
+            </label>
+          )}
+        </div>
+      )}
 
       {/* Global map + operator list */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            {isLive ? <><MapPin className="h-4 w-4" />Acompanhamento ao vivo</> : <><Route className="h-4 w-4" />Visao Geral — Rotas dos Operadores</>}
-          </CardTitle>
-          <CardDescription>
-            {isLive
-              ? 'Status e atividade de cada operador em campo, atualizado em tempo real.'
-              : 'Cada linha tracejada representa a rota percorrida pelo operador no turno.'}
-          </CardDescription>
-        </CardHeader>
+      <Card className="overflow-hidden order-2">
         <CardContent className="p-0">
-          <div className={cn('grid grid-cols-1', !isLive && 'lg:grid-cols-3')}>
+          <div className={cn('grid grid-cols-1', !isLive && 'lg:grid-cols-3 lg:h-[calc(100vh-9rem)]')}>
             {/* Map (apenas em modo Analise) */}
             {!isLive && (
-              <div className="lg:col-span-2 rounded-bl-lg overflow-hidden" style={{ height: 420 }}>
-                {loading ? (
-                  <Skeleton className="h-full w-full rounded-none" />
-                ) : (
-                  <GlobalMap operators={filtered} routes={operatorRoutes} locations={locations} showLocations={showLocations} showRoutes={!isLive} selectedOperatorId={selectedOperatorId} />
-                )}
+              <div className="lg:col-span-2 lg:order-2 flex flex-col min-h-0">
+                <div className="flex h-[52px] items-center gap-2 border-b bg-muted px-3">
+                  <Route className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-semibold uppercase tracking-wide text-muted-foreground">Visão Geral — Rotas dos Operadores</p>
+                    <p className="truncate text-[11px] normal-case text-muted-foreground/80">Cada linha tracejada representa a rota percorrida pelo operador no turno.</p>
+                  </div>
+                </div>
+                <div className="flex-1 min-h-0 overflow-hidden" style={{ minHeight: 420 }}>
+                  {loading ? (
+                    <Skeleton className="h-full w-full rounded-none" />
+                  ) : (
+                    <GlobalMap operators={filtered} routes={operatorRoutes} locations={locations} showLocations={showLocations} showRoutes={!isLive} selectedOperatorId={selectedOperatorId} />
+                  )}
+                </div>
               </div>
             )}
 
             {/* Operator list panel */}
-            <div className={cn('overflow-y-auto', !isLive && 'border-t lg:border-t-0 lg:border-l')} style={{ maxHeight: isLive ? 560 : 420 }}>
-              <div className="px-3 py-2 border-b bg-muted/30 sticky top-0 z-10 flex items-center justify-between">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  {filtered.length} Operador{filtered.length !== 1 ? 'es' : ''}
-                  {isLive ? (
-                    <> · <span className="text-emerald-600">{liveCounts.active} ativo{liveCounts.active !== 1 ? 's' : ''}</span> · <span className="text-red-600">{liveCounts.offline} offline</span></>
-                  ) : (
-                    <> · {(() => { let t = 0; filtered.forEach(op => { const r = operatorRoutes.get(op.operator_id); if (r) t += r.distanceKm; }); return t.toFixed(1); })()}km total</>
+            <div className={cn('overflow-y-auto', !isLive && 'border-t lg:border-t-0 lg:border-r lg:order-1 lg:h-full')} style={isLive ? { height: 'calc(100vh - 15rem)' } : undefined}>
+              {!isLive && (
+                <div className="px-3 h-[52px] border-b bg-muted flex items-center justify-between sticky top-0 z-20">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    {filtered.length} Operador{filtered.length !== 1 ? 'es' : ''}
+                    {' · '}
+                    {(() => { let t = 0; filtered.forEach(op => { const r = operatorRoutes.get(op.operator_id); if (r) t += r.distanceKm; }); return t.toFixed(1); })()}km total
+                  </p>
+                  {selectedOperatorId && (
+                    <Button variant="link" size="sm" onClick={() => setSelectedOperatorId(null)} className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground">Ver todos</Button>
                   )}
-                </p>
-                {selectedOperatorId && (
-                  <Button variant="link" size="sm" onClick={() => setSelectedOperatorId(null)} className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground">Ver todos</Button>
-                )}
-              </div>
+                </div>
+              )}
 
               {/* ───────── Skeleton de carregamento ───────── */}
               {loading && (
@@ -1029,52 +1051,136 @@ export default function MapaClient() {
                 </div>
               )}
 
-              {/* ───────── Lista AO VIVO ───────── */}
+              {/* ───────── Tabela AO VIVO ───────── */}
               {isLive && !loading && liveSorted.length > 0 && (
-                <div className="divide-y">
-                  {liveSorted.map((op) => {
-                    const info = activeInfo.get(op.operator_id);
-                    const gps = gpsReliability(op.updated_at, op.accuracy);
-                    const kmh = op.speed != null && op.speed > 0 ? op.speed * 3.6 : null;
-                    const battery = op.battery_level != null ? Math.round(op.battery_level > 1 ? op.battery_level : op.battery_level * 100) : null;
-                    return (
-                      <div key={op.operator_id} className={cn('px-3 py-3', STATUS_BG[op.current_status])}>
-                        <div className="flex items-start gap-2.5">
-                          <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${STATUS_DOT[op.current_status]} ${op.current_status !== 'offline' ? 'animate-pulse' : ''}`} />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-2">
-                              <p className="text-sm font-semibold truncate">{op.profiles?.full_name || 'Operador'}</p>
-                              <span className="shrink-0 inline-flex items-center gap-1 text-xs text-muted-foreground">
-                                <Clock className="h-3 w-3" />{timeSince(op.updated_at)}
+                <table className="w-full caption-bottom text-sm">
+                  <TableHeader>
+                    <TableRow className="sticky top-0 z-10 border-b bg-muted/95 text-xs font-medium uppercase tracking-wider text-muted-foreground backdrop-blur hover:bg-muted/95">
+                      <TableHead className="px-3 py-2.5 font-medium">Operador</TableHead>
+                      <TableHead className="px-3 py-2.5 font-medium">Status</TableHead>
+                      <TableHead className="px-3 py-2.5 font-medium hidden md:table-cell">Atividade / Máquina</TableHead>
+                      <TableHead className="px-3 py-2.5 font-medium hidden xl:table-cell">Local</TableHead>
+                      <TableHead className="px-3 py-2.5 font-medium hidden sm:table-cell">GPS</TableHead>
+                      <TableHead className="px-3 py-2.5 font-medium text-right hidden lg:table-cell">Veloc.</TableHead>
+                      <TableHead className="px-3 py-2.5 font-medium text-right hidden sm:table-cell">Bateria</TableHead>
+                      <TableHead className="px-3 py-2.5 font-medium text-right">Atualizado</TableHead>
+                      <TableHead className="px-3 py-2.5 font-medium text-right">Detalhes</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {liveSorted.map((op) => {
+                      const info = activeInfo.get(op.operator_id);
+                      const gps = gpsReliability(op.updated_at, op.accuracy);
+                      const kmh = op.speed != null && op.speed > 0 ? op.speed * 3.6 : null;
+                      const battery = op.battery_level != null ? Math.round(op.battery_level > 1 ? op.battery_level : op.battery_level * 100) : null;
+                      const offline = op.current_status === 'offline';
+                      const det = dayDetails.get(op.operator_id);
+                      const dayCount = (det?.checklists.length ?? 0) + (det?.activities.length ?? 0);
+                      const expanded = expandedLive.has(op.operator_id);
+                      return (
+                        <Fragment key={op.operator_id}>
+                        <TableRow
+                          onClick={() => dayCount > 0 && toggleLive(op.operator_id)}
+                          aria-expanded={dayCount > 0 ? expanded : undefined}
+                          className={cn('border-b', offline && 'opacity-70', dayCount > 0 ? 'cursor-pointer' : 'cursor-default', expanded && 'bg-muted/40 hover:bg-muted/40')}
+                        >
+                          <TableCell className="px-3 py-3">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-semibold text-white', STATUS_DOT[op.current_status])}>
+                                {(op.profiles?.full_name || '?').charAt(0).toUpperCase()}
                               </span>
+                              <span className="truncate text-xs font-medium">{op.profiles?.full_name || 'Operador'}</span>
                             </div>
-                            <p className={`text-xs font-medium ${STATUS_COLORS[op.current_status]}`}>
-                              {ACTION_LABELS[op.current_status] ?? STATUS_LABELS[op.current_status]}
-                            </p>
-
-                            {info && (info.machine || info.location || info.description) && (
-                              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-                                {info.machine && <span className="inline-flex items-center gap-1"><Wrench className="h-3 w-3" />{info.machine}</span>}
-                                {info.location && <span className="inline-flex items-center gap-1"><MapPin className="h-3 w-3" />{info.location}</span>}
-                                {info.description && <span className="truncate">{info.description}</span>}
+                          </TableCell>
+                          <TableCell className="px-3 py-3">
+                            <Badge variant="plain" className={cn('rounded-md whitespace-nowrap font-medium', STATUS_BADGE[op.current_status])}>
+                              <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT[op.current_status], !offline && 'animate-pulse')} />
+                              {STATUS_LABELS[op.current_status]}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="px-3 py-3 hidden md:table-cell">
+                            {info && (info.machine || info.description) ? (
+                              <div className="flex flex-col gap-0.5 text-xs min-w-0">
+                                {info.machine && <span className="inline-flex items-center gap-1 font-medium"><Wrench className="h-3 w-3 shrink-0 text-muted-foreground" />{info.machine}</span>}
+                                {info.description && <span className="text-muted-foreground truncate">{info.description}</span>}
                               </div>
+                            ) : <span className="text-muted-foreground">—</span>}
+                          </TableCell>
+                          <TableCell className="px-3 py-3 hidden xl:table-cell">
+                            {info?.location ? (
+                              <span className="inline-flex items-center gap-1 text-xs"><MapPin className="h-3 w-3 shrink-0 text-muted-foreground" />{info.location}</span>
+                            ) : <span className="text-muted-foreground">—</span>}
+                          </TableCell>
+                          <TableCell className="px-3 py-3 hidden sm:table-cell">
+                            <span className={cn('inline-flex items-center gap-1 text-xs whitespace-nowrap', gps.tone)}><Satellite className="h-3 w-3 shrink-0" />{gps.label}</span>
+                          </TableCell>
+                          <TableCell className="px-3 py-3 text-right hidden lg:table-cell">
+                            {kmh != null ? (
+                              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap"><Gauge className="h-3 w-3" />{kmh.toFixed(0)} km/h</span>
+                            ) : <span className="text-muted-foreground">—</span>}
+                          </TableCell>
+                          <TableCell className="px-3 py-3 text-right hidden sm:table-cell">
+                            {battery != null ? (
+                              <span className={cn('inline-flex items-center gap-1 text-xs whitespace-nowrap', battery <= 20 ? 'text-red-600' : 'text-muted-foreground')}><BatteryMedium className="h-3 w-3" />{battery}%</span>
+                            ) : <span className="text-muted-foreground">—</span>}
+                          </TableCell>
+                          <TableCell className="px-3 py-3 text-right">
+                            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap"><Clock className="h-3 w-3" />{timeSince(op.updated_at)}</span>
+                          </TableCell>
+                          <TableCell className="px-3 py-3 text-right">
+                            {dayCount > 0 ? (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); toggleLive(op.operator_id); }}
+                                aria-expanded={expanded}
+                                aria-label={`${expanded ? 'Recolher' : 'Ver'} checklists e atividades de hoje (${dayCount})`}
+                                className={cn('ml-auto inline-flex items-center justify-center gap-1 rounded-md px-1.5 py-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground', FOCUS_RING)}
+                              >
+                                <span className="text-xs font-medium tabular-nums">{dayCount}</span>
+                                <ChevronDown className={cn('h-4 w-4 transition-transform', expanded && 'rotate-180')} />
+                              </button>
+                            ) : (
+                              <span className="text-muted-foreground/40">—</span>
                             )}
-
-                            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
-                              <span className={`inline-flex items-center gap-1 ${gps.tone}`}><Satellite className="h-3 w-3" />{gps.label}</span>
-                              {kmh != null && <span className="inline-flex items-center gap-1 text-muted-foreground"><Gauge className="h-3 w-3" />{kmh.toFixed(0)} km/h</span>}
-                              {battery != null && (
-                                <span className={`inline-flex items-center gap-1 ${battery <= 20 ? 'text-red-600' : 'text-muted-foreground'}`}>
-                                  <BatteryMedium className="h-3 w-3" />{battery}%
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                          </TableCell>
+                        </TableRow>
+                        {expanded && det && (
+                          <TableRow className="bg-muted/20 hover:bg-muted/20">
+                            <TableCell colSpan={9} className="px-3 pb-4 pt-1">
+                              <div className="grid gap-4 sm:grid-cols-2">
+                                <DayList
+                                  icon={ListChecks}
+                                  title={`Checklists hoje (${det.checklists.length})`}
+                                  empty="Nenhum checklist hoje."
+                                  items={det.checklists.map((c) => ({
+                                    id: c.id,
+                                    time: c.time,
+                                    primary: c.machine ?? 'Checklist',
+                                    interference: c.interference,
+                                    tag: checklistResultTag(c.result),
+                                  }))}
+                                />
+                                <DayList
+                                  icon={Activity}
+                                  title={`Atividades hoje (${det.activities.length})`}
+                                  empty="Nenhuma atividade hoje."
+                                  items={det.activities.map((a) => ({
+                                    id: a.id,
+                                    time: a.time,
+                                    primary: a.label,
+                                    secondary: a.machine,
+                                    interference: a.interference,
+                                  }))}
+                                />
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                        </Fragment>
+                      );
+                    })}
+                  </TableBody>
+                </table>
               )}
 
               {/* ───────── Lista ROTAS/ANALISE ───────── */}
@@ -1122,7 +1228,7 @@ export default function MapaClient() {
                             <span className="inline-flex items-center gap-0.5 text-violet-600"><Activity className="h-2.5 w-2.5" />{m.activitiesMonth}</span>
                             {m.ncCount > 0 && <span className="inline-flex items-center gap-0.5 text-red-600"><XCircle className="h-2.5 w-2.5" />{m.ncCount} NC</span>}
                             {conformity !== null && (
-                              <span className={`font-medium ${conformity >= 80 ? 'text-emerald-600' : conformity >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>{conformity}%</span>
+                              <span className={`font-medium ${conformity >= 80 ? 'text-emerald-600' : conformity >= 50 ? 'text-yellow-700' : 'text-red-600'}`}>{conformity}%</span>
                             )}
                             {m.score !== null && <span className="inline-flex items-center gap-0.5 text-amber-600 font-medium"><Star className="h-2.5 w-2.5" />{m.score.toFixed(0)}</span>}
                           </div>
@@ -1144,23 +1250,31 @@ export default function MapaClient() {
         </CardContent>
       </Card>
 
-      {/* Per-operator cards (apenas em modo Analise) */}
-      {!isLive && !loading && filtered.length > 0 && (
-        <div className="space-y-3">
-          <h2 className="text-lg font-semibold">Operadores ({filtered.length})</h2>
+      {/* Detalhe do operador selecionado (acima do mapa, modo Analise) */}
+      {!isLive && !loading && (
+        <div className="space-y-3 order-1">
+          <h2 className="text-lg font-semibold">Detalhes do operador</h2>
 
-          {filtered.map((op) => {
+          {!selectedOperatorId && (
+            <Card>
+              <CardContent className="flex items-center justify-center gap-2 p-6 text-center text-sm text-muted-foreground">
+                <Eye className="h-4 w-4" />
+                Clique em um operador na lista acima para ver tudo que ele fez no dia.
+              </CardContent>
+            </Card>
+          )}
+
+          {filtered.filter((op) => op.operator_id === selectedOperatorId).map((op) => {
             const m = metrics.get(op.operator_id);
             const route = operatorRoutes.get(op.operator_id);
-            const isExpanded = expandedOps.has(op.operator_id);
             const badges = m ? getProactivityBadges(m, route) : [];
             const alerts = m ? getProactivityAlerts(m) : [];
             const conformityRate = m && m.checklistsMonth > 0 ? Math.round((m.releasedCount / m.checklistsMonth) * 100) : null;
 
             return (
-              <Card key={op.operator_id} className={`overflow-hidden border ${STATUS_BG[op.current_status] || ''}`}>
+              <Card key={op.operator_id} className="overflow-hidden ring-1 ring-primary/20">
                 {/* Header */}
-                <button type="button" onClick={() => toggleExpanded(op.operator_id)} className={cn('w-full text-left', FOCUS_RING)}>
+                <button type="button" onClick={() => setSelectedOperatorId(null)} className={cn('w-full text-left', FOCUS_RING)}>
                   <CardContent className="p-4">
                     <div className="flex items-center gap-3">
                       <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${STATUS_DOT[op.current_status] || 'bg-gray-400'}`}>
@@ -1170,10 +1284,10 @@ export default function MapaClient() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="text-sm font-semibold truncate">{op.profiles?.full_name || 'Operador'}</p>
-                          <span className={`inline-flex items-center gap-1 text-xs font-medium ${STATUS_COLORS[op.current_status]}`}>
-                            <span className={`h-2 w-2 rounded-full ${STATUS_DOT[op.current_status]}`} />
+                          <Badge variant="plain" className={cn('font-medium', STATUS_BADGE[op.current_status])}>
+                            <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT[op.current_status], op.current_status !== 'offline' && 'animate-pulse')} />
                             {STATUS_LABELS[op.current_status]}
-                          </span>
+                          </Badge>
                           <span className="text-xs text-muted-foreground">· {timeSince(op.updated_at)}</span>
                           {route && (
                             <span className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600">
@@ -1188,39 +1302,29 @@ export default function MapaClient() {
                             <span className="inline-flex items-center gap-1"><ListChecks className="h-3 w-3" />{m.checklistsToday} hoje · {m.checklistsMonth} mes</span>
                             <span className="inline-flex items-center gap-1"><Activity className="h-3 w-3" />{m.activitiesToday} hoje · {m.activitiesMonth} mes</span>
                             {m.ncCount > 0 && <span className="inline-flex items-center gap-1 text-red-600"><XCircle className="h-3 w-3" />{m.ncCount} NC</span>}
-                            {conformityRate !== null && <span className={`inline-flex items-center gap-1 font-medium ${conformityRate >= 80 ? 'text-emerald-600' : conformityRate >= 50 ? 'text-yellow-600' : 'text-red-600'}`}><TrendingUp className="h-3 w-3" />{conformityRate}%</span>}
+                            {conformityRate !== null && <span className={`inline-flex items-center gap-1 font-medium ${conformityRate >= 80 ? 'text-emerald-600' : conformityRate >= 50 ? 'text-yellow-700' : 'text-red-600'}`}><TrendingUp className="h-3 w-3" />{conformityRate}%</span>}
                             {m.score !== null && <span className="inline-flex items-center gap-1 text-amber-600 font-medium"><Star className="h-3 w-3" />{m.score.toFixed(0)}</span>}
                           </div>
                         )}
 
-                        {!isExpanded && badges.length > 0 && (
-                          <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                            {badges.slice(0, 3).map((b) => (
-                              <Badge key={b.label} variant="plain" className={cn('border-transparent font-medium', b.bg, b.color)}>
-                                <b.icon className="h-2.5 w-2.5" />{b.label}
-                              </Badge>
-                            ))}
-                            {badges.length > 3 && <span className="text-xs text-muted-foreground">+{badges.length - 3}</span>}
-                          </div>
-                        )}
                       </div>
 
                       <div className="shrink-0">
-                        {isExpanded ? <ChevronUp className="h-5 w-5 text-muted-foreground" /> : <ChevronDown className="h-5 w-5 text-muted-foreground" />}
+                        <ChevronDown className="h-5 w-5 rotate-180 text-muted-foreground" />
                       </div>
                     </div>
                   </CardContent>
                 </button>
 
                 {/* Expanded detail */}
-                {isExpanded && (
+                {(
                   <div className="border-t px-4 pb-4 space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
                       {/* Route map */}
                       <div className="md:col-span-1 space-y-2">
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                          <Route className="h-3.5 w-3.5" />
-                          Rota Percorrida
+                        <p className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+                          <Route className="h-4 w-4 text-muted-foreground" />
+                          Rota percorrida
                         </p>
                         <div className="h-56 rounded-lg border overflow-hidden">
                           {route ? (
@@ -1234,7 +1338,7 @@ export default function MapaClient() {
                         {route && (
                           <div className="rounded-md border p-3 space-y-2">
                             <div className="flex items-center justify-between">
-                              <span className="text-xs font-semibold text-indigo-700 flex items-center gap-1"><Navigation className="h-3 w-3" />Distancia total</span>
+                              <span className="text-xs font-semibold text-indigo-700 flex items-center gap-1"><Navigation className="h-3 w-3" />Distância total</span>
                               <span className="text-sm font-bold text-indigo-700">{route.distanceKm.toFixed(2)} km</span>
                             </div>
                             {(route.distanceActivityKm > 0 || route.distanceIdleKm > 0 || route.activeMinutes > 0 || route.idleMinutes > 0) && (
@@ -1249,8 +1353,8 @@ export default function MapaClient() {
                                 </div>
                               </div>
                             )}
-                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5 pt-1">
-                              <Clock className="h-3 w-3" />Linha do tempo
+                            <p className="flex items-center gap-1.5 pt-1 text-sm font-semibold text-foreground">
+                              <Clock className="h-4 w-4 text-muted-foreground" />Linha do tempo
                             </p>
                             <div className="text-xs max-h-48 overflow-y-auto pl-1">
                               {route.points.filter((p) => KEY_EVENTS.has(p.eventType)).map((p, i, arr) => {
@@ -1295,22 +1399,22 @@ export default function MapaClient() {
                       {/* Metrics + proactivity */}
                       <div className="md:col-span-2 space-y-4">
                         <div>
-                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Metricas do Mes</p>
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                            {m && [
+                          <p className="mb-3 text-sm font-semibold text-foreground">Métricas do mês</p>
+                          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                            {m && ([
+                              { label: 'Score', value: m.score !== null ? m.score.toFixed(0) : '—', sub: m.productivityIndex !== null ? `Prod: ${m.productivityIndex.toFixed(0)}` : '', color: m.score !== null && m.score >= 75 ? 'text-emerald-600' : m.score !== null ? 'text-red-600' : 'text-gray-500', emphasis: true },
+                              { label: 'Conformidade', value: conformityRate !== null ? `${conformityRate}%` : '—', sub: `${m.releasedCount} liberados`, color: conformityRate === null ? 'text-gray-500' : conformityRate >= 80 ? 'text-emerald-600' : conformityRate >= 50 ? 'text-yellow-700' : 'text-red-600', emphasis: true },
                               { label: 'Checklists', value: m.checklistsMonth, sub: `${m.checklistsToday} hoje`, color: 'text-blue-600' },
                               { label: 'Atividades', value: m.activitiesMonth, sub: `${m.activitiesToday} hoje`, color: 'text-violet-600' },
-                              { label: 'Liberados', value: m.releasedCount, sub: conformityRate !== null ? `${conformityRate}% taxa` : '', color: 'text-emerald-600' },
-                              { label: 'Nao Liberados', value: m.notReleasedCount, sub: '', color: 'text-red-600' },
                               { label: 'NC', value: m.ncCount, sub: m.ncBlockingCount > 0 ? `${m.ncBlockingCount} bloq.` : '', color: m.ncCount > 0 ? 'text-red-600' : 'text-emerald-600' },
-                              { label: 'Interferencias', value: m.interferencesCount, sub: '', color: m.interferencesCount > 0 ? 'text-orange-600' : 'text-emerald-600' },
+                              { label: 'Não Liberados', value: m.notReleasedCount, sub: '', color: m.notReleasedCount > 0 ? 'text-red-600' : 'text-emerald-600' },
+                              { label: 'Interferências', value: m.interferencesCount, sub: '', color: m.interferencesCount > 0 ? 'text-orange-600' : 'text-emerald-600' },
                               { label: 'Insp. Comport.', value: m.inspectionsCount, sub: m.deviationsTotal > 0 ? `${m.deviationsOpen} abertos` : '', color: 'text-violet-600' },
-                              { label: 'Score', value: m.score !== null ? m.score.toFixed(0) : '—', sub: m.productivityIndex !== null ? `Prod: ${m.productivityIndex.toFixed(0)}` : '', color: m.score !== null && m.score >= 75 ? 'text-emerald-600' : m.score !== null ? 'text-red-600' : 'text-gray-500' },
-                            ].map(({ label, value, sub, color }) => (
-                              <div key={label} className="rounded-md border p-2.5 text-center">
-                                <p className={`text-lg font-bold ${color}`}>{value}</p>
-                                <p className="text-xs text-muted-foreground leading-tight">{label}</p>
-                                {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
+                            ] as { label: string; value: string | number; sub: string; color: string; emphasis?: boolean }[]).map(({ label, value, sub, color }) => (
+                              <div key={label} className="rounded-lg border bg-card p-3 shadow-sm">
+                                <p className="text-xs font-medium text-muted-foreground">{label}</p>
+                                <p className={cn('mt-1 text-2xl font-bold leading-none tabular-nums', color)}>{value}</p>
+                                {sub && <p className="mt-1.5 text-xs text-muted-foreground leading-tight">{sub}</p>}
                               </div>
                             ))}
                           </div>
@@ -1318,7 +1422,7 @@ export default function MapaClient() {
 
                         {badges.length > 0 && (
                           <div>
-                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Mencoes de Proatividade</p>
+                            <p className="mb-2 text-sm font-semibold text-foreground">Menções de proatividade</p>
                             <div className="flex flex-wrap gap-2">
                               {badges.map((b) => (
                                 <span key={b.label} className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${b.bg} ${b.color}`}>
@@ -1331,7 +1435,7 @@ export default function MapaClient() {
 
                         {alerts.length > 0 && (
                           <div>
-                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Pontos de Atencao</p>
+                            <p className="mb-2 text-sm font-semibold text-foreground">Pontos de atenção</p>
                             <div className="flex flex-wrap gap-2">
                               {alerts.map((a) => (
                                 <span key={a.label} className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${a.bg} ${a.color}`}>
@@ -1344,7 +1448,7 @@ export default function MapaClient() {
 
                         {badges.length === 0 && alerts.length === 0 && (
                           <div className="rounded-md border border-dashed p-3 text-center">
-                            <p className="text-xs text-muted-foreground">Sem dados suficientes para mencoes de proatividade neste mes.</p>
+                            <p className="text-xs text-muted-foreground">Sem dados suficientes para menções de proatividade neste mês.</p>
                           </div>
                         )}
                       </div>
@@ -1361,10 +1465,56 @@ export default function MapaClient() {
         <Card>
           <CardContent className="py-12 text-center">
             <WifiOff className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-            <p className="text-muted-foreground">Nenhum operador com localizacao registrada.</p>
+            <p className="text-muted-foreground">Nenhum operador com localização registrada.</p>
             <p className="text-xs text-muted-foreground mt-1">Os operadores precisam estar logados no app mobile com GPS ativo.</p>
           </CardContent>
         </Card>
+      )}
+    </div>
+  );
+}
+
+function checklistResultTag(result: string | null): { label: string; cls: string } | null {
+  if (result === 'released') return { label: 'Liberado', cls: 'bg-emerald-100 text-emerald-700' };
+  if (result === 'not_released') return { label: 'Não liberado', cls: 'bg-red-100 text-red-700' };
+  return null;
+}
+
+interface DayListItem {
+  id: string;
+  time: string;
+  primary: string;
+  secondary?: string | null;
+  interference?: boolean;
+  tag?: { label: string; cls: string } | null;
+}
+
+function DayList({ icon: Icon, title, empty, items }: { icon: typeof Activity; title: string; empty: string; items: DayListItem[] }) {
+  return (
+    <div className="min-w-0">
+      <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-foreground">
+        <Icon className="h-4 w-4 text-muted-foreground" />{title}
+      </p>
+      {items.length === 0 ? (
+        <p className="text-xs text-muted-foreground">{empty}</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {items.map((it) => (
+            <li key={it.id} className="flex items-center justify-between gap-2 rounded-md border bg-card px-2.5 py-1.5 text-xs">
+              <span className="flex min-w-0 items-baseline gap-1.5">
+                <span className="truncate font-medium">{it.primary}</span>
+                {it.secondary && <span className="truncate text-muted-foreground">· {it.secondary}</span>}
+              </span>
+              <span className="flex shrink-0 items-center gap-2">
+                {it.interference && (
+                  <span className="inline-flex items-center gap-1 text-orange-600"><AlertTriangle className="h-3 w-3" />Interf.</span>
+                )}
+                {it.tag && <span className={cn('rounded-full px-1.5 py-0.5 font-medium', it.tag.cls)}>{it.tag.label}</span>}
+                {it.time && <span className="tabular-nums text-muted-foreground">{it.time}</span>}
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );
@@ -1409,8 +1559,8 @@ function MapLegend() {
 function RealtimeBadge({ status }: { status: 'connecting' | 'live' | 'disconnected' }) {
   if (status === 'live') {
     return (
-      <Badge variant="plain" className="gap-1.5 border-transparent bg-green-50 font-medium text-green-700">
-        <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+      <Badge variant="plain" className="gap-1.5 border-transparent bg-emerald-50 font-medium text-emerald-700">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
         Ao vivo
       </Badge>
     );
@@ -1426,7 +1576,7 @@ function RealtimeBadge({ status }: { status: 'connecting' | 'live' | 'disconnect
   return (
     <Badge variant="plain" className="gap-1.5 border-transparent bg-red-50 font-medium text-red-700">
       <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-      Sem conexao em tempo real
+      Sem conexão em tempo real
     </Badge>
   );
 }

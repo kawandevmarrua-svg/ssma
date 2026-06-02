@@ -30,6 +30,7 @@ interface Profile { id: string; full_name: string | null; role: string; }
 interface Machine { id: string; name: string; tag: string | null; }
 interface ActivityType { id: string; code: string; description: string; }
 interface Location { id: string; name: string; code: string | null; }
+interface Contract { id: string; name: string; code: string | null; }
 
 interface Inspection {
   id: string;
@@ -164,6 +165,7 @@ export default function InspecaoComportamentalPage() {
   const [machines, setMachines] = useState<Machine[]>([]);
   const [activityTypes, setActivityTypes] = useState<ActivityType[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
+  const [contracts, setContracts] = useState<Contract[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -203,13 +205,14 @@ export default function InspecaoComportamentalPage() {
   const load = useCallback(async () => {
     setLoading(true);
     setPageError(null);
-    const [userRes, opsRes, inspsRes, machinesRes, actTypesRes, locationsRes] = await Promise.all([
+    const [userRes, opsRes, inspsRes, machinesRes, actTypesRes, locationsRes, contractsRes] = await Promise.all([
       supabase.auth.getUser(),
       supabase.from('profiles').select('id, full_name, role').order('full_name'),
       supabase.from('behavioral_inspections').select('*').order('created_at', { ascending: false }).limit(100),
       supabase.from('machines').select('id, name, tag').eq('active', true).order('name'),
       supabase.from('activity_types').select('id, code, description').eq('active', true).order('order_index'),
       supabase.from('locations').select('id, name, code').eq('active', true).order('name'),
+      supabase.from('units').select('id, name, code').eq('active', true).order('name'),
     ]);
 
     const userId = userRes.data.user?.id ?? null;
@@ -218,6 +221,7 @@ export default function InspecaoComportamentalPage() {
     setMachines((machinesRes.data ?? []) as Machine[]);
     setActivityTypes((actTypesRes.data ?? []) as ActivityType[]);
     setLocations((locationsRes.data ?? []) as Location[]);
+    setContracts((contractsRes.data ?? []) as Contract[]);
 
     if (userId) {
       const { data: prof } = await supabase.from('profiles').select('role').eq('id', userId).single();
@@ -785,8 +789,15 @@ export default function InspecaoComportamentalPage() {
       {/* 1. IDENTIFICAÇÃO */}
       <Section title="1. Identificação">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Unidade / Contrato">
-            <Input value={unitContract} onChange={e => setUnitContract(e.target.value)} placeholder="Ex: Vale – Contrato 123" />
+          <Field label="Contrato">
+            <Select value={unitContract} onChange={e => setUnitContract(e.target.value)}>
+              <option value="">Selecione o contrato...</option>
+              {contracts.map(c => (
+                <option key={c.id} value={c.code ? `${c.name} (${c.code})` : c.name}>
+                  {c.name}{c.code ? ` — ${c.code}` : ''}
+                </option>
+              ))}
+            </Select>
           </Field>
           <Field label="Área / Frente de trabalho">
             <Select
@@ -1229,6 +1240,8 @@ interface DayActivity {
   equipment_photo_url: string | null;
   start_photo_url: string | null;
   end_photo_url: string | null;
+  start_photo_urls: string[] | null;
+  end_photo_urls: string[] | null;
   activity_types: { code: string; description: string } | null;
 }
 
@@ -1267,7 +1280,7 @@ function OperatorDailySnapshot({
           .order('created_at', { ascending: false }),
         supabase
           .from('activities')
-          .select('id, description, location, equipment_tag, start_time, end_time, had_interference, interference_notes, notes, equipment_photo_url, start_photo_url, end_photo_url, activity_types(code, description)')
+          .select('id, description, location, equipment_tag, start_time, end_time, had_interference, interference_notes, notes, equipment_photo_url, start_photo_url, end_photo_url, start_photo_urls, end_photo_urls, activity_types(code, description)')
           .eq('operator_id', operatorId)
           .eq('date', date)
           .order('created_at', { ascending: false }),
@@ -1326,12 +1339,17 @@ function OperatorDailySnapshot({
         }
       }
       for (const a of acts) {
-        const aps: [string, string | null][] = [
-          [`act_${a.id}_eq`, a.equipment_photo_url],
-          [`act_${a.id}_start`, a.start_photo_url],
-          [`act_${a.id}_end`, a.end_photo_url],
-        ];
-        for (const [k, p] of aps) if (p) urlPaths.push({ key: k, bucket: 'activity-photos', path: p });
+        if (a.equipment_photo_url) {
+          urlPaths.push({ key: `act_${a.id}_eq`, bucket: 'activity-photos', path: a.equipment_photo_url });
+        }
+        const startPaths = a.start_photo_urls?.length
+          ? a.start_photo_urls
+          : (a.start_photo_url ? [a.start_photo_url] : []);
+        const endPaths = a.end_photo_urls?.length
+          ? a.end_photo_urls
+          : (a.end_photo_url ? [a.end_photo_url] : []);
+        startPaths.forEach((p, i) => urlPaths.push({ key: `act_${a.id}_start_${i}`, bucket: 'activity-photos', path: p }));
+        endPaths.forEach((p, i) => urlPaths.push({ key: `act_${a.id}_end_${i}`, bucket: 'activity-photos', path: p }));
       }
 
       await Promise.all(urlPaths.map(async ({ key, bucket, path }) => {
@@ -1505,14 +1523,23 @@ function ChecklistSnapshotCard({ checklist, urls }: { checklist: DayChecklist; u
 }
 
 function ActivitySnapshotCard({ activity, urls }: { activity: DayActivity; urls: Record<string, string> }) {
-  const photos = (['eq', 'start', 'end'] as const)
-    .map(k => ({ k, url: urls[`act_${activity.id}_${k}`] }))
-    .filter(p => p.url) as { k: string; url: string }[];
+  const startCount = activity.start_photo_urls?.length || (activity.start_photo_url ? 1 : 0);
+  const endCount = activity.end_photo_urls?.length || (activity.end_photo_url ? 1 : 0);
+  const photos: { key: string; url: string; label: string }[] = [];
+  const eqUrl = urls[`act_${activity.id}_eq`];
+  if (eqUrl) photos.push({ key: 'eq', url: eqUrl, label: 'Equip.' });
+  for (let i = 0; i < startCount; i++) {
+    const u = urls[`act_${activity.id}_start_${i}`];
+    if (u) photos.push({ key: `start_${i}`, url: u, label: startCount > 1 ? `Início ${i + 1}` : 'Início' });
+  }
+  for (let i = 0; i < endCount; i++) {
+    const u = urls[`act_${activity.id}_end_${i}`];
+    if (u) photos.push({ key: `end_${i}`, url: u, label: endCount > 1 ? `Fim ${i + 1}` : 'Fim' });
+  }
   const typeLabel = activity.activity_types
     ? `${activity.activity_types.code} — ${activity.activity_types.description}`
     : (activity.description ?? '—');
   const time = [activity.start_time, activity.end_time].filter(Boolean).join(' → ') || '—';
-  const photoLabel: Record<string, string> = { eq: 'Equip.', start: 'Início', end: 'Fim' };
 
   return (
     <div className="rounded-lg border bg-card overflow-hidden">
@@ -1536,10 +1563,10 @@ function ActivitySnapshotCard({ activity, urls }: { activity: DayActivity; urls:
           <div className="grid grid-cols-3 gap-1.5">
             {photos.map((p) => (
               // eslint-disable-next-line @next/next/no-img-element
-              <a key={p.k} href={p.url} target="_blank" rel="noopener noreferrer" className="block relative">
+              <a key={p.key} href={p.url} target="_blank" rel="noopener noreferrer" className="block relative">
                 <img src={p.url} alt="" className="w-full h-20 object-cover rounded border" />
                 <span className="absolute bottom-0.5 left-0.5 rounded bg-black/60 px-1 py-0.5 text-xs font-semibold text-white">
-                  {photoLabel[p.k]}
+                  {p.label}
                 </span>
               </a>
             ))}

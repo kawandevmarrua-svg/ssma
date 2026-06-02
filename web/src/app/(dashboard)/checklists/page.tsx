@@ -344,29 +344,31 @@ export default function ChecklistsPage() {
           )}
         </div>
 
-        {selected.encarregado_confirmed ? (
-          <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm flex items-start gap-2">
-            <ShieldCheck className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
-            <div className="flex-1">
-              <p className="font-semibold text-emerald-800">Confirmado pelo encarregado</p>
-              {selected.encarregado_confirmed_at && (
-                <p className="text-emerald-700 text-xs mt-0.5">
-                  {new Date(selected.encarregado_confirmed_at).toLocaleString('pt-BR')}
-                </p>
-              )}
-              {selected.encarregado_confirmed_notes && (
-                <div className="mt-2 pt-2 border-t border-emerald-200">
-                  <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-1">Resolução da NC</p>
-                  <p className="text-emerald-800 whitespace-pre-wrap">{selected.encarregado_confirmed_notes}</p>
-                </div>
-              )}
+        {selected.result === 'not_released' && (
+          selected.encarregado_confirmed ? (
+            <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm flex items-start gap-2">
+              <ShieldCheck className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
+              <div className="flex-1">
+                <p className="font-semibold text-emerald-800">Confirmado pelo encarregado</p>
+                {selected.encarregado_confirmed_at && (
+                  <p className="text-emerald-700 text-xs mt-0.5">
+                    {new Date(selected.encarregado_confirmed_at).toLocaleString('pt-BR')}
+                  </p>
+                )}
+                {selected.encarregado_confirmed_notes && (
+                  <div className="mt-2 pt-2 border-t border-emerald-200">
+                    <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-1">Resolução da NC</p>
+                    <p className="text-emerald-800 whitespace-pre-wrap">{selected.encarregado_confirmed_notes}</p>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="rounded-md border border-yellow-200 bg-yellow-50 p-3 text-sm flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-yellow-600 shrink-0" />
-            <p className="text-yellow-800 font-medium">Aguardando confirmação do encarregado</p>
-          </div>
+          ) : (
+            <div className="rounded-md border border-yellow-200 bg-yellow-50 p-3 text-sm flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-yellow-600 shrink-0" />
+              <p className="text-yellow-800 font-medium">Aguardando confirmação do encarregado</p>
+            </div>
+          )
         )}
 
         {/* Fotos do equipamento e ambiente */}

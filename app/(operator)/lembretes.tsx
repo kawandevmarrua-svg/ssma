@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text } from "../../src/components/ui";
 import { useAuth } from "../../src/contexts/AuthContext";
 import { supabase } from "../../src/lib/supabase";
-import { colors, radius, spacing } from "../../src/theme/colors";
+import { colors, radius, spacing, fontSize } from "../../src/theme/colors";
 
 const isExpoGo = Constants.appOwnership === "expo";
 let Notifications: typeof import("expo-notifications") | null = null;
@@ -389,7 +389,7 @@ const styles = StyleSheet.create({
   },
   brandRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   brandLogo: { width: 28, height: 28, borderRadius: 6 },
-  brandName: { fontSize: 16, fontWeight: "800", letterSpacing: 2, color: TECH_TEXT },
+  brandName: { fontSize: fontSize.base, fontWeight: "800", letterSpacing: 2, color: TECH_TEXT },
   iconBtn: {
     width: 40,
     height: 40,
@@ -414,7 +414,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 3,
   },
   bellBadgeText: {
-    fontSize: 9,
+    fontSize: fontSize['2xs'],
     fontWeight: "800",
     color: "#fff",
   },
@@ -443,8 +443,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   titleDot: { width: 8, height: 8, borderRadius: 4 },
-  screenTitle: { fontSize: 18, fontWeight: "800", color: TECH_TEXT, flex: 1 },
-  screenCount: { fontSize: 12, fontWeight: "600", color: TECH_TEXT_MUTED },
+  screenTitle: { fontSize: fontSize.lg, fontWeight: "800", color: TECH_TEXT, flex: 1 },
+  screenCount: { fontSize: fontSize.xs, fontWeight: "600", color: TECH_TEXT_MUTED },
 
   listContent: {
     paddingHorizontal: spacing.lg,
@@ -477,13 +477,13 @@ const styles = StyleSheet.create({
     minWidth: 58,
   },
   timeBadgeInactive: { backgroundColor: TECH_BG_SOFT },
-  timeText: { fontSize: 15, fontWeight: "800", color: ACCENT, letterSpacing: 0.5 },
+  timeText: { fontSize: fontSize.base, fontWeight: "800", color: ACCENT, letterSpacing: 0.5 },
   timeTextInactive: { color: TECH_TEXT_MUTED },
   cardBody: { flex: 1, gap: 3 },
-  cardTitle: { fontSize: 14, fontWeight: "700", color: TECH_TEXT, lineHeight: 19 },
-  cardDesc: { fontSize: 12, color: TECH_TEXT_MUTED, lineHeight: 17 },
+  cardTitle: { fontSize: fontSize.sm, fontWeight: "700", color: TECH_TEXT, lineHeight: 19 },
+  cardDesc: { fontSize: fontSize.xs, color: TECH_TEXT_MUTED, lineHeight: 17 },
   cardMeta: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
-  cardMetaText: { fontSize: 11, fontWeight: "600" },
+  cardMetaText: { fontSize: fontSize.xs, fontWeight: "600" },
   cardActions: { alignItems: "center", gap: 6 },
 
   empty: {
@@ -503,14 +503,14 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   emptyTitle: {
-    fontSize: 16,
+    fontSize: fontSize.base,
     fontWeight: "800",
     color: TECH_TEXT,
     letterSpacing: -0.2,
     marginBottom: 6,
   },
   emptyMessage: {
-    fontSize: 13,
+    fontSize: fontSize.sm,
     color: TECH_TEXT_MUTED,
     textAlign: "center",
     lineHeight: 20,

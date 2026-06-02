@@ -16,7 +16,7 @@ import { usePendingFinishes } from '../../src/hooks/usePendingFinishes';
 import { supabase } from '../../src/lib/supabase';
 import { todayLocal } from '../../src/lib/dates';
 import { Activity } from '../../src/types/database';
-import { colors, elevation, spacing, radius } from '../../src/theme/colors';
+import { colors, elevation, spacing, radius, fontSize } from '../../src/theme/colors';
 import { commonStyles } from '../../src/theme/commonStyles';
 import { Text } from '../../src/components/ui';
 import { AppHeader } from '../../src/components/AppHeader';
@@ -50,7 +50,7 @@ export default function AtividadeScreen() {
     // Resolve signed URLs em batch (bucket privado)
     const paths = Array.from(new Set(
       rows
-        .map((a) => a.equipment_photo_url ?? a.start_photo_url ?? a.end_photo_url)
+        .map((a) => a.start_photo_urls?.[0] ?? a.end_photo_urls?.[0] ?? a.equipment_photo_url ?? a.start_photo_url ?? a.end_photo_url)
         .filter((p): p is string => !!p)
     ));
     if (paths.length === 0) {
@@ -128,7 +128,7 @@ export default function AtividadeScreen() {
       : formatTime(item.start_time);
     const duration = formatDuration(item.start_time, item.end_time);
 
-    const photoPath = item.equipment_photo_url ?? item.start_photo_url ?? item.end_photo_url;
+    const photoPath = item.start_photo_urls?.[0] ?? item.end_photo_urls?.[0] ?? item.equipment_photo_url ?? item.start_photo_url ?? item.end_photo_url;
     const photoUri = photoPath ? photoUrls[photoPath] ?? null : null;
 
     return (
@@ -288,14 +288,14 @@ const st = StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   sectionHeaderLabel: {
-    fontSize: 11,
+    fontSize: fontSize.xs,
     letterSpacing: 1.6,
     fontWeight: '800',
     color: colors.textSecondary,
   },
   sectionHeaderLine: { flex: 1, height: 1, backgroundColor: '#E5E7EB' },
   sectionHeaderCount: {
-    fontSize: 11,
+    fontSize: fontSize.xs,
     letterSpacing: 1,
     fontWeight: '700',
     color: colors.textLight,
@@ -332,7 +332,7 @@ const st = StyleSheet.create({
   cardSeparator: { height: 1, backgroundColor: '#E5E7EB' },
 
   title: {
-    fontSize: 15,
+    fontSize: fontSize.base,
     fontWeight: '800',
     color: colors.text,
     letterSpacing: -0.3,
@@ -346,7 +346,7 @@ const st = StyleSheet.create({
     gap: 6,
   },
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  metaSep: { fontSize: 12, color: colors.textLight, fontWeight: '400' },
+  metaSep: { fontSize: fontSize.xs, color: colors.textLight, fontWeight: '400' },
 
   statusFooter: {
     flexDirection: 'row',
@@ -363,7 +363,7 @@ const st = StyleSheet.create({
   },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
   statusLabel: {
-    fontSize: 12,
+    fontSize: fontSize.xs,
     fontWeight: '700',
     color: colors.text,
     letterSpacing: -0.1,
@@ -379,7 +379,7 @@ const st = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: radius.full,
   },
-  finishBtnText: { fontSize: 12, fontWeight: '700', color: colors.white, letterSpacing: 0.2 },
+  finishBtnText: { fontSize: fontSize.xs, fontWeight: '700', color: colors.white, letterSpacing: 0.2 },
 
   interferNote: {
     flexDirection: 'row',

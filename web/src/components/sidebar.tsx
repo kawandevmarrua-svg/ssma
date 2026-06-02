@@ -25,6 +25,7 @@ import {
   TrendingDown,
   ClipboardList,
   BarChart3,
+  Building2,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -39,9 +40,9 @@ type NavItem =
 
 const navItems: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/maquinas', label: 'Maquinas', icon: HardHat },
-  { href: '/checklists', label: 'Checklists', icon: ListChecks },
-  { href: '/atividades', label: 'Atividades', icon: Activity },
+  { href: '/maquinas', label: 'Máquinas e Checklists', icon: HardHat },
+  { href: '/checklists', label: 'Histórico de Checklists', icon: ListChecks },
+  { href: '/atividades', label: 'Histórico de Atividades', icon: Activity },
   {
     label: 'Gestão de Atividades',
     icon: Tags,
@@ -52,6 +53,7 @@ const navItems: NavItem[] = [
     ],
   },
   { href: '/alertas', label: 'Alertas', icon: Bell },
+  { href: '/mapa', label: 'Mapa de Operadores', icon: Map },
   {
     label: 'Analises',
     icon: Activity,
@@ -61,7 +63,6 @@ const navItems: NavItem[] = [
       { href: '/analise-operadores', label: 'Analise Operadores', icon: UserCog },
       { href: '/disponibilidade', label: 'DM & UF', icon: Gauge },
       { href: '/improdutividade', label: 'Improdutividade', icon: TrendingDown },
-      { href: '/mapa', label: 'Mapa', icon: Map },
     ],
   },
   { href: '/perguntas-pre-operacao', label: 'Pre-Operacao', icon: HelpCircle },
@@ -73,6 +74,7 @@ const navItems: NavItem[] = [
       { href: '/dashboard-inspecoes', label: 'Dashboard Inspeções', icon: BarChart3 },
     ],
   },
+  { href: '/unidades', label: 'Contratos', icon: Building2 },
   { href: '/planos-acao', label: 'Planos de Ação', icon: ClipboardList },
   { href: '/organograma', label: 'Organograma', icon: Network },
   { href: '/manutencao', label: 'Manutenção', icon: Wrench },
@@ -81,6 +83,21 @@ const navItems: NavItem[] = [
 
 function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(href + '/');
+}
+
+// Título da página derivado da navegação (mesma fonte de verdade dos rótulos do menu).
+// Escolhe o item ativo com href mais específico (cobre rotas aninhadas).
+export function getPageTitle(pathname: string): string {
+  let best: { href: string; label: string } | null = null;
+  for (const item of navItems) {
+    const leaves = 'children' in item ? item.children : [item];
+    for (const leaf of leaves) {
+      if (isActive(pathname, leaf.href) && (!best || leaf.href.length > best.href.length)) {
+        best = { href: leaf.href, label: leaf.label };
+      }
+    }
+  }
+  return best?.label ?? '';
 }
 
 export function Sidebar() {
@@ -121,13 +138,10 @@ export function Sidebar() {
 
   const navContent = (
     <>
-      <div className="flex items-center justify-between gap-2 border-b px-5 py-4 text-primary">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="h-6 w-6" />
-          <div className="leading-tight">
-            <p className="text-sm font-semibold">Segurança 360</p>
-            <p className="text-xs text-muted-foreground">Smart Vision</p>
-          </div>
+      <div className="flex h-14 items-center justify-between gap-2 border-b px-5 text-primary">
+        <div className="flex items-center gap-2.5">
+          <img src="/logo.jpeg" alt="Segurança 360" className="h-11 w-11 rounded-md object-contain" />
+          <p className="text-sm font-semibold">Segurança 360</p>
         </div>
         <button
           onClick={() => setOpen(false)}
@@ -153,14 +167,14 @@ export function Sidebar() {
                   }
                   aria-expanded={isExpanded}
                   className={cn(
-                    'flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                    'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors',
                     anyChildActive && !isExpanded
-                      ? 'bg-primary/10 text-foreground'
+                      ? 'bg-primary/10 font-semibold text-foreground'
                       : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
                   )}
                 >
-                  <Icon className="h-4 w-4" />
-                  <span className="flex-1 text-left">{item.label}</span>
+                  <Icon className="h-4 w-4 shrink-0" />
+                  <span className="flex-1 truncate text-left">{item.label}</span>
                   <ChevronDown
                     className={cn(
                       'h-4 w-4 transition-transform',
@@ -177,14 +191,14 @@ export function Sidebar() {
                           key={href}
                           href={href}
                           className={cn(
-                            'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                            'flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors',
                             active
-                              ? 'bg-primary text-primary-foreground'
+                              ? 'bg-primary font-semibold text-primary-foreground'
                               : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
                           )}
                         >
-                          <ChildIcon className="h-4 w-4" />
-                          {label}
+                          <ChildIcon className="h-4 w-4 shrink-0" />
+                          <span className="truncate">{label}</span>
                         </Link>
                       );
                     })}
@@ -200,14 +214,14 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               className={cn(
-                'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                'flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors',
                 active
-                  ? 'bg-primary text-primary-foreground'
+                  ? 'bg-primary font-semibold text-primary-foreground'
                   : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
               )}
             >
-              <Icon className="h-4 w-4" />
-              {item.label}
+              <Icon className="h-4 w-4 shrink-0" />
+              <span className="truncate">{item.label}</span>
             </Link>
           );
         })}

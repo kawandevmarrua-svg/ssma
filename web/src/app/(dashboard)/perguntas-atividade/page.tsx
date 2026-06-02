@@ -45,6 +45,8 @@ export default function PerguntasAtividadePage() {
     const { data } = await supabase
       .from('activity_questions')
       .select('*')
+      .eq('is_global', true)
+      .is('activity_type_id', null)
       .order('order_index', { ascending: true });
     setQuestions((data as ActivityQuestion[] | null) ?? []);
     setLoading(false);
@@ -94,7 +96,7 @@ export default function PerguntasAtividadePage() {
         <div>
           <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Perguntas de Atividade</h1>
           <p className="text-sm text-muted-foreground">
-            Edite as perguntas que o operador responde ao iniciar uma atividade de servico no app mobile.
+            Perguntas globais respondidas ao iniciar uma atividade de servico. Tipos com &ldquo;Perguntas proprias&rdquo; (em Tipos de Atividade) usam a lista deles em vez destas.
           </p>
         </div>
         <Button onClick={() => setCreating(true)} className="gap-2">
@@ -247,6 +249,7 @@ function QuestionForm({ question, nextOrder, onClose, onSaved }: QuestionFormPro
       critical,
       active,
       order_index: orderNum,
+      is_global: true,
     };
 
     if (question) {

@@ -36,3 +36,7 @@ supabase/.temp/
 
 # Claude Code (contém tokens locais)
 .claude/
+
+# Impeccable skill cache e artefatos (não versionar)
+.github/skills/impeccable/
+.impeccable/

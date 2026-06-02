@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
@@ -35,6 +36,11 @@ import {
   Flag,
   Navigation,
   RefreshCw,
+  Wrench,
+  Clock,
+  BatteryMedium,
+  Gauge,
+  Satellite,
 } from 'lucide-react';
 
 // ══════════════════════════════════════════════════════════════
@@ -81,14 +87,20 @@ const STATUS_ICONS: Record<string, L.DivIcon> = {
 
 const ROUTE_START_ICON = createSmallIcon('#6366f1', 'A');
 
-const EVENT_MAP_ICONS: Record<string, L.DivIcon> = {
-  pre_op_start: createEventIcon('#f97316', 'P'),
-  checklist_start: createEventIcon('#f59e0b', 'CL'),
-  checklist_end: createEventIcon('#10b981', 'C✓'),
-  activity_start: createEventIcon('#3b82f6', 'AT'),
-  activity_end: createEventIcon('#6366f1', 'A✓'),
-  parada: createEventIcon('#ef4444', 'D'),
+// Fonte única de verdade dos eventos de atividade/checklist: cor, sigla e rótulo.
+// Mapa, timeline e legenda derivam daqui — mesma cor significa o mesmo em todo lugar.
+const EVENT_META: Record<string, { color: string; short: string; label: string }> = {
+  pre_op_start: { color: '#f97316', short: 'P', label: 'Pre-operacao' },
+  checklist_start: { color: '#f59e0b', short: 'CL', label: 'Inicio checklist' },
+  checklist_end: { color: '#10b981', short: 'C✓', label: 'Fim checklist' },
+  activity_start: { color: '#3b82f6', short: 'AT', label: 'Inicio atividade' },
+  activity_end: { color: '#6366f1', short: 'A✓', label: 'Fim atividade' },
+  parada: { color: '#ef4444', short: 'D', label: 'Parada' },
 };
+
+const EVENT_MAP_ICONS: Record<string, L.DivIcon> = Object.fromEntries(
+  Object.entries(EVENT_META).map(([k, m]) => [k, createEventIcon(m.color, m.short)]),
+);
 
 // ══════════════════════════════════════════════════════════════
 // Types
@@ -102,8 +114,17 @@ interface OperatorLocation {
   speed: number | null;
   battery_level: number | null;
   current_status: string;
+  current_activity_id: string | null;
+  current_checklist_id: string | null;
   updated_at: string;
   profiles?: { full_name: string | null } | null;
+}
+
+interface ActiveInfo {
+  type: 'activity' | 'checklist';
+  machine: string | null;
+  location: string | null;
+  description: string | null;
 }
 
 interface LocationItem {
@@ -157,6 +178,8 @@ interface OperatorRoute {
   distanceKm: number;
   distanceActivityKm: number;
   distanceIdleKm: number;
+  activeMinutes: number;
+  idleMinutes: number;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -197,6 +220,9 @@ const STATUS_BG: Record<string, string> = {
 
 const ROUTE_COLORS = ['#6366f1', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#8b5cf6', '#14b8a6', '#f97316', '#64748b'];
 
+// Anel de foco de teclado para os <button> crus (alinha ao foco do shadcn Button).
+const FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2';
+
 // ══════════════════════════════════════════════════════════════
 // Helpers
 // ══════════════════════════════════════════════════════════════
@@ -223,21 +249,16 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
 
 
 const EVENT_LABELS: Record<string, string> = {
-  pre_op_start: 'Pre-operacao',
-  checklist_start: 'Inicio checklist',
-  checklist_end: 'Fim checklist',
-  activity_start: 'Inicio atividade',
-  activity_end: 'Fim atividade',
-  parada: 'Parada',
+  ...Object.fromEntries(Object.entries(EVENT_META).map(([k, m]) => [k, m.label])),
   breadcrumb: 'Em atividade',
   idle_breadcrumb: 'Ocioso',
 };
 
-const KEY_EVENTS = new Set(['pre_op_start', 'checklist_start', 'checklist_end', 'activity_start', 'activity_end', 'parada']);
+const KEY_EVENTS = new Set(Object.keys(EVENT_META));
 
 function buildRouteFromHistory(operatorId: string, rows: HistoryRow[]): OperatorRoute {
   if (rows.length === 0) {
-    return { operatorId, points: [], distanceKm: 0, distanceActivityKm: 0, distanceIdleKm: 0 };
+    return { operatorId, points: [], distanceKm: 0, distanceActivityKm: 0, distanceIdleKm: 0, activeMinutes: 0, idleMinutes: 0 };
   }
 
   const points: RoutePoint[] = rows.map((r) => ({
@@ -251,19 +272,67 @@ function buildRouteFromHistory(operatorId: string, rows: HistoryRow[]): Operator
   let distanceKm = 0;
   let distanceActivityKm = 0;
   let distanceIdleKm = 0;
+  let activeMinutes = 0;
+  let idleMinutes = 0;
+
+  const ACTIVE_TYPES = new Set(['breadcrumb', 'activity_start']);
+  const IDLE_TYPES = new Set(['idle_breadcrumb', 'activity_end', 'parada', 'checklist_end']);
 
   for (let i = 1; i < points.length; i++) {
     const d = haversineKm(points[i - 1].lat, points[i - 1].lng, points[i].lat, points[i].lng);
     distanceKm += d;
     const prevType = rows[i - 1].event_type ?? 'breadcrumb';
-    if (prevType === 'breadcrumb' || prevType === 'activity_start') {
+
+    // Tempo entre pontos (ignora lacunas > 30min: GPS perdido / app fechado)
+    const dtMin = (new Date(rows[i].recorded_at).getTime() - new Date(rows[i - 1].recorded_at).getTime()) / 60000;
+    const dt = dtMin > 0 && dtMin <= 30 ? dtMin : 0;
+
+    if (ACTIVE_TYPES.has(prevType)) {
       distanceActivityKm += d;
-    } else if (prevType === 'idle_breadcrumb' || prevType === 'activity_end' || prevType === 'parada' || prevType === 'checklist_end') {
+      activeMinutes += dt;
+    } else if (IDLE_TYPES.has(prevType)) {
       distanceIdleKm += d;
+      idleMinutes += dt;
     }
   }
 
-  return { operatorId, points, distanceKm, distanceActivityKm, distanceIdleKm };
+  return { operatorId, points, distanceKm, distanceActivityKm, distanceIdleKm, activeMinutes, idleMinutes };
+}
+
+function formatDuration(min: number): string {
+  const m = Math.round(min);
+  if (m < 60) return `${m}min`;
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  return rem > 0 ? `${h}h ${rem}min` : `${h}h`;
+}
+
+const STATUS_ORDER: Record<string, number> = { in_activity: 0, in_checklist: 1, online: 2, idle: 3, offline: 4 };
+
+const ACTION_LABELS: Record<string, string> = {
+  online: 'Online, aguardando',
+  in_activity: 'Executando atividade',
+  in_checklist: 'Preenchendo checklist',
+  idle: 'Parado / ocioso',
+  offline: 'Offline',
+};
+
+function gpsReliability(updatedAt: string, accuracy: number | null): { label: string; tone: string } {
+  const ageMin = (Date.now() - new Date(updatedAt).getTime()) / 60000;
+  if (ageMin > 10) return { label: 'GPS desatualizado', tone: 'text-red-600' };
+  if (accuracy != null && accuracy > 50) return { label: `GPS impreciso ~${Math.round(accuracy)}m`, tone: 'text-yellow-600' };
+  return { label: accuracy != null ? `GPS ~${Math.round(accuracy)}m` : 'GPS ok', tone: 'text-emerald-600' };
+}
+
+function nearestLocationName(lat: number, lng: number, locs: LocationItem[]): string | null {
+  let best: string | null = null;
+  let bestD = Infinity;
+  for (const l of locs) {
+    if (l.latitude == null || l.longitude == null) continue;
+    const d = haversineKm(lat, lng, l.latitude, l.longitude);
+    if (d < bestD) { bestD = d; best = l.name; }
+  }
+  return bestD <= 0.2 ? best : null; // dentro de 200m de uma localidade conhecida
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -607,6 +676,7 @@ export default function MapaClient() {
   const [realtimeStatus, setRealtimeStatus] = useState<'connecting' | 'live' | 'disconnected'>('connecting');
   const [viewMode, setViewMode] = useState<'live' | 'analysis'>('live');
   const [routeHistory, setRouteHistory] = useState<Map<string, HistoryRow[]>>(new Map());
+  const [activeInfo, setActiveInfo] = useState<Map<string, ActiveInfo>>(new Map());
 
   const today = new Date().toISOString().split('T')[0];
   const monthStart = today.slice(0, 7) + '-01';
@@ -628,8 +698,45 @@ export default function MapaClient() {
         .limit(2000),
     ]);
 
-    setOperatorLocations((opLocRes.data as OperatorLocation[] | null) ?? []);
+    const opLocs = (opLocRes.data as OperatorLocation[] | null) ?? [];
+    setOperatorLocations(opLocs);
     setLocations((locRes.data as LocationItem[] | null) ?? []);
+
+    // Detalhes da atividade/checklist em andamento (para o painel "Ao vivo")
+    const actIds = [...new Set(opLocs.map((o) => o.current_activity_id).filter(Boolean))] as string[];
+    const clIds = [...new Set(opLocs.map((o) => o.current_checklist_id).filter(Boolean))] as string[];
+    const [actDetailRes, clDetailRes] = await Promise.all([
+      actIds.length
+        ? supabase.from('activities').select('id, location, description, machines(name, tag), activity_types(description)').in('id', actIds)
+        : Promise.resolve({ data: [] as unknown[] }),
+      clIds.length
+        ? supabase.from('checklists').select('id, machine_name').in('id', clIds)
+        : Promise.resolve({ data: [] as unknown[] }),
+    ]);
+
+    type ActDetail = { id: string; location: string | null; description: string | null; machines: { name: string; tag: string | null } | null; activity_types: { description: string } | null };
+    type ClDetail = { id: string; machine_name: string | null };
+    const actMap = new Map<string, ActDetail>();
+    for (const a of (actDetailRes.data as ActDetail[] | null) ?? []) actMap.set(a.id, a);
+    const clMap = new Map<string, ClDetail>();
+    for (const c of (clDetailRes.data as ClDetail[] | null) ?? []) clMap.set(c.id, c);
+
+    const aiMap = new Map<string, ActiveInfo>();
+    for (const o of opLocs) {
+      if (o.current_activity_id && actMap.has(o.current_activity_id)) {
+        const a = actMap.get(o.current_activity_id)!;
+        aiMap.set(o.operator_id, {
+          type: 'activity',
+          machine: a.machines?.name ?? null,
+          location: a.location ?? null,
+          description: a.activity_types?.description ?? a.description ?? null,
+        });
+      } else if (o.current_checklist_id && clMap.has(o.current_checklist_id)) {
+        const c = clMap.get(o.current_checklist_id)!;
+        aiMap.set(o.operator_id, { type: 'checklist', machine: c.machine_name ?? null, location: null, description: null });
+      }
+    }
+    setActiveInfo(aiMap);
 
     const mMap = new Map<string, OperatorMetrics>();
     function ensureOp(id: string, name: string): OperatorMetrics {
@@ -732,6 +839,8 @@ export default function MapaClient() {
           distanceKm: 0,
           distanceActivityKm: 0,
           distanceIdleKm: 0,
+          activeMinutes: 0,
+          idleMinutes: 0,
         });
       }
     }
@@ -748,6 +857,28 @@ export default function MapaClient() {
     for (const o of operatorLocations) c[o.current_status] = (c[o.current_status] || 0) + 1;
     return c;
   }, [operatorLocations]);
+
+  // Lista do "Ao vivo": ativos no topo, offline embaixo; mais recente primeiro dentro do grupo
+  const liveSorted = useMemo(
+    () =>
+      [...filtered].sort((a, b) => {
+        const pa = STATUS_ORDER[a.current_status] ?? 9;
+        const pb = STATUS_ORDER[b.current_status] ?? 9;
+        if (pa !== pb) return pa - pb;
+        return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+      }),
+    [filtered],
+  );
+
+  const liveCounts = useMemo(() => {
+    let active = 0;
+    let offline = 0;
+    for (const o of filtered) {
+      if (o.current_status === 'offline') offline++;
+      else active++;
+    }
+    return { active, offline };
+  }, [filtered]);
 
   function toggleExpanded(id: string) {
     setExpandedOps((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -784,6 +915,7 @@ export default function MapaClient() {
           onClick={() => { setViewMode('live'); setSelectedOperatorId(null); }}
           className={cn(
             'inline-flex items-center gap-2 rounded-md px-3 py-1.5 font-medium transition-colors',
+            FOCUS_RING,
             isLive ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
           )}
         >
@@ -795,6 +927,7 @@ export default function MapaClient() {
           onClick={() => { setViewMode('analysis'); setSelectedOperatorId(null); }}
           className={cn(
             'inline-flex items-center gap-2 rounded-md px-3 py-1.5 font-medium transition-colors',
+            FOCUS_RING,
             !isLive ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
           )}
         >
@@ -809,9 +942,12 @@ export default function MapaClient() {
           <button type="button" key={key} onClick={() => setFilterStatus(filterStatus === key ? '' : key)}
             className={cn(
               'rounded-lg border p-3 text-center transition-colors',
+              FOCUS_RING,
               filterStatus === key ? 'ring-2 ring-primary border-primary' : 'hover:bg-muted',
             )}>
-            <p className={`text-xl font-bold ${STATUS_COLORS[key]}`}>{loading ? '...' : statusCounts[key] || 0}</p>
+            {loading
+              ? <Skeleton className="mx-auto mb-1 h-6 w-8" />
+              : <p className={`text-xl font-bold ${STATUS_COLORS[key]}`}>{statusCounts[key] || 0}</p>}
             <p className="text-xs text-muted-foreground">{label}</p>
           </button>
         ))}
@@ -819,11 +955,13 @@ export default function MapaClient() {
 
       {/* Controls */}
       <div className="flex items-center gap-4 text-sm flex-wrap">
-        <label className="flex items-center gap-2 cursor-pointer">
-          <Checkbox checked={showLocations} onCheckedChange={(c) => setShowLocations(c === true)} />
-          <MapPin className="h-4 w-4 text-violet-500" />
-          Localidades
-        </label>
+        {!isLive && (
+          <label className="flex items-center gap-2 cursor-pointer">
+            <Checkbox checked={showLocations} onCheckedChange={(c) => setShowLocations(c === true)} />
+            <MapPin className="h-4 w-4 text-violet-500" />
+            Localidades
+          </label>
+        )}
         {filterStatus && (
           <Button variant="link" size="sm" onClick={() => setFilterStatus('')} className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground">Limpar filtro</Button>
         )}
@@ -843,27 +981,31 @@ export default function MapaClient() {
           </CardTitle>
           <CardDescription>
             {isLive
-              ? 'Marcadores indicam a posicao atual de cada operador. Clique para focar.'
+              ? 'Status e atividade de cada operador em campo, atualizado em tempo real.'
               : 'Cada linha tracejada representa a rota percorrida pelo operador no turno.'}
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="grid grid-cols-1 lg:grid-cols-3">
-            {/* Map */}
-            <div className="lg:col-span-2 rounded-bl-lg overflow-hidden" style={{ height: isLive ? 560 : 420 }}>
-              {loading ? (
-                <div className="flex items-center justify-center h-full bg-muted/30"><p className="text-muted-foreground">Carregando mapa...</p></div>
-              ) : (
-                <GlobalMap operators={filtered} routes={operatorRoutes} locations={locations} showLocations={showLocations} showRoutes={!isLive} selectedOperatorId={selectedOperatorId} />
-              )}
-            </div>
+          <div className={cn('grid grid-cols-1', !isLive && 'lg:grid-cols-3')}>
+            {/* Map (apenas em modo Analise) */}
+            {!isLive && (
+              <div className="lg:col-span-2 rounded-bl-lg overflow-hidden" style={{ height: 420 }}>
+                {loading ? (
+                  <Skeleton className="h-full w-full rounded-none" />
+                ) : (
+                  <GlobalMap operators={filtered} routes={operatorRoutes} locations={locations} showLocations={showLocations} showRoutes={!isLive} selectedOperatorId={selectedOperatorId} />
+                )}
+              </div>
+            )}
 
             {/* Operator list panel */}
-            <div className="border-t lg:border-t-0 lg:border-l overflow-y-auto" style={{ maxHeight: isLive ? 560 : 420 }}>
+            <div className={cn('overflow-y-auto', !isLive && 'border-t lg:border-t-0 lg:border-l')} style={{ maxHeight: isLive ? 560 : 420 }}>
               <div className="px-3 py-2 border-b bg-muted/30 sticky top-0 z-10 flex items-center justify-between">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                   {filtered.length} Operador{filtered.length !== 1 ? 'es' : ''}
-                  {!isLive && (
+                  {isLive ? (
+                    <> · <span className="text-emerald-600">{liveCounts.active} ativo{liveCounts.active !== 1 ? 's' : ''}</span> · <span className="text-red-600">{liveCounts.offline} offline</span></>
+                  ) : (
                     <> · {(() => { let t = 0; filtered.forEach(op => { const r = operatorRoutes.get(op.operator_id); if (r) t += r.distanceKm; }); return t.toFixed(1); })()}km total</>
                   )}
                 </p>
@@ -871,14 +1013,78 @@ export default function MapaClient() {
                   <Button variant="link" size="sm" onClick={() => setSelectedOperatorId(null)} className="h-auto p-0 text-xs text-muted-foreground hover:text-foreground">Ver todos</Button>
                 )}
               </div>
-              {!loading && filtered.length > 0 ? (
+
+              {/* ───────── Skeleton de carregamento ───────── */}
+              {loading && (
+                <div className="divide-y">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="flex items-center gap-3 px-3 py-3">
+                      <Skeleton className="h-9 w-9 shrink-0 rounded-full" />
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-4 w-1/3" />
+                        <Skeleton className="h-3 w-1/2" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* ───────── Lista AO VIVO ───────── */}
+              {isLive && !loading && liveSorted.length > 0 && (
+                <div className="divide-y">
+                  {liveSorted.map((op) => {
+                    const info = activeInfo.get(op.operator_id);
+                    const gps = gpsReliability(op.updated_at, op.accuracy);
+                    const kmh = op.speed != null && op.speed > 0 ? op.speed * 3.6 : null;
+                    const battery = op.battery_level != null ? Math.round(op.battery_level > 1 ? op.battery_level : op.battery_level * 100) : null;
+                    return (
+                      <div key={op.operator_id} className={cn('px-3 py-3', STATUS_BG[op.current_status])}>
+                        <div className="flex items-start gap-2.5">
+                          <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${STATUS_DOT[op.current_status]} ${op.current_status !== 'offline' ? 'animate-pulse' : ''}`} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-sm font-semibold truncate">{op.profiles?.full_name || 'Operador'}</p>
+                              <span className="shrink-0 inline-flex items-center gap-1 text-xs text-muted-foreground">
+                                <Clock className="h-3 w-3" />{timeSince(op.updated_at)}
+                              </span>
+                            </div>
+                            <p className={`text-xs font-medium ${STATUS_COLORS[op.current_status]}`}>
+                              {ACTION_LABELS[op.current_status] ?? STATUS_LABELS[op.current_status]}
+                            </p>
+
+                            {info && (info.machine || info.location || info.description) && (
+                              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                                {info.machine && <span className="inline-flex items-center gap-1"><Wrench className="h-3 w-3" />{info.machine}</span>}
+                                {info.location && <span className="inline-flex items-center gap-1"><MapPin className="h-3 w-3" />{info.location}</span>}
+                                {info.description && <span className="truncate">{info.description}</span>}
+                              </div>
+                            )}
+
+                            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
+                              <span className={`inline-flex items-center gap-1 ${gps.tone}`}><Satellite className="h-3 w-3" />{gps.label}</span>
+                              {kmh != null && <span className="inline-flex items-center gap-1 text-muted-foreground"><Gauge className="h-3 w-3" />{kmh.toFixed(0)} km/h</span>}
+                              {battery != null && (
+                                <span className={`inline-flex items-center gap-1 ${battery <= 20 ? 'text-red-600' : 'text-muted-foreground'}`}>
+                                  <BatteryMedium className="h-3 w-3" />{battery}%
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* ───────── Lista ROTAS/ANALISE ───────── */}
+              {!isLive && !loading && filtered.length > 0 && (
                 <div className="divide-y">
                   {filtered.map((op, idx) => {
                     const route = operatorRoutes.get(op.operator_id);
                     const m = metrics.get(op.operator_id);
                     const color = ROUTE_COLORS[idx % ROUTE_COLORS.length];
                     const conformity = m && m.checklistsMonth > 0 ? Math.round((m.releasedCount / m.checklistsMonth) * 100) : null;
-
                     const isSelected = op.operator_id === selectedOperatorId;
 
                     return (
@@ -888,80 +1094,53 @@ export default function MapaClient() {
                         onClick={() => setSelectedOperatorId(isSelected ? null : op.operator_id)}
                         className={cn(
                           'w-full text-left px-3 py-2.5 transition-colors',
+                          FOCUS_RING,
                           isSelected ? 'bg-primary/10 ring-1 ring-inset ring-primary/30' : 'hover:bg-muted/30',
                         )}
                       >
                         <div className="flex items-center gap-2">
-                          {/* Status / route color indicator */}
                           <div
                             className={`shrink-0 rounded-full border-2 border-white shadow-sm ${isSelected ? 'w-4 h-4' : 'w-3 h-3'}`}
-                            style={{ background: isLive ? undefined : color }}
-                          >
-                            {isLive && (
-                              <div className={`h-full w-full rounded-full ${STATUS_DOT[op.current_status]}`} />
-                            )}
-                          </div>
+                            style={{ background: color }}
+                          />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5">
                               <p className="text-sm font-medium truncate">{op.profiles?.full_name || 'Operador'}</p>
-                              {!isLive && <span className={`h-2 w-2 rounded-full shrink-0 ${STATUS_DOT[op.current_status]}`} />}
+                              <span className={`h-2 w-2 rounded-full shrink-0 ${STATUS_DOT[op.current_status]}`} />
                             </div>
                             <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground flex-wrap">
                               <span className={STATUS_COLORS[op.current_status]}>{STATUS_LABELS[op.current_status]}</span>
                               <span>· {timeSince(op.updated_at)}</span>
-                              {!isLive && route && (
-                                <span className="font-medium text-indigo-600">{route.distanceKm.toFixed(1)}km</span>
-                              )}
+                              {route && <span className="font-medium text-indigo-600">{route.distanceKm.toFixed(1)}km</span>}
                             </div>
                           </div>
                         </div>
 
-                        {/* Mini metrics row */}
-                        {!isLive && m && (
+                        {m && (
                           <div className="flex items-center gap-2 mt-1.5 ml-5 text-xs flex-wrap">
-                            <span className="inline-flex items-center gap-0.5 text-blue-600">
-                              <ListChecks className="h-2.5 w-2.5" />{m.checklistsMonth}
-                            </span>
-                            <span className="inline-flex items-center gap-0.5 text-violet-600">
-                              <Activity className="h-2.5 w-2.5" />{m.activitiesMonth}
-                            </span>
-                            {m.ncCount > 0 && (
-                              <span className="inline-flex items-center gap-0.5 text-red-600">
-                                <XCircle className="h-2.5 w-2.5" />{m.ncCount} NC
-                              </span>
-                            )}
+                            <span className="inline-flex items-center gap-0.5 text-blue-600"><ListChecks className="h-2.5 w-2.5" />{m.checklistsMonth}</span>
+                            <span className="inline-flex items-center gap-0.5 text-violet-600"><Activity className="h-2.5 w-2.5" />{m.activitiesMonth}</span>
+                            {m.ncCount > 0 && <span className="inline-flex items-center gap-0.5 text-red-600"><XCircle className="h-2.5 w-2.5" />{m.ncCount} NC</span>}
                             {conformity !== null && (
-                              <span className={`font-medium ${conformity >= 80 ? 'text-emerald-600' : conformity >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
-                                {conformity}%
-                              </span>
+                              <span className={`font-medium ${conformity >= 80 ? 'text-emerald-600' : conformity >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>{conformity}%</span>
                             )}
-                            {m.score !== null && (
-                              <span className="inline-flex items-center gap-0.5 text-amber-600 font-medium">
-                                <Star className="h-2.5 w-2.5" />{m.score.toFixed(0)}
-                              </span>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Route coordinates */}
-                        {!isLive && route && route.points.length >= 2 && (
-                          <div className="mt-1 ml-5 text-xs text-muted-foreground font-mono">
-                            <span className="text-indigo-500">A</span> {route.points[0].lat.toFixed(4)},{route.points[0].lng.toFixed(4)}
-                            {' → '}
-                            <span className="text-emerald-500">B</span> {route.points[route.points.length - 1].lat.toFixed(4)},{route.points[route.points.length - 1].lng.toFixed(4)}
+                            {m.score !== null && <span className="inline-flex items-center gap-0.5 text-amber-600 font-medium"><Star className="h-2.5 w-2.5" />{m.score.toFixed(0)}</span>}
                           </div>
                         )}
                       </button>
                     );
                   })}
                 </div>
-              ) : !loading ? (
+              )}
+
+              {!loading && filtered.length === 0 && (
                 <div className="flex items-center justify-center h-32">
                   <p className="text-xs text-muted-foreground">Nenhum operador encontrado.</p>
                 </div>
-              ) : null}
+              )}
             </div>
           </div>
+          {!isLive && <MapLegend />}
         </CardContent>
       </Card>
 
@@ -981,12 +1160,10 @@ export default function MapaClient() {
             return (
               <Card key={op.operator_id} className={`overflow-hidden border ${STATUS_BG[op.current_status] || ''}`}>
                 {/* Header */}
-                <button type="button" onClick={() => toggleExpanded(op.operator_id)} className="w-full text-left">
+                <button type="button" onClick={() => toggleExpanded(op.operator_id)} className={cn('w-full text-left', FOCUS_RING)}>
                   <CardContent className="p-4">
                     <div className="flex items-center gap-3">
-                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${
-                        op.current_status === 'online' ? 'bg-emerald-500' : op.current_status === 'in_activity' ? 'bg-blue-500' : op.current_status === 'in_checklist' ? 'bg-yellow-500' : op.current_status === 'offline' ? 'bg-red-500' : 'bg-gray-400'
-                      }`}>
+                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${STATUS_DOT[op.current_status] || 'bg-gray-400'}`}>
                         {(op.profiles?.full_name || '?').charAt(0).toUpperCase()}
                       </div>
 
@@ -1060,41 +1237,50 @@ export default function MapaClient() {
                               <span className="text-xs font-semibold text-indigo-700 flex items-center gap-1"><Navigation className="h-3 w-3" />Distancia total</span>
                               <span className="text-sm font-bold text-indigo-700">{route.distanceKm.toFixed(2)} km</span>
                             </div>
-                            {(route.distanceActivityKm > 0 || route.distanceIdleKm > 0) && (
-                              <div className="flex gap-3 text-xs">
-                                <span className="text-blue-600 font-medium">Em atividade: {route.distanceActivityKm.toFixed(2)} km</span>
-                                <span className="text-gray-500 font-medium">Ocioso: {route.distanceIdleKm.toFixed(2)} km</span>
+                            {(route.distanceActivityKm > 0 || route.distanceIdleKm > 0 || route.activeMinutes > 0 || route.idleMinutes > 0) && (
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="rounded bg-blue-50 px-2 py-1.5">
+                                  <p className="text-xs font-semibold text-blue-700">Em atividade</p>
+                                  <p className="text-xs text-blue-600">{route.distanceActivityKm.toFixed(2)} km · {formatDuration(route.activeMinutes)}</p>
+                                </div>
+                                <div className="rounded bg-gray-100 px-2 py-1.5">
+                                  <p className="text-xs font-semibold text-gray-700">Ocioso / parado</p>
+                                  <p className="text-xs text-gray-600">{route.distanceIdleKm.toFixed(2)} km · {formatDuration(route.idleMinutes)}</p>
+                                </div>
                               </div>
                             )}
-                            <div className="divide-y text-xs max-h-48 overflow-y-auto">
-                              {route.points.filter((_, i) => KEY_EVENTS.has(route.points[i].eventType) || i === 0 || i === route.points.length - 1).map((p, i) => {
-                                const eventColors: Record<string, string> = {
-                                  pre_op_start: 'bg-orange-500',
-                                  checklist_start: 'bg-yellow-500',
-                                  checklist_end: 'bg-emerald-500',
-                                  activity_start: 'bg-blue-500',
-                                  activity_end: 'bg-indigo-500',
-                                  parada: 'bg-red-500',
-                                  breadcrumb: 'bg-gray-400',
-                                  idle_breadcrumb: 'bg-gray-300',
-                                };
-                                const shortLabel: Record<string, string> = {
-                                  pre_op_start: 'P', checklist_start: 'CL', checklist_end: 'C✓',
-                                  activity_start: 'AT', activity_end: 'A✓', parada: 'D',
-                                };
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5 pt-1">
+                              <Clock className="h-3 w-3" />Linha do tempo
+                            </p>
+                            <div className="text-xs max-h-48 overflow-y-auto pl-1">
+                              {route.points.filter((p) => KEY_EVENTS.has(p.eventType)).map((p, i, arr) => {
+                                const meta = EVENT_META[p.eventType];
+                                const place = nearestLocationName(p.lat, p.lng, locations);
+                                const isLast = i === arr.length - 1;
                                 return (
-                                  <div key={i} className="flex items-center gap-2 py-1.5">
-                                    <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ${eventColors[p.eventType] ?? 'bg-gray-400'}`}>
-                                      {shortLabel[p.eventType] ?? String(i + 1)}
-                                    </span>
-                                    <div className="flex-1 min-w-0">
-                                      <p className="font-medium">{p.label}</p>
-                                      <p className="text-muted-foreground font-mono text-xs">{p.lat.toFixed(5)}, {p.lng.toFixed(5)}</p>
+                                  <div key={i} className="flex gap-2.5">
+                                    <div className="flex flex-col items-center">
+                                      <span
+                                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white"
+                                        style={{ background: meta?.color ?? '#9ca3af' }}
+                                      >
+                                        {meta?.short ?? String(i + 1)}
+                                      </span>
+                                      {!isLast && <span className="w-px flex-1 bg-border my-0.5" />}
                                     </div>
-                                    <span className="text-muted-foreground shrink-0">{p.time}</span>
+                                    <div className="flex-1 min-w-0 pb-2">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <p className="font-medium">{p.label}</p>
+                                        <span className="text-muted-foreground shrink-0">{p.time}</span>
+                                      </div>
+                                      {place && <p className="text-muted-foreground flex items-center gap-1"><MapPin className="h-2.5 w-2.5" />{place}</p>}
+                                    </div>
                                   </div>
                                 );
                               })}
+                              {route.points.filter((p) => KEY_EVENTS.has(p.eventType)).length === 0 && (
+                                <p className="text-muted-foreground py-1">Sem eventos registrados no turno.</p>
+                              )}
                             </div>
                             {route.points.length > 0 && (
                               <div className="pt-1 text-xs text-muted-foreground">
@@ -1180,6 +1366,42 @@ export default function MapaClient() {
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+function MapLegend() {
+  const events = Object.values(EVENT_META).map((m) => ({ color: m.color, label: m.short, name: m.label }));
+  return (
+    <div className="border-t px-3 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+      <span className="font-semibold uppercase tracking-wide">Legenda</span>
+      {Object.entries(STATUS_LABELS).map(([k, l]) => (
+        <span key={k} className="inline-flex items-center gap-1.5">
+          <span className={`h-2.5 w-2.5 rounded-full ${STATUS_DOT[k]}`} />
+          {l}
+        </span>
+      ))}
+      <span className="h-3.5 w-px bg-border" />
+      {events.map((e) => (
+        <span key={e.label} className="inline-flex items-center gap-1.5">
+          <span
+            className="flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-bold text-white shrink-0"
+            style={{ background: e.color }}
+          >
+            {e.label}
+          </span>
+          {e.name}
+        </span>
+      ))}
+      <span className="h-3.5 w-px bg-border" />
+      <span className="inline-flex items-center gap-1.5">
+        <span className="inline-block w-6 border-t-2 border-dashed border-indigo-500" />
+        Rota percorrida
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <span className="h-2.5 w-2.5 rounded-full bg-violet-500" />
+        Localidade
+      </span>
     </div>
   );
 }

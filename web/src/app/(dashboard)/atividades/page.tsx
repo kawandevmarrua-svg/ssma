@@ -106,13 +106,17 @@ export default function AtividadesPage() {
   }
 
   useEffect(() => {
-    loadActivities(debouncedSearch).then((data) => {
-      if (deepLinkId && !deepLinked && data.length > 0) {
-        const match = data.find((a) => a.id === deepLinkId);
-        if (match) {
-          setDeepLinked(true);
-          openDetail(match);
-        }
+    loadActivities(debouncedSearch).then(async (data) => {
+      if (!deepLinkId || deepLinked) return;
+      let match = data.find((a) => a.id === deepLinkId);
+      if (!match) {
+        // Fora da primeira página / filtro: busca a linha direto pelo id.
+        const { data: one } = await supabase.from('activities').select(ACTIVITY_COLUMNS).eq('id', deepLinkId).maybeSingle();
+        match = (one as ActivityRow | null) ?? undefined;
+      }
+      if (match) {
+        setDeepLinked(true);
+        openDetail(match);
       }
     });
   }, [loadActivities, deepLinkId, debouncedSearch]);

@@ -112,13 +112,17 @@ export default function ChecklistsPage() {
   }
 
   useEffect(() => {
-    loadChecklists(debouncedSearch).then((data) => {
-      if (deepLinkId && !deepLinked && data.length > 0) {
-        const match = data.find((c) => c.id === deepLinkId);
-        if (match) {
-          setDeepLinked(true);
-          openDetail(match);
-        }
+    loadChecklists(debouncedSearch).then(async (data) => {
+      if (!deepLinkId || deepLinked) return;
+      let match = data.find((c) => c.id === deepLinkId);
+      if (!match) {
+        // Fora da primeira página / filtro: busca a linha direto pelo id.
+        const { data: one } = await supabase.from('checklists').select(CHECKLIST_SELECT).eq('id', deepLinkId).maybeSingle();
+        match = (one as ChecklistRow | null) ?? undefined;
+      }
+      if (match) {
+        setDeepLinked(true);
+        openDetail(match);
       }
     });
   }, [loadChecklists, deepLinkId, debouncedSearch]);

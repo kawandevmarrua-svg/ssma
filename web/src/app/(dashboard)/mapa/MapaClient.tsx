@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -675,7 +676,10 @@ export default function MapaClient() {
   const [dayDetails, setDayDetails] = useState<Map<string, DayDetail>>(new Map());
   const [expandedLive, setExpandedLive] = useState<Set<string>>(new Set());
 
-  const today = new Date().toISOString().split('T')[0];
+  const todayStr = new Date().toISOString().split('T')[0];
+  const [selectedDate, setSelectedDate] = useState(todayStr);
+  const today = selectedDate;
+  const isToday = selectedDate === todayStr;
   const monthStart = today.slice(0, 7) + '-01';
   // Dia seguinte (limite superior exclusivo das consultas por data).
   const dayAfter = useMemo(() => {
@@ -917,7 +921,11 @@ export default function MapaClient() {
           <p className="text-xs sm:text-sm text-muted-foreground flex items-center gap-2 flex-wrap">
             <RealtimeBadge status={realtimeStatus} />
             <span>·</span>
-            <span>{isLive ? 'Posição e atividade dos operadores em campo, em tempo real.' : 'Rotas percorridas, métricas e proatividade do mês.'}</span>
+            {isToday ? (
+              <span>{isLive ? 'Posição e atividade dos operadores em campo, em tempo real.' : 'Rotas percorridas, métricas e proatividade do mês.'}</span>
+            ) : (
+              <span>Histórico do dia {new Date(selectedDate + 'T00:00:00').toLocaleDateString('pt-BR')} — rotas e itens registrados nessa data.</span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -946,6 +954,26 @@ export default function MapaClient() {
               <Route className="h-4 w-4" />
               Rotas e Análise
             </button>
+          </div>
+          <div className="inline-flex items-center gap-1.5 rounded-lg border bg-card px-2 py-1">
+            <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <input
+              type="date"
+              value={selectedDate}
+              max={todayStr}
+              onChange={(e) => { if (e.target.value) setSelectedDate(e.target.value); }}
+              aria-label="Filtrar por data"
+              className={cn('bg-transparent text-sm outline-none', FOCUS_RING)}
+            />
+            {!isToday && (
+              <button
+                type="button"
+                onClick={() => setSelectedDate(todayStr)}
+                className={cn('rounded px-1.5 text-xs font-medium text-muted-foreground hover:text-foreground', FOCUS_RING)}
+              >
+                Hoje
+              </button>
+            )}
           </div>
           <Button
             variant="outline"
@@ -1077,6 +1105,11 @@ export default function MapaClient() {
                       const det = dayDetails.get(op.operator_id);
                       const dayCount = (det?.checklists.length ?? 0) + (det?.activities.length ?? 0);
                       const expanded = expandedLive.has(op.operator_id);
+                      const activeHref = op.current_activity_id
+                        ? `/atividades?id=${op.current_activity_id}`
+                        : op.current_checklist_id
+                          ? `/checklists?id=${op.current_checklist_id}`
+                          : null;
                       return (
                         <Fragment key={op.operator_id}>
                         <TableRow
@@ -1100,10 +1133,22 @@ export default function MapaClient() {
                           </TableCell>
                           <TableCell className="px-3 py-3 hidden md:table-cell">
                             {info && (info.machine || info.description) ? (
-                              <div className="flex flex-col gap-0.5 text-xs min-w-0">
-                                {info.machine && <span className="inline-flex items-center gap-1 font-medium"><Wrench className="h-3 w-3 shrink-0 text-muted-foreground" />{info.machine}</span>}
-                                {info.description && <span className="text-muted-foreground truncate">{info.description}</span>}
-                              </div>
+                              activeHref ? (
+                                <Link
+                                  href={activeHref}
+                                  onClick={(e) => e.stopPropagation()}
+                                  title={`Abrir ${info.type === 'activity' ? 'atividade' : 'checklist'} em andamento`}
+                                  className={cn('group flex flex-col gap-0.5 text-xs min-w-0 rounded', FOCUS_RING)}
+                                >
+                                  {info.machine && <span className="inline-flex items-center gap-1 font-medium text-primary group-hover:underline"><Wrench className="h-3 w-3 shrink-0" />{info.machine}<Navigation className="h-2.5 w-2.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" /></span>}
+                                  {info.description && <span className="truncate text-muted-foreground group-hover:text-foreground">{info.description}</span>}
+                                </Link>
+                              ) : (
+                                <div className="flex flex-col gap-0.5 text-xs min-w-0">
+                                  {info.machine && <span className="inline-flex items-center gap-1 font-medium"><Wrench className="h-3 w-3 shrink-0 text-muted-foreground" />{info.machine}</span>}
+                                  {info.description && <span className="text-muted-foreground truncate">{info.description}</span>}
+                                </div>
+                              )
                             ) : <span className="text-muted-foreground">—</span>}
                           </TableCell>
                           <TableCell className="px-3 py-3 hidden xl:table-cell">
@@ -1158,6 +1203,7 @@ export default function MapaClient() {
                                     primary: c.machine ?? 'Checklist',
                                     interference: c.interference,
                                     tag: checklistResultTag(c.result),
+                                    href: `/checklists?id=${c.id}`,
                                   }))}
                                 />
                                 <DayList
@@ -1170,6 +1216,7 @@ export default function MapaClient() {
                                     primary: a.label,
                                     secondary: a.machine,
                                     interference: a.interference,
+                                    href: `/atividades?id=${a.id}`,
                                   }))}
                                 />
                               </div>
@@ -1487,6 +1534,7 @@ interface DayListItem {
   secondary?: string | null;
   interference?: boolean;
   tag?: { label: string; cls: string } | null;
+  href?: string;
 }
 
 function DayList({ icon: Icon, title, empty, items }: { icon: typeof Activity; title: string; empty: string; items: DayListItem[] }) {
@@ -1499,21 +1547,35 @@ function DayList({ icon: Icon, title, empty, items }: { icon: typeof Activity; t
         <p className="text-xs text-muted-foreground">{empty}</p>
       ) : (
         <ul className="space-y-1.5">
-          {items.map((it) => (
-            <li key={it.id} className="flex items-center justify-between gap-2 rounded-md border bg-card px-2.5 py-1.5 text-xs">
-              <span className="flex min-w-0 items-baseline gap-1.5">
-                <span className="truncate font-medium">{it.primary}</span>
-                {it.secondary && <span className="truncate text-muted-foreground">· {it.secondary}</span>}
-              </span>
-              <span className="flex shrink-0 items-center gap-2">
-                {it.interference && (
-                  <span className="inline-flex items-center gap-1 text-orange-600"><AlertTriangle className="h-3 w-3" />Interf.</span>
+          {items.map((it) => {
+            const inner = (
+              <>
+                <span className="flex min-w-0 items-baseline gap-1.5">
+                  <span className="truncate font-medium">{it.primary}</span>
+                  {it.secondary && <span className="truncate text-muted-foreground">· {it.secondary}</span>}
+                </span>
+                <span className="flex shrink-0 items-center gap-2">
+                  {it.interference && (
+                    <span className="inline-flex items-center gap-1 text-orange-600"><AlertTriangle className="h-3 w-3" />Interf.</span>
+                  )}
+                  {it.tag && <span className={cn('rounded-full px-1.5 py-0.5 font-medium', it.tag.cls)}>{it.tag.label}</span>}
+                  {it.time && <span className="tabular-nums text-muted-foreground">{it.time}</span>}
+                </span>
+              </>
+            );
+            const base = 'flex items-center justify-between gap-2 rounded-md border bg-card px-2.5 py-1.5 text-xs';
+            return (
+              <li key={it.id}>
+                {it.href ? (
+                  <Link href={it.href} className={cn(base, 'transition-colors hover:border-primary/40 hover:bg-muted/50', FOCUS_RING)}>
+                    {inner}
+                  </Link>
+                ) : (
+                  <div className={base}>{inner}</div>
                 )}
-                {it.tag && <span className={cn('rounded-full px-1.5 py-0.5 font-medium', it.tag.cls)}>{it.tag.label}</span>}
-                {it.time && <span className="tabular-nums text-muted-foreground">{it.time}</span>}
-              </span>
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

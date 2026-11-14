@@ -43,3 +43,6 @@ supabase/.branches/
 # Impeccable skill cache e artefatos (não versionar)
 .github/skills/impeccable/
 .impeccable/
+
+# Scripts de teste descartáveis
+.tmp-*

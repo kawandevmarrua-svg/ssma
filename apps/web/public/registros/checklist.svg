@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="560" viewBox="0 0 400 560">
+  <rect width="400" height="560" fill="#ffffff"/>
+  <rect width="400" height="88" fill="#f97316"/>
+  <text x="24" y="40" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffffff">Checklist pré-operação</text>
+  <text x="24" y="66" font-family="Arial, sans-serif" font-size="14" fill="#ffedd5">ESC-204 · Escavadeira · 06:42</text>
+  <g font-family="Arial, sans-serif" font-size="15" fill="#0f172a">
+    <circle cx="40" cy="136" r="12" fill="#10b981"/>
+    <path d="M34 136 l4 4 l8 -8" stroke="#fff" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <text x="64" y="141">Freios e comandos</text>
+    <circle cx="40" cy="184" r="12" fill="#10b981"/>
+    <path d="M34 184 l4 4 l8 -8" stroke="#fff" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <text x="64" y="189">Sinal sonoro de ré</text>
+    <circle cx="40" cy="232" r="12" fill="#10b981"/>
+    <path d="M34 232 l4 4 l8 -8" stroke="#fff" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <text x="64" y="237">Cinto de segurança</text>
+    <circle cx="40" cy="280" r="12" fill="#ef4444"/>
+    <path d="M35 275 l10 10 M45 275 l-10 10" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+    <text x="64" y="285">Vazamento hidráulico</text>
+  </g>
+  <rect x="24" y="320" width="352" height="150" rx="10" fill="#f1f5f9"/>
+  <g stroke="#94a3b8" stroke-width="2" fill="none">
+    <rect x="168" y="368" width="64" height="48" rx="6"/>
+    <circle cx="200" cy="392" r="12"/>
+    <rect x="186" y="360" width="28" height="10" rx="3"/>
+  </g>
+  <text x="200" y="444" font-family="Arial, sans-serif" font-size="13" fill="#64748b" text-anchor="middle">Foto da não conformidade anexada</text>
+  <rect x="24" y="494" width="352" height="42" rx="8" fill="#fff7ed" stroke="#fdba74"/>
+  <text x="200" y="520" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#c2410c" text-anchor="middle">Alerta enviado ao gestor</text>
+</svg>

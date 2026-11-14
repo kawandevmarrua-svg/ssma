@@ -13,15 +13,17 @@ web-build/
 .env
 .env.*
 !.env.example
+!.env.local.example
 
 # Android build
-android/build/
-android/app/build/
-android/.gradle/
+apps/mobile/android/build/
+apps/mobile/android/app/build/
+apps/mobile/android/.gradle/
+apps/mobile/android/.cxx/
 
-# Web
-web/node_modules/
-web/.next/
+# Web (Next.js)
+apps/web/.next/
+*.tsbuildinfo
 
 # IDE
 .idea/
@@ -33,6 +35,7 @@ Thumbs.db
 
 # Supabase
 supabase/.temp/
+supabase/.branches/
 
 # Claude Code (contém tokens locais)
 .claude/

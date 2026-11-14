@@ -1,0 +1,12 @@
+**/node_modules
+**/.next
+**/.expo
+**/dist
+apps/mobile/android
+.git
+supabase/.temp
+.github
+.impeccable
+.claude
+**/.env
+**/.env.local

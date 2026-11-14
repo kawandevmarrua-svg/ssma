@@ -44,19 +44,21 @@ jobs:
         run: npm ci
 
       - name: Type-check
+        working-directory: apps/mobile
         run: npx tsc --noEmit
 
       - name: Expo prebuild Android
+        working-directory: apps/mobile
         run: npx expo prebuild --platform android --clean
 
       - name: Build APK
-        working-directory: android
+        working-directory: apps/mobile/android
         run: ./gradlew assembleRelease
 
       - name: Rename APK
         run: |
-          VERSION=$(node -p "require('./app.json').expo.version")
-          mv android/app/build/outputs/apk/release/app-release.apk ssma-v${VERSION}.apk
+          VERSION=$(node -p "require('./apps/mobile/app.json').expo.version")
+          mv apps/mobile/android/app/build/outputs/apk/release/app-release.apk ssma-v${VERSION}.apk
 
       # actions/upload-artifact@v4
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

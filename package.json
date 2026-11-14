@@ -1,55 +1,24 @@
 {
-  "name": "checklist-app",
-  "version": "1.0.5",
-  "main": "expo-router/entry",
+  "name": "marrua",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "start": "expo start",
-    "android": "expo run:android",
-    "ios": "expo run:ios",
-    "web": "expo start --web"
-  },
-  "dependencies": {
-    "@expo/vector-icons": "^15.0.2",
-    "@react-native-async-storage/async-storage": "2.2.0",
-    "@react-navigation/bottom-tabs": "^7.0.0",
-    "@supabase/supabase-js": "^2.45.0",
-    "aes-js": "^3.1.2",
-    "base64-arraybuffer": "^1.0.2",
-    "expo": "~55.0.19",
-    "expo-camera": "~55.0.16",
-    "expo-constants": "~55.0.15",
-    "expo-crypto": "~55.0.14",
-    "expo-dev-client": "~55.0.30",
-    "expo-device": "~55.0.15",
-    "expo-font": "~55.0.6",
-    "expo-haptics": "~55.0.14",
-    "expo-image": "~55.0.9",
-    "expo-image-picker": "~55.0.19",
-    "expo-keep-awake": "~55.0.6",
-    "expo-linking": "~55.0.14",
-    "expo-location": "~55.1.8",
-    "expo-network": "~55.0.13",
-    "expo-notifications": "~55.0.22",
-    "expo-print": "~55.0.13",
-    "expo-router": "~55.0.13",
-    "expo-secure-store": "~55.0.13",
-    "expo-sharing": "~55.0.18",
-    "expo-status-bar": "~55.0.5",
-    "expo-task-manager": "~55.0.15",
-    "react": "19.2.0",
-    "react-dom": "19.2.0",
-    "react-native": "0.83.6",
-    "react-native-safe-area-context": "~5.6.2",
-    "react-native-screens": "~4.23.0",
-    "react-native-url-polyfill": "^2.0.0",
-    "react-native-web": "^0.21.0",
-    "zod": "^3.23.0"
+    "mobile": "npm run start --workspace apps/mobile",
+    "web": "npm run dev --workspace apps/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "db:start": "supabase start",
+    "db:stop": "supabase stop",
+    "db:status": "supabase status",
+    "db:reset": "supabase db reset",
+    "db:push": "supabase db push",
+    "db:types": "supabase gen types typescript --local > packages/shared/src/types/database.ts",
+    "local": "npm run db:start && npm run web"
   },
   "devDependencies": {
-    "@types/react": "~19.2.0",
-    "babel-plugin-transform-remove-console": "^6.9.4",
-    "concurrently": "^9.2.1",
-    "typescript": "~5.9.2"
-  },
-  "private": true
+    "supabase": "^2.115.0"
+  }
 }

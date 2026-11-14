@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="560" viewBox="0 0 400 560">
+  <rect width="400" height="560" fill="#ffffff"/>
+  <rect width="400" height="88" fill="#dc2626"/>
+  <text x="24" y="40" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#ffffff">Alerta de não conformidade</text>
+  <text x="24" y="66" font-family="Arial, sans-serif" font-size="14" fill="#fecaca">CAM-108 · Caminhão · 10:03</text>
+  <path d="M200 128 l64 110 h-128 z" fill="#fef3c7" stroke="#f59e0b" stroke-width="3" stroke-linejoin="round"/>
+  <rect x="196" y="168" width="8" height="38" rx="4" fill="#b45309"/>
+  <circle cx="200" cy="220" r="5" fill="#b45309"/>
+  <g font-family="Arial, sans-serif">
+    <rect x="24" y="268" width="352" height="56" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="40" y="292" font-size="13" fill="#64748b">Item reprovado</text>
+    <text x="40" y="312" font-size="15" fill="#0f172a" font-weight="bold">Pneu dianteiro com desgaste crítico</text>
+    <rect x="24" y="336" width="170" height="56" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="40" y="360" font-size="13" fill="#64748b">Operador</text>
+    <text x="40" y="380" font-size="15" fill="#0f172a" font-weight="bold">Carlos Souza</text>
+    <rect x="206" y="336" width="170" height="56" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+    <text x="222" y="360" font-size="13" fill="#64748b">Status</text>
+    <text x="222" y="380" font-size="15" fill="#b91c1c" font-weight="bold">Operação bloqueada</text>
+  </g>
+  <rect x="24" y="412" width="352" height="76" rx="10" fill="#f1f5f9"/>
+  <g stroke="#94a3b8" stroke-width="2" fill="none">
+    <rect x="172" y="430" width="56" height="40" rx="6"/>
+    <circle cx="200" cy="450" r="10"/>
+  </g>
+  <text x="200" y="504" font-family="Arial, sans-serif" font-size="0" fill="#64748b" text-anchor="middle"> </text>
+  <rect x="24" y="502" width="352" height="36" rx="8" fill="#fff7ed" stroke="#fdba74"/>
+  <text x="200" y="525" font-family="Arial, sans-serif" font-size="13" font-weight="bold" fill="#c2410c" text-anchor="middle">Ordem de manutenção aberta automaticamente</text>
+</svg>
